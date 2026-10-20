@@ -51,7 +51,7 @@ public class ActivityUpdates extends AppCompatActivity {
                         ready(getString(R.string.update_current, BuildConfig.VERSION_NAME), R.string.check_updates, this::check);
                     else
                         ready(getString(R.string.update_available, BuildConfig.VERSION_NAME, found.version, found.notes),
-                                R.string.update_download, this::download);
+                                R.string.update_install, this::download);
                 });
             } catch (IOException | RuntimeException failure) { fail(failure, this::check); }
         });

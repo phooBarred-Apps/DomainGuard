@@ -762,6 +762,9 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         // Handle item selection
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         switch (item.getItemId()) {
+            case R.id.menu_domain_search:
+                startActivity(new Intent(this, ActivityDomainSearch.class));
+                return true;
             case R.id.menu_global_lists:
                 GlobalListsDialog.choose(this);
                 return true;

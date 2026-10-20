@@ -121,6 +121,39 @@ public class AppFilterDeviceTest {
         device.wait(Until.findObject(By.desc("More options")), 5000).click();
     }
 
+    // Test: With room in a phone toolbar, both Filter and Sort are visible and open their dialogs.
+    // Why: AppCompat's action-count limit previously hid Sort despite unused space beside the switch.
+    @Test public void ifRoomKeepsBothControlsTogetherWithoutOverlappingSwitch() {
+        onMain(() -> prefs.edit().putString(Rule.PREFERENCE_STRING_LIST_CONTROLS, "if_room").commit());
+        device.waitForIdle();
+        android.graphics.Rect toggle = find("swEnabled").getVisibleBounds();
+        android.graphics.Rect search = find("menu_search").getVisibleBounds();
+        android.graphics.Rect filter = find("menu_filter").getVisibleBounds();
+        android.graphics.Rect sort = find("menu_sort").getVisibleBounds();
+        assertFalse(android.graphics.Rect.intersects(toggle, search));
+        assertFalse(android.graphics.Rect.intersects(search, filter));
+        assertFalse(android.graphics.Rect.intersects(filter, sort));
+        float density = context.getResources().getDisplayMetrics().density;
+        assertTrue("Filter has a full touch target", filter.width() >= 48 * density - 1);
+        assertTrue("Sort has a full touch target", sort.width() >= 48 * density - 1);
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "toolbar-filter-and-sort.png"));
+        find("menu_sort").click();
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.list_sort_recent))), 5000));
+        device.findObject(By.res("android", "button1")).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        find("menu_filter").click();
+        find("filter_access");
+        closeFilter("button2");
+        find("menu_search").click();
+        find("search_src_text").setText("android");
+        device.pressBack();
+        openListAction("menu_sort", R.string.list_sort_apps);
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.list_sort_recent))), 5000));
+        device.findObject(By.res("android", "button1")).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        assertEquals("android", find("search_src_text").getText());
+    }
+
     private void openListAction(String id, int label) {
         UiObject2 icon = device.findObject(By.res(context.getPackageName(), id));
         if (icon != null) icon.click();
@@ -230,8 +263,12 @@ public class AppFilterDeviceTest {
 
     private void choose(String id, int labels, int index) throws Exception {
         scrollTo(id);
+        device.waitForIdle();
         find(id).click();
-        device.wait(Until.findObject(By.text(context.getResources().getStringArray(labels)[index])), 5000).click();
+        UiObject2 choice = device.wait(Until.findObject(By.text(context.getResources().getStringArray(labels)[index])), 5000);
+        assertNotNull("Missing filter choice in " + id, choice);
+        choice.click();
+        device.waitForIdle();
     }
 
     private void scrollTo(String id) throws Exception {

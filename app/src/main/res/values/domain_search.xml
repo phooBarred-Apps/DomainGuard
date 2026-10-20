@@ -1,0 +1,18 @@
+<resources>
+    <string name="domain_search_title">Search domains across apps</string>
+    <string name="domain_search_hint">Search a domain or paste a URL</string>
+    <string name="domain_search_help">Search recorded domain attempts across all apps, including apps hidden by your filters. Each result shows the latest recorded outcome for that app and domain.</string>
+    <string name="domain_search_start">Enter a domain to find the apps that contacted it.</string>
+    <string name="domain_search_loading">Searching\u2026</string>
+    <string name="domain_search_empty">No recorded attempts match this search.</string>
+    <string name="domain_search_error">Could not load domain attempts. Change the search or reopen this screen to retry.</string>
+    <string name="domain_search_count">Matches: %1$d</string>
+    <string name="domain_search_allowed">Last attempt: Allowed</string>
+    <string name="domain_search_blocked">Last attempt: Blocked</string>
+    <string name="domain_search_unknown">Awaiting next attempt</string>
+    <string name="domain_search_pending">Allow pending</string>
+    <string name="domain_search_uid">App ID %1$d</string>
+    <string name="domain_search_shared">Shared app ID</string>
+    <string name="global_search_empty">No matching entries in this list.</string>
+    <string name="global_search_parent">Covers this domain</string>
+</resources>

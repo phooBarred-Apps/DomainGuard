@@ -7,14 +7,19 @@
         android:title="@string/menu_search"
         netguard:actionViewClass="androidx.appcompat.widget.SearchView"
         netguard:showAsAction="always|collapseActionView"/>
-    <item android:id="@+id/menu_filter" android:icon="@drawable/ic_filter_list_white_24dp"
-        android:title="@string/list_filters" netguard:showAsAction="never" />
-    <item android:id="@+id/menu_sort" android:icon="@drawable/ic_sort_white_24dp"
-        android:title="@string/list_sort_apps" netguard:showAsAction="never" />
+    <!-- Keep related controls together: the action-count cap must not split
+         Filter and Sort when there is enough width for both. -->
+    <group android:id="@+id/menu_list_controls">
+        <item android:id="@+id/menu_filter" android:icon="@drawable/ic_filter_list_white_24dp"
+            android:title="@string/list_filters" netguard:showAsAction="never" />
+        <item android:id="@+id/menu_sort" android:icon="@drawable/ic_sort_white_24dp"
+            android:title="@string/list_sort_apps" netguard:showAsAction="never" />
+    </group>
     <item
         android:id="@+id/menu_show_rules_list"
         android:title="@string/rules_list_pref"/>
     <item android:id="@+id/menu_global_lists" android:title="@string/global_lists"/>
+    <item android:id="@+id/menu_domain_search" android:title="@string/domain_search_title"/>
     <item android:id="@+id/menu_updates" android:title="@string/check_updates"/>
     <item
         android:id="@+id/menu_log"

@@ -71,6 +71,8 @@ public class GlobalListsDeviceTest {
             assertNotNull(find("whitelist_add"));
             device.takeScreenshot(new File(context.getExternalFilesDir(null), "global-list-landscape.png"));
             findText(context.getString(R.string.list_done).toUpperCase()).click();
+            findText(context.getString(R.string.global_lists));
+            device.pressBack();
         } finally {
             device.setOrientationNatural();
             device.unfreezeRotation();
@@ -92,8 +94,8 @@ public class GlobalListsDeviceTest {
         device.pressBack();
     }
 
-    // Test: Menu > Global lists opens each list as a dialog and URL additions/removals use the existing rule engine.
-    // Why: The new blacklist control must create a global block, not an allow or a rule scoped to one package.
+    // Test: Both lists add/remove global rules, and Done or Back returns to the Global lists menu.
+    // Why: Leaving either list must keep its parent menu reachable without changing rule behavior.
     @Test public void menuDialogsAddAndRemoveBothKindsOfGlobalRule() throws Exception {
         for (boolean blocked : new boolean[]{true, false}) {
             device.wait(Until.findObject(By.desc("More options")), 5000).click();
@@ -114,6 +116,17 @@ public class GlobalListsDeviceTest {
             device.wait(Until.findObject(By.res("android", "button1")), 5000).click();
             await(() -> !hasRule(rule));
             findText(context.getString(R.string.list_done).toUpperCase()).click();
+            findText(context.getString(R.string.global_lists));
+            findText(context.getString(R.string.global_blacklist));
+            findText(context.getString(R.string.global_whitelist));
+            findText(context.getString(blocked ? R.string.global_blacklist : R.string.global_whitelist)).click();
+            find("whitelist_input");
+            device.pressBack();
+            findText(context.getString(R.string.global_lists));
+            findText(context.getString(R.string.global_blacklist));
+            findText(context.getString(R.string.global_whitelist));
+            device.pressBack();
+            assertTrue(device.wait(Until.gone(By.text(context.getString(R.string.global_lists))), 5000));
         }
     }
 
@@ -149,6 +162,59 @@ public class GlobalListsDeviceTest {
         assertEquals("review-query", text(R.id.domainSearch));
         assertNotNull(find("domainSearch"));
         assertTrue(find("listSummary").getText().startsWith("1 of "));
+    }
+
+    // Test: Each global list finds a covering parent from a URL and removes the selected filtered rule.
+    // Why: Filtering must retain the correct rule identity and must not remove a different, hidden entry.
+    @Test public void globalSearchFindsParentsAndRemovesOnlySelectedRule() throws Exception {
+        for (boolean blocked : new boolean[]{true, false}) {
+            String prefix = blocked ? "blockdomain " : "allow host:";
+            String other = "other." + DOMAIN;
+            RulesManager.getInstance(context).queueRuleText(context, prefix + other);
+            RulesManager.getInstance(context).queueRuleText(context, prefix + DOMAIN);
+            await(() -> hasRule(prefix + other) && hasRule(prefix + DOMAIN));
+            device.wait(Until.findObject(By.desc("More options")), 5000).click();
+            findText(context.getString(R.string.global_lists)).click();
+            findText(context.getString(blocked ? R.string.global_blacklist : R.string.global_whitelist)).click();
+            searchGlobal("HTTPS://IMAGES." + DOMAIN.toUpperCase(java.util.Locale.ROOT) + "/path");
+            scrollGlobalTo("whitelist_entries");
+            String match = DOMAIN + "\n" + context.getString(R.string.whitelist_active)
+                    + " \u00b7 " + context.getString(R.string.global_search_parent);
+            UiObject2 row = findText(match);
+            device.takeScreenshot(new File(context.getExternalFilesDir(null), blocked
+                    ? "global-blacklist-search.png" : "global-whitelist-search.png"));
+            row.click();
+            findText(DOMAIN);
+            device.wait(Until.findObject(By.res("android", "button1")), 5000).click();
+            await(() -> !hasRule(prefix + DOMAIN));
+            assertTrue("Hidden sibling rule must remain", hasRule(prefix + other));
+            scrollGlobalTo("whitelist_empty");
+            findText(context.getString(R.string.global_search_empty));
+            searchGlobal("");
+            scrollGlobalTo("whitelist_entries");
+            findText(other + "\n" + context.getString(R.string.whitelist_active));
+            findText(context.getString(R.string.list_done).toUpperCase()).click();
+            findText(context.getString(R.string.global_lists));
+            device.pressBack();
+        }
+    }
+
+    private void searchGlobal(String query) throws Exception {
+        scrollGlobalTo("global_list_search");
+        UiObject2 field = find("global_list_search").findObject(By.res(context.getPackageName(), "search_src_text"));
+        field.click();
+        field.setText(query);
+        device.waitForIdle();
+        device.pressBack();
+        device.waitForIdle();
+    }
+
+    private void scrollGlobalTo(String id) throws Exception {
+        new androidx.test.uiautomator.UiScrollable(new androidx.test.uiautomator.UiSelector()
+                .resourceId(context.getPackageName() + ":id/global_list_scroll"))
+                .scrollIntoView(new androidx.test.uiautomator.UiSelector()
+                        .resourceId(context.getPackageName() + ":id/" + id));
+        device.waitForIdle();
     }
 
     private void scrollTo(String id) {

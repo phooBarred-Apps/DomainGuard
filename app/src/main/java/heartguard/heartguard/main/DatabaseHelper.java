@@ -840,6 +840,20 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         AccessStats(long count, long lastTime) { this.count = count; this.lastTime = lastTime; }
     }
 
+    Cursor searchAccessDomains(DomainSearchQuery search) {
+        lock.readLock().lock();
+        try {
+            // Search all recorded apps before grouping, independent of app filters and the per-app limit.
+            return getReadableDatabase().rawQuery(
+                    "SELECT uid, daddr, time, allowed, pending_allow FROM access"
+                            + " WHERE daddr LIKE ? ESCAPE '\\'"
+                            + " ORDER BY uid, daddr COLLATE NOCASE, time DESC, ID DESC",
+                    new String[]{search.sqlContains()});
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
     Map<Integer, AccessStats> getAccessStats() {
         lock.readLock().lock();
         try (Cursor cursor = getReadableDatabase().rawQuery(

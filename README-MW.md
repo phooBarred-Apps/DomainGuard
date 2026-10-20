@@ -4,7 +4,21 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 Modifications for HeartGuard-MW were made on October 20, 2026.
 
-Version `2.317-mw.5` adds:
+Version `2.317-mw.6` adds:
+
+- **Search domains across apps** searches recorded attempts independently of app
+  filters and shows each app/domain's latest recorded outcome. URLs are accepted.
+- **Search global lists** filters either list and includes parent-domain rules
+  that cover the searched host, with a "Covers this domain" label.
+- **Global lists navigation** returns to the Global lists menu when you finish
+  either list with Done or Android Back.
+- **Show in toolbar if room** keeps Filter and Sort together instead of hiding
+  Sort solely because the toolbar's action-count limit was reached.
+- **Install update** starts the download, verifies the APK, and automatically
+  opens Android's installation confirmation. No separate download action is
+  needed inside HeartGuard-MW.
+
+Version `2.317-mw.5` added:
 
 - **Sort and filter buttons** in Settings > Options lets you choose always
   visible above the app list (the default), in the toolbar when there is room,

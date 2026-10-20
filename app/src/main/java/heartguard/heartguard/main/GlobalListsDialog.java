@@ -10,6 +10,7 @@ import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.widget.SearchView;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -33,8 +34,11 @@ final class GlobalListsDialog {
         DialogSurface.apply(chooser);
     }
     private final List<Entry> entries = new ArrayList<>();
+    private final List<Entry> visibleEntries = new ArrayList<>();
+    private DomainSearchQuery search = new DomainSearchQuery("");
     private ArrayAdapter<String> adapter;
     private EditText input;
+    private android.widget.TextView empty;
     private final DatabaseHelper.RuleChangedListener listener = () -> input.post(() -> {
         if (showing) refresh();
     });
@@ -46,8 +50,7 @@ final class GlobalListsDialog {
         input = content.findViewById(R.id.whitelist_input);
         ((android.widget.TextView) content.findViewById(R.id.global_list_description)).setText(blocked
                 ? R.string.global_blacklist_description : R.string.global_whitelist_description);
-        ((android.widget.TextView) content.findViewById(R.id.whitelist_empty)).setText(blocked
-                ? R.string.blacklist_empty : R.string.whitelist_empty);
+        empty = content.findViewById(R.id.whitelist_empty);
         ((android.widget.Button) content.findViewById(R.id.whitelist_add)).setText(blocked
                 ? R.string.blacklist_add : R.string.whitelist_add);
         ListView list = content.findViewById(R.id.whitelist_entries);
@@ -55,11 +58,26 @@ final class GlobalListsDialog {
         adapter.setNotifyOnChange(false);
         list.setAdapter(adapter);
         list.setEmptyView(content.findViewById(R.id.whitelist_empty));
-        list.setOnItemClickListener((parent, view, position, id) -> remove(entries.get(position)));
+        list.setOnItemClickListener((parent, view, position, id) -> remove(visibleEntries.get(position)));
+        SearchView searchView = content.findViewById(R.id.global_list_search);
+        searchView.setVisibility(View.VISIBLE);
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            public boolean onQueryTextSubmit(String query) {
+                searchView.clearFocus();
+                return true;
+            }
+            public boolean onQueryTextChange(String query) {
+                search = new DomainSearchQuery(query);
+                filter();
+                return true;
+            }
+        });
         content.findViewById(R.id.whitelist_add).setOnClickListener(view -> add());
         dialog = new AlertDialog.Builder(context)
                 .setCustomTitle(SortDialog.title(context, blocked ? R.string.global_blacklist : R.string.global_whitelist))
-                .setView(content).setPositiveButton(R.string.list_done, null).create();
+                .setView(content)
+                .setPositiveButton(R.string.list_done, (window, which) -> choose(context))
+                .setOnCancelListener(window -> choose(context)).create();
         androidx.lifecycle.LifecycleEventObserver lifecycleObserver = (owner, event) -> {
             if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY) dialog.dismiss();
         };
@@ -105,12 +123,23 @@ final class GlobalListsDialog {
                 if (domain != null) entries.add(new Entry(text, domain, active));
             }
         }
+        for (Entry entry : entries) entry.removing = removing.contains(entry.rule);
+        filter();
+    }
+
+    private void filter() {
+        visibleEntries.clear();
         List<String> labels = new ArrayList<>();
         for (Entry entry : entries) {
-            entry.removing = removing.contains(entry.rule);
-            labels.add(entry.domain + "\n" + getString(entry.removing ? R.string.whitelist_removing
-                    : entry.active ? R.string.whitelist_active : R.string.whitelist_pending));
+            if (!search.matchesRule(entry.domain)) continue;
+            visibleEntries.add(entry);
+            String label = entry.domain + "\n" + getString(entry.removing ? R.string.whitelist_removing
+                    : entry.active ? R.string.whitelist_active : R.string.whitelist_pending);
+            if (search.coversSearch(entry.domain)) label += " \u00b7 " + getString(R.string.global_search_parent);
+            labels.add(label);
         }
+        empty.setText(search.text.isEmpty()
+                ? (blocked ? R.string.blacklist_empty : R.string.whitelist_empty) : R.string.global_search_empty);
         boolean unchanged = adapter.getCount() == labels.size();
         for (int i = 0; unchanged && i < labels.size(); i++)
             unchanged = labels.get(i).equals(adapter.getItem(i));

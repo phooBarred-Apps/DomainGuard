@@ -21,7 +21,6 @@
     <string name="rule_queued">Rule change queued</string>
     <string name="app_updates">App updates</string>
     <string name="check_updates">Check for updates</string>
-    <string name="update_download">Download update</string>
     <string name="update_install">Install update</string>
     <string name="update_permission">Allow updates</string>
     <string name="update_checking">Checking for updates…</string>
