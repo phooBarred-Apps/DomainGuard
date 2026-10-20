@@ -38,7 +38,6 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.Typeface;
 import android.net.ConnectivityManager;
 import android.net.LinkProperties;
 import android.net.Network;
@@ -60,11 +59,7 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
-import android.text.Spannable;
-import android.text.SpannableString;
 import android.text.TextUtils;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.StyleSpan;
 import android.util.Log;
 import android.util.Pair;
 import android.util.TypedValue;
@@ -93,7 +88,6 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URL;
 import java.net.UnknownHostException;
-import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -836,7 +830,8 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                     lock.readLock().lock();
                     if (!mapNotify.containsKey(packet.uid) || mapNotify.get(packet.uid))
                         if (!packet.allowed && rm.shouldNotifyOnPacket(ServiceSinkhole.this, packet, dname)) {
-                            showAccessNotification(packet.uid);
+                            AccessNotification.show(ServiceSinkhole.this, packet.uid,
+                                    dname == null ? packet.daddr : dname, packet.daddr);
                         }
                     lock.readLock().unlock();
                 }
@@ -1653,10 +1648,6 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         if (dname == null) {
             mapUidIPFilters.clear();
-            if (!IAB.isPurchased(ActivityPro.SKU_FILTER, ServiceSinkhole.this)) {
-                lock.writeLock().unlock();
-                return;
-            }
         }
 
         try (Cursor cursor = DatabaseHelper.getInstance(ServiceSinkhole.this).getAccessDns(dname)) {
@@ -2385,7 +2376,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                     if (!intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
                         // Show notification
                         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-                        if (IAB.isPurchased(ActivityPro.SKU_NOTIFY, context) && prefs.getBoolean("install", true)) {
+                        if (prefs.getBoolean("install", true)) {
                             int uid = intent.getIntExtra(Intent.EXTRA_UID, -1);
                             notifyNewApplication(uid);
                         }
@@ -3170,91 +3161,6 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         notification.setSummaryText(message);
 
         NotificationManagerCompat.from(this).notify(NOTIFY_ERROR, notification.build());
-    }
-
-    private void showAccessNotification(int uid) {
-        String name = TextUtils.join(", ", Util.getApplicationNames(uid, ServiceSinkhole.this));
-
-        Intent main = new Intent(ServiceSinkhole.this, ActivityMain.class);
-        main.putExtra(ActivityMain.EXTRA_SEARCH, Integer.toString(uid));
-        PendingIntent pi = PendingIntent.getActivity(ServiceSinkhole.this, uid + 10000, main, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-
-        TypedValue tv = new TypedValue();
-        getTheme().resolveAttribute(R.attr.colorOn, tv, true);
-        int colorOn = tv.data;
-        getTheme().resolveAttribute(R.attr.colorOff, tv, true);
-        int colorOff = tv.data;
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "access");
-        builder.setSmallIcon(R.drawable.ic_cloud_upload_white_24dp)
-                .setGroup("AccessAttempt")
-                .setContentIntent(pi)
-                .setColor(colorOff)
-                .setOngoing(false)
-                .setAutoCancel(true);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
-            builder.setContentTitle(name)
-                    .setContentText(getString(R.string.msg_access_n));
-        else
-            builder.setContentTitle(getString(R.string.app_name))
-                    .setContentText(getString(R.string.msg_access, name));
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
-            builder.setCategory(NotificationCompat.CATEGORY_STATUS)
-                    .setVisibility(NotificationCompat.VISIBILITY_SECRET);
-
-        DateFormat df = new SimpleDateFormat("dd HH:mm");
-
-        NotificationCompat.InboxStyle notification = new NotificationCompat.InboxStyle(builder);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
-            notification.addLine(getString(R.string.msg_access_n));
-        else {
-            String sname = getString(R.string.msg_access, name);
-            int pos = sname.indexOf(name);
-            Spannable sp = new SpannableString(sname);
-            sp.setSpan(new StyleSpan(Typeface.BOLD), pos, pos + name.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            notification.addLine(sp);
-        }
-
-        long since = 0;
-        PackageManager pm = getPackageManager();
-        String[] packages = pm.getPackagesForUid(uid);
-        if (packages != null && packages.length > 0)
-            try {
-                since = pm.getPackageInfo(packages[0], 0).firstInstallTime;
-            } catch (PackageManager.NameNotFoundException ignored) {
-            }
-
-        try (Cursor cursor = DatabaseHelper.getInstance(ServiceSinkhole.this).getAccessUnset(uid, 7, since)) {
-            int colDAddr = cursor.getColumnIndex("daddr");
-            int colTime = cursor.getColumnIndex("time");
-            int colAllowed = cursor.getColumnIndex("allowed");
-            while (cursor.moveToNext()) {
-                StringBuilder sb = new StringBuilder();
-                sb.append(df.format(cursor.getLong(colTime))).append(' ');
-
-                String daddr = cursor.getString(colDAddr);
-                if (Util.isNumericAddress(daddr))
-                    try {
-                        daddr = InetAddress.getByName(daddr).getHostName();
-                    } catch (UnknownHostException ignored) {
-                    }
-                sb.append(daddr);
-
-                int allowed = cursor.getInt(colAllowed);
-                if (allowed >= 0) {
-                    int pos = sb.indexOf(daddr);
-                    Spannable sp = new SpannableString(sb);
-                    ForegroundColorSpan fgsp = new ForegroundColorSpan(allowed > 0 ? colorOn : colorOff);
-                    sp.setSpan(fgsp, pos, pos + daddr.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                    notification.addLine(sp);
-                } else
-                    notification.addLine(sb);
-            }
-        }
-
-        NotificationManagerCompat.from(this).notify(uid + 10000, notification.build());
     }
 
     private void showUpdateNotification(String name) {

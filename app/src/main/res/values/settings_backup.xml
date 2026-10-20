@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_backup_title">Google device backup</string>
+    <string name="settings_backup_explanation">Uses your phone’s built-in backup service. Choose your Google account and enable backup in the phone’s backup settings.\n\nIncludes rules, global whitelist, pending changes, themes, app preferences and accountability partners. Traffic logs and downloaded APKs are excluded.\n\nAndroid controls when backups run and restores them when you reinstall HeartGuard-MW or set up another phone. A request does not confirm that a backup has finished.</string>
+    <string name="settings_backup_request">Request backup</string>
+    <string name="settings_backup_requested">Backup requested. Android decides when it runs.</string>
+    <string name="settings_backup_never">No backup requested from this app yet</string>
+    <string name="settings_backup_last_request">Last requested: %1$s</string>
+    <string name="settings_backup_auto">Automatically request backups</string>
+    <string name="settings_backup_auto_summary">Request a backup when rules or settings change. Android manages the schedule.</string>
+    <string name="settings_backup_open">Open phone backup settings</string>
+</resources>

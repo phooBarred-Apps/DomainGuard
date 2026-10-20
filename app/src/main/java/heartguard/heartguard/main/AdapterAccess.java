@@ -21,95 +21,90 @@ package heartguard.heartguard.main;
 
 import android.content.Context;
 import android.content.res.TypedArray;
-import android.database.Cursor;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.SpannableString;
 import android.text.style.UnderlineSpan;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.CursorAdapter;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-
 import androidx.core.graphics.drawable.DrawableCompat;
-
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.RecyclerView;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.List;
 
-public class AdapterAccess extends CursorAdapter {
-    private int colVersion;
-    private int colProtocol;
-    private int colDaddr;
-    private int colDPort;
-    private int colTime;
-    private int colAllowed;
-    private int colBlock;
-    private int colCount;
-    private int colSent;
-    private int colReceived;
-    private int colConnections;
-    private int colPending;
+public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
+    interface Click { void open(AccessEntry entry); }
+    private final Click click;
+    private List<AccessEntry> entries = new ArrayList<>();
+    private final int colorText, colorOn, colorOff, colorPending;
 
-    private final int colorText;
-    private final int colorOn;
-    private final int colorOff;
-    private final int colorPending;
-
-    public AdapterAccess(Context context, Cursor cursor) {
-        super(context, cursor, 0);
-        colVersion = cursor.getColumnIndex("version");
-        colProtocol = cursor.getColumnIndex("protocol");
-        colDaddr = cursor.getColumnIndex("daddr");
-        colDPort = cursor.getColumnIndex("dport");
-        colTime = cursor.getColumnIndex("time");
-        colAllowed = cursor.getColumnIndex("allowed");
-        colBlock = cursor.getColumnIndex("block");
-        colCount = cursor.getColumnIndex("count");
-        colSent = cursor.getColumnIndex("sent");
-        colReceived = cursor.getColumnIndex("received");
-        colConnections = cursor.getColumnIndex("connections");
-        colPending = cursor.getColumnIndex("pending_allow");
-
+    AdapterAccess(Context context, Click click) {
+        this.click = click;
+        setHasStableIds(true);
         TypedArray ta = context.getTheme().obtainStyledAttributes(new int[]{android.R.attr.textColorSecondary});
-        try {
-            colorText = ta.getColor(0, 0);
-        } finally {
-            ta.recycle();
-        }
-
+        try { colorText = ta.getColor(0, 0); } finally { ta.recycle(); }
         TypedValue tv = new TypedValue();
-        context.getTheme().resolveAttribute(R.attr.colorOn, tv, true);
-        colorOn = tv.data;
-        context.getTheme().resolveAttribute(R.attr.colorOff, tv, true);
-        colorOff = tv.data;
-        context.getTheme().resolveAttribute(R.attr.colorPending, tv, true);
-        colorPending = tv.data;
+        context.getTheme().resolveAttribute(R.attr.colorOn, tv, true); colorOn = tv.data;
+        context.getTheme().resolveAttribute(R.attr.colorOff, tv, true); colorOff = tv.data;
+        context.getTheme().resolveAttribute(R.attr.colorPending, tv, true); colorPending = tv.data;
     }
 
-    @Override
-    public View newView(Context context, Cursor cursor, ViewGroup parent) {
-        return LayoutInflater.from(context).inflate(R.layout.access, parent, false);
+    void submit(List<AccessEntry> next) {
+        List<AccessEntry> previous = entries;
+        DiffUtil.DiffResult diff = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+            public int getOldListSize() { return previous.size(); }
+            public int getNewListSize() { return next.size(); }
+            public boolean areItemsTheSame(int oldPosition, int newPosition) {
+                return previous.get(oldPosition).id == next.get(newPosition).id;
+            }
+            public boolean areContentsTheSame(int oldPosition, int newPosition) {
+                return previous.get(oldPosition).sameContents(next.get(newPosition));
+            }
+        });
+        entries = new ArrayList<>(next);
+        diff.dispatchUpdatesTo(this);
     }
 
-    @Override
-    public void bindView(final View view, final Context context, final Cursor cursor) {
-        // Get values
-        final int version = cursor.getInt(colVersion);
-        final int protocol = cursor.getInt(colProtocol);
-        final String daddr = cursor.getString(colDaddr);
-        final int dport = cursor.getInt(colDPort);
-        long time = cursor.getLong(colTime);
-        int allowed = cursor.getInt(colAllowed);
-        int block = cursor.getInt(colBlock);
-        int count = cursor.getInt(colCount);
-        long sent = cursor.isNull(colSent) ? -1 : cursor.getLong(colSent);
-        long received = cursor.isNull(colReceived) ? -1 : cursor.getLong(colReceived);
-        int connections = cursor.isNull(colConnections) ? -1 : cursor.getInt(colConnections);
-        int pending = cursor.isNull(colPending) ? 0 : cursor.getInt(colPending);
-
+    @Override public int getItemCount() { return entries.size(); }
+    @Override public long getItemId(int position) { return entries.get(position).id; }
+    @Override public Holder onCreateViewHolder(ViewGroup parent, int type) {
+        return new Holder(LayoutInflater.from(parent.getContext()).inflate(R.layout.access, parent, false));
+    }
+    final class Holder extends RecyclerView.ViewHolder {
+        AccessEntry bound, pressed;
+        Holder(View view) {
+            super(view);
+            view.setOnTouchListener((target, event) -> {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) pressed = bound;
+                else if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) pressed = null;
+                return false;
+            });
+            view.setOnClickListener(target -> {
+                AccessEntry selected = pressed == null ? bound : pressed;
+                pressed = null;
+                if (selected != null) click.open(selected);
+            });
+        }
+    }
+    @Override public void onViewRecycled(Holder holder) { holder.bound = holder.pressed = null; }
+    @Override public void onBindViewHolder(Holder holder, int position) {
+        AccessEntry entry = entries.get(position);
+        holder.bound = entry;
+        View view = holder.itemView;
+        Context context = view.getContext();
+        int version = entry.version, protocol = entry.protocol, dport = entry.port;
+        String daddr = entry.address;
+        long time = entry.time, sent = entry.sent, received = entry.received;
+        int allowed = entry.allowed, block = entry.block, count = entry.aliases;
+        int connections = entry.connections, pending = entry.pending;
         // Get views
         TextView tvTime = view.findViewById(R.id.tvTime);
         ImageView ivBlock = view.findViewById(R.id.ivBlock);
@@ -120,7 +115,13 @@ public class AdapterAccess extends CursorAdapter {
 
         // Set values
         tvTime.setText(new SimpleDateFormat("dd HH:mm").format(time));
-        if (block < 0)
+        ivBlock.setContentDescription(null);
+        if (entry.globalScope != GlobalRuleIndicators.LOCAL) {
+            boolean globallyBlocked = entry.globalScope == GlobalRuleIndicators.BLOCKED;
+            ivBlock.setImageResource(globallyBlocked ? R.drawable.host_global_blocked : R.drawable.host_global_allowed);
+            ivBlock.setContentDescription(context.getString(globallyBlocked
+                    ? R.string.domain_globally_blocked : R.string.domain_globally_allowed));
+        } else if (block < 0)
             ivBlock.setImageDrawable(null);
         else {
             ivBlock.setImageResource(block > 0 ? R.drawable.host_blocked : R.drawable.host_allowed);
@@ -135,32 +136,6 @@ public class AdapterAccess extends CursorAdapter {
         SpannableString span = new SpannableString(dest);
         span.setSpan(new UnderlineSpan(), 0, dest.length(), 0);
         tvDest.setText(span);
-
-        // HeartGuard change - don't do reverse name lookup, it obscures what rules we will want to use to enable traffic
-        //if (Util.isNumericAddress(daddr))
-        //    new AsyncTask<String, Object, String>() {
-        //        @Override
-        //        protected void onPreExecute() {
-        //            ViewCompat.setHasTransientState(tvDest, true);
-        //        }
-
-        //        @Override
-        //        protected String doInBackground(String... args) {
-        //            try {
-        //                return InetAddress.getByName(args[0]).getHostName();
-        //            } catch (UnknownHostException ignored) {
-        //                return args[0];
-        //            }
-        //        }
-
-        //        @Override
-        //        protected void onPostExecute(String addr) {
-        //            tvDest.setText(
-        //                    Util.getProtocolName(protocol, version, true) +
-        //                            " >" + addr + (dport > 0 ? "/" + dport : ""));
-        //            ViewCompat.setHasTransientState(tvDest, false);
-        //        }
-        //    }.execute(daddr);
 
         if (allowed < 0)
             tvDest.setTextColor(colorText);

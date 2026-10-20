@@ -32,10 +32,12 @@ public class ApplicationEx extends Application {
     private static final String TAG = "NetGuard.App";
 
     private Thread.UncaughtExceptionHandler mPrevHandler;
+    private SettingsBackup settingsBackup;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        settingsBackup = new SettingsBackup(this);
         Log.i(TAG, "Create version=" + Util.getSelfVersionName(this) + "/" + Util.getSelfVersionCode(this));
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)

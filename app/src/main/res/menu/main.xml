@@ -7,50 +7,14 @@
         android:title="@string/menu_search"
         netguard:actionViewClass="androidx.appcompat.widget.SearchView"
         netguard:showAsAction="always|collapseActionView"/>
-    <item
-        android:id="@+id/menu_filter"
-        android:icon="@drawable/ic_filter_list_white_24dp"
-        android:title="@string/menu_filter"
-        netguard:showAsAction="always|collapseActionView">
-        <menu>
-            <item
-                android:id="@+id/menu_app_user"
-                android:checkable="true"
-                android:title="@string/menu_app_user"/>
-            <item
-                android:id="@+id/menu_app_system"
-                android:checkable="true"
-                android:title="@string/menu_app_system"/>
-            <item
-                android:id="@+id/menu_app_nointernet"
-                android:checkable="true"
-                android:title="@string/menu_app_nointernet"/>
-            <item
-                android:id="@+id/menu_app_disabled"
-                android:checkable="true"
-                android:title="@string/menu_app_disabled"/>
-        </menu>
-    </item>
-    <item
-        android:id="@+id/menu_sort"
-        android:icon="@drawable/ic_sort_white_24dp"
-        android:title="@string/menu_sort"
-        netguard:showAsAction="always|collapseActionView">
-        <menu>
-            <group android:checkableBehavior="single">
-                <item
-                    android:id="@+id/menu_sort_name"
-                    android:title="@string/menu_sort_name"/>
-                <item
-                    android:id="@+id/menu_sort_uid"
-                    android:title="@string/menu_sort_uid"/>
-            </group>
-        </menu>
-    </item>
+    <item android:id="@+id/menu_filter" android:icon="@drawable/ic_filter_list_white_24dp"
+        android:title="@string/list_filters" netguard:showAsAction="ifRoom" />
+    <item android:id="@+id/menu_sort" android:icon="@drawable/ic_sort_white_24dp"
+        android:title="@string/list_sort_apps" netguard:showAsAction="ifRoom" />
     <item
         android:id="@+id/menu_show_rules_list"
         android:title="@string/rules_list_pref"/>
-    <item android:id="@+id/menu_global_whitelist" android:title="@string/global_whitelist"/>
+    <item android:id="@+id/menu_global_lists" android:title="@string/global_lists"/>
     <item android:id="@+id/menu_updates" android:title="@string/check_updates"/>
     <item
         android:id="@+id/menu_log"

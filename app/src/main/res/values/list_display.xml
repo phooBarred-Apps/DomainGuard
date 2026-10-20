@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="list_sort_apps">Sort apps</string>
+    <string name="list_sort_domains">Sort domains</string>
+    <string name="list_sort_name">Name (A–Z)</string>
+    <string name="list_sort_recent">Most recent activity</string>
+    <string name="list_sort_blocked">Blocked first</string>
+    <string name="list_sort_allowed">Allowed first</string>
+    <string name="list_set_default">Set as default</string>
+    <string name="list_default_saved">Default sort saved</string>
+    <string name="list_done">Done</string>
+    <string name="list_apply">Apply</string>
+    <string name="list_filters">Filter apps</string>
+    <string name="list_reset_filters">Reset filters</string>
+    <string name="list_filter_access">App access</string>
+    <string name="list_filter_activity">Recorded activity</string>
+    <string name="list_filter_type">App type</string>
+    <string name="list_filter_explanation">Blocked by default apps can still allow individual domains.</string>
+    <string name="list_include_no_internet">Include apps without internet permission</string>
+    <string name="list_include_disabled">Include disabled apps</string>
+    <string name="list_search_apps">Search apps or package names</string>
+    <string name="list_search_domains">Search domains or IP addresses</string>
+    <string name="list_clear_domain_search">Clear domain search</string>
+    <string name="list_app_count">%1$d of %2$d apps</string>
+    <string name="list_no_apps">No matching apps. Change your search or reset filters.</string>
+    <string name="list_no_domains">No matching domains. Check the search and Hide allowed domains.</string>
+    <string name="list_domain_limit">Showing the first 250 matching entries</string>
+    <string name="list_search_active">Search: %1$s</string>
+    <string name="list_filter_internet_only">Internet permission only</string>
+    <string name="list_filter_enabled_only">Enabled apps only</string>
+    <string-array name="list_access_choices">
+        <item>All access settings</item>
+        <item>Allowed by default</item>
+        <item>Blocked by default</item>
+    </string-array>
+    <string-array name="list_activity_choices">
+        <item>All activity</item>
+        <item>With attempts</item>
+        <item>Without attempts</item>
+    </string-array>
+    <string-array name="list_type_choices">
+        <item>All app types</item>
+        <item>User apps</item>
+        <item>System apps</item>
+    </string-array>
+</resources>

@@ -1,0 +1,11 @@
+<resources>
+    <string name="domain_globally_allowed">Allowed by a global rule</string>
+    <string name="domain_globally_blocked">Blocked by a global rule</string>
+    <string name="global_lists">Global lists</string>
+    <string name="global_blacklist">Global blacklist</string>
+    <string name="global_blacklist_description">Block these domains and their subdomains for every app. Global blocks take priority over allow rules. Tap an entry to remove it or cancel a pending change.</string>
+    <string name="blacklist_add">Add to blacklist</string>
+    <string name="blacklist_empty">No global blocked domains yet.</string>
+    <string name="blacklist_remove">Remove from blacklist</string>
+    <string name="blacklist_domain_error">Enter a domain or HTTP/HTTPS URL. This list blocks domain names, including their subdomains.</string>
+</resources>

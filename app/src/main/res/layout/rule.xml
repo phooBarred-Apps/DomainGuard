@@ -458,7 +458,25 @@
                 android:textAppearance="@style/TextSmall"
                 android:textStyle="italic" />
 
-            <heartguard.heartguard.main.ExpandedListView
+            <CheckBox
+                android:id="@+id/cbHideAllowedDomains"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/hide_allowed_domains"
+                android:textAppearance="@style/TextSmall" />
+
+            <EditText android:id="@+id/domainSearch"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="48dp" android:singleLine="true" android:inputType="textUri"
+                android:importantForAutofill="no" android:hint="@string/list_search_domains" />
+            <Button android:id="@+id/domainSortButton"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textAllCaps="false" android:text="@string/list_sort_domains" />
+            <TextView android:id="@+id/domainStatus"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:visibility="gone" android:textAppearance="@style/TextSmall" />
+            <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/lvAccess"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

@@ -798,6 +798,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public Cursor getAccess(int uid) {
+        return getAccess(uid, false);
+    }
+
+    public Cursor getAccess(int uid, boolean hideAllowed) {
+        return getAccess(uid, hideAllowed, "", ListSort.RECENT);
+    }
+
+    public Cursor getAccess(int uid, boolean hideAllowed, String search, String sort) {
         lock.readLock().lock();
         try {
             SQLiteDatabase db = this.getReadableDatabase();
@@ -807,9 +815,39 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             query += ", (SELECT COUNT(DISTINCT d.qname) FROM dns d WHERE d.resource IN (SELECT d1.resource FROM dns d1 WHERE d1.qname = a.daddr)) count";
             query += " FROM access a";
             query += " WHERE a.uid = ?";
-            query += " ORDER BY a.time DESC";
-            query += " LIMIT 250";
-            return db.rawQuery(query, new String[]{Integer.toString(uid)});
+            // Keep blocked, unknown and pending entries visible. Filter before the row limit.
+            if (hideAllowed)
+                query += " AND COALESCE(a.allowed, -1) <= 0 AND COALESCE(a.block, -1) <> 0";
+            List<String> args = new ArrayList<>();
+            args.add(Integer.toString(uid));
+            if (search != null && !search.trim().isEmpty()) {
+                query += " AND a.daddr LIKE ? ESCAPE '\\'";
+                args.add("%" + search.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
+            }
+            String order = "a.time DESC";
+            if (ListSort.NAME.equals(sort)) order = "a.daddr COLLATE NOCASE";
+            else if (ListSort.BLOCKED.equals(sort)) order = "(a.block > 0) DESC, a.time DESC";
+            else if (ListSort.ALLOWED.equals(sort)) order = "(a.block = 0) DESC, a.time DESC";
+            query += " ORDER BY " + order + ", a.ID DESC LIMIT 250";
+            return db.rawQuery(query, args.toArray(new String[0]));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    static final class AccessStats {
+        final long count, lastTime;
+        AccessStats(long count, long lastTime) { this.count = count; this.lastTime = lastTime; }
+    }
+
+    Map<Integer, AccessStats> getAccessStats() {
+        lock.readLock().lock();
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT uid, COUNT(*), MAX(time) FROM access GROUP BY uid", null)) {
+            Map<Integer, AccessStats> stats = new HashMap<>();
+            while (cursor.moveToNext())
+                stats.put(cursor.getInt(0), new AccessStats(cursor.getLong(1), cursor.getLong(2)));
+            return stats;
         } finally {
             lock.readLock().unlock();
         }
@@ -1455,6 +1493,34 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         } finally {
             lock.readLock().unlock();
         }
+    }
+
+    // Called only by Android's restore agent, not by the rule-editing UI.
+    void restoreRules(List<RulesBackup.Row> rows) {
+        lock.writeLock().lock();
+        try {
+            SQLiteDatabase db = getWritableDatabase();
+            db.beginTransaction();
+            try {
+                db.delete("rules", null, null);
+                for (RulesBackup.Row row : rows) {
+                    ContentValues values = new ContentValues();
+                    values.put("ruletext", row.text);
+                    values.put("create_time", row.created);
+                    values.put("enact_time", row.enactAt);
+                    values.put("enacted", row.enacted);
+                    values.put("major_category", row.major);
+                    values.put("minor_category", row.minor);
+                    db.insertOrThrow("rules", null, values);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
+        notifyRuleChanged();
     }
 
     // HeartGuard change - get cursor of all rules, sorted for the RulesList view

@@ -35,9 +35,14 @@ import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
-import android.text.style.ImageSpan;
+import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.SimpleItemAnimator;
+import java.util.HashSet;
+import java.util.Set;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
@@ -47,18 +52,13 @@ import android.view.SubMenu;
 import android.view.TouchDelegate;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
-import android.widget.CursorAdapter;
 import android.widget.EditText;
-import android.widget.Filter;
-import android.widget.Filterable;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -77,11 +77,13 @@ import com.bumptech.glide.request.RequestOptions;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import heartguard.heartguard.main.GlideApp;
 
-public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> implements Filterable {
+public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     private static final String TAG = "NetGuard.Adapter";
 
     private View anchor;
@@ -98,6 +100,17 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
     private boolean live = true;
     private List<Rule> listAll = new ArrayList<>();
     private List<Rule> listFiltered = new ArrayList<>();
+    // Display overrides last for this screen session, including list refreshes.
+    private final Map<String, Boolean> hideAllowedDomains = new HashMap<>();
+    private final Map<String, String> domainQueries = new HashMap<>();
+    private final Set<String> expanded = new HashSet<>();
+    private final Set<ViewHolder> boundHolders = new HashSet<>();
+    final AppListOptions options = new AppListOptions();
+    private Map<Integer, DatabaseHelper.AccessStats> stats = new HashMap<>();
+    private String domainSort;
+    private Runnable viewChanged;
+    private int trafficGeneration;
+
 
     private List<String> messaging = Arrays.asList(
             "com.discord",
@@ -170,7 +183,16 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
         public ImageView ivLive;
         public TextView tvLogging;
         public Button btnLogging;
-        public ListView lvAccess;
+        public CheckBox cbHideAllowedDomains;
+        public RecyclerView lvAccess;
+        public EditText domainSearch;
+        public Button domainSortButton;
+        public TextView domainStatus;
+        private TextWatcher domainWatcher;
+        private String boundPackage;
+        private Rule boundRule;
+        private int accessGeneration;
+
         public ImageButton btnClearAccess;
         public CheckBox cbNotify;
 
@@ -230,7 +252,14 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
             ivLive = itemView.findViewById(R.id.ivLive);
             tvLogging = itemView.findViewById(R.id.tvLogging);
             btnLogging = itemView.findViewById(R.id.btnLogging);
+            cbHideAllowedDomains = itemView.findViewById(R.id.cbHideAllowedDomains);
             lvAccess = itemView.findViewById(R.id.lvAccess);
+            lvAccess.setLayoutManager(new LinearLayoutManager(itemView.getContext()));
+            lvAccess.setNestedScrollingEnabled(false);
+            ((SimpleItemAnimator) lvAccess.getItemAnimator()).setSupportsChangeAnimations(false);
+            domainSearch = itemView.findViewById(R.id.domainSearch);
+            domainSortButton = itemView.findViewById(R.id.domainSortButton);
+            domainStatus = itemView.findViewById(R.id.domainStatus);
             btnClearAccess = itemView.findViewById(R.id.btnClearAccess);
             cbNotify = itemView.findViewById(R.id.cbNotify);
 
@@ -265,6 +294,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
     public AdapterRule(Context context, View anchor) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
 
+        options.sort = ListSort.valid(prefs.getString(ListSort.APP_DEFAULT, ListSort.NAME), ListSort.APPS);
+        domainSort = ListSort.valid(prefs.getString(ListSort.DOMAIN_DEFAULT, ListSort.RECENT), ListSort.DOMAINS);
         this.anchor = anchor;
         this.inflater = LayoutInflater.from(context);
 
@@ -297,10 +328,144 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
     }
 
     public void set(List<Rule> listRule) {
-        listAll = listRule;
-        listFiltered = new ArrayList<>();
-        listFiltered.addAll(listRule);
-        notifyDataSetChanged();
+        listAll = new ArrayList<>(listRule);
+        for (Rule rule : listAll) rule.expanded = expanded.contains(rule.packageName);
+        applyOptions(true);
+        refreshTraffic();
+    }
+
+    void dispose() {
+        trafficGeneration++;
+        for (ViewHolder holder : boundHolders) holder.accessGeneration++;
+        boundHolders.clear();
+        viewChanged = null;
+    }
+
+    void setViewChangedListener(Runnable listener) { viewChanged = listener; }
+    int totalCount() { return listAll.size(); }
+    void setQuery(String query) {
+        String next = query == null ? "" : query;
+        if (options.query.equals(next)) return;
+        options.query = next;
+        applyOptions(false);
+    }
+    void applyOptions(boolean preserveScroll) {
+        List<Rule> previous = listFiltered;
+        List<Rule> next = new ArrayList<>();
+        for (Rule app : listAll) if (options.matches(app, stats.get(app.uid))) next.add(app);
+        java.util.Collections.sort(next, options.comparator(stats));
+        boolean autoExpand = next.size() == 1 && !options.query.trim().isEmpty() && !next.get(0).expanded;
+        if (autoExpand) {
+            next.get(0).expanded = true;
+            expanded.add(next.get(0).packageName);
+        }
+        LinearLayoutManager layout = rv == null ? null : (LinearLayoutManager) rv.getLayoutManager();
+        int first = layout == null ? -1 : layout.findFirstVisibleItemPosition();
+        String anchorPackage = first < 0 || first >= previous.size() ? null : previous.get(first).packageName;
+        View firstView = layout == null ? null : layout.findViewByPosition(first);
+        int offset = firstView == null ? 0 : firstView.getTop() - rv.getPaddingTop();
+        DiffUtil.DiffResult diff = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+            public int getOldListSize() { return previous.size(); }
+            public int getNewListSize() { return next.size(); }
+            public boolean areItemsTheSame(int oldPosition, int newPosition) {
+                return previous.get(oldPosition).packageName.equals(next.get(newPosition).packageName);
+            }
+            public boolean areContentsTheSame(int oldPosition, int newPosition) {
+                return previous.get(oldPosition) == next.get(newPosition);
+            }
+        });
+        boolean orderChanged = previous.size() != next.size();
+        for (int i = 0; !orderChanged && i < next.size(); i++)
+            orderChanged = !previous.get(i).packageName.equals(next.get(i).packageName);
+        listFiltered = next;
+        diff.dispatchUpdatesTo(this);
+        if (autoExpand) notifyItemChanged(0);
+        if (layout != null) {
+            if (!preserveScroll) layout.scrollToPositionWithOffset(0, 0);
+            else if (orderChanged && anchorPackage != null)
+                for (int i = 0; i < next.size(); i++)
+                    if (anchorPackage.equals(next.get(i).packageName)) {
+                        layout.scrollToPositionWithOffset(i, offset);
+                        break;
+                    }
+        }
+        if (viewChanged != null) viewChanged.run();
+    }
+
+    void refreshTraffic() {
+        Context context = inflater.getContext();
+        final int generation = ++trafficGeneration;
+        new AsyncTask<Void, Void, Map<Integer, DatabaseHelper.AccessStats>>() {
+            protected Map<Integer, DatabaseHelper.AccessStats> doInBackground(Void... ignored) {
+                return DatabaseHelper.getInstance(context).getAccessStats();
+            }
+            protected void onPostExecute(Map<Integer, DatabaseHelper.AccessStats> result) {
+                if (generation != trafficGeneration) return;
+                stats = result;
+                applyOptions(true);
+            }
+        }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        refreshDomains();
+    }
+
+    private void refreshDomains() {
+        for (ViewHolder holder : new ArrayList<>(boundHolders))
+            if (holder.boundRule != null && holder.boundRule.expanded) loadDomains(holder, holder.boundRule);
+    }
+
+    Bundle saveViewState() {
+        Bundle state = options.save();
+        state.putString("domainSort", domainSort);
+        state.putStringArrayList("expanded", new ArrayList<>(expanded));
+        Bundle hidden = new Bundle(), queries = new Bundle();
+        for (String name : hideAllowedDomains.keySet()) hidden.putBoolean(name, hideAllowedDomains.get(name));
+        for (String name : domainQueries.keySet()) queries.putString(name, domainQueries.get(name));
+        state.putBundle("hidden", hidden);
+        state.putBundle("domainQueries", queries);
+        return state;
+    }
+
+    void restoreViewState(Bundle state) {
+        if (state == null) return;
+        options.restore(state);
+        domainSort = ListSort.valid(state.getString("domainSort"), ListSort.DOMAINS);
+        ArrayList<String> packages = state.getStringArrayList("expanded");
+        if (packages != null) expanded.addAll(packages);
+        Bundle hidden = state.getBundle("hidden"), queries = state.getBundle("domainQueries");
+        if (hidden != null) for (String name : hidden.keySet()) hideAllowedDomains.put(name, hidden.getBoolean(name));
+        if (queries != null) for (String name : queries.keySet()) domainQueries.put(name, queries.getString(name, ""));
+    }
+
+    private void loadDomains(ViewHolder holder, Rule rule) {
+        Context context = holder.itemView.getContext();
+        int generation = ++holder.accessGeneration;
+        boolean hide = hideAllowedDomains.containsKey(rule.packageName) ? hideAllowedDomains.get(rule.packageName)
+                : PreferenceManager.getDefaultSharedPreferences(context).getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
+        String query = domainQueries.containsKey(rule.packageName) ? domainQueries.get(rule.packageName) : "";
+        String sort = domainSort;
+        new AsyncTask<Void, Void, List<AccessEntry>>() {
+            protected List<AccessEntry> doInBackground(Void... ignored) {
+                List<AccessEntry> entries = new ArrayList<>();
+                DatabaseHelper database = DatabaseHelper.getInstance(context);
+                List<String> activeRules = new ArrayList<>();
+                try (Cursor cursor = database.getEnactedRules()) {
+                    while (cursor.moveToNext()) activeRules.add(cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
+                }
+                GlobalRuleIndicators indicators = new GlobalRuleIndicators(activeRules);
+                try (Cursor cursor = database.getAccess(rule.uid, hide, query, sort)) {
+                    while (cursor.moveToNext()) entries.add(new AccessEntry(cursor, indicators));
+                }
+                return entries;
+            }
+            protected void onPostExecute(List<AccessEntry> entries) {
+                if (generation != holder.accessGeneration || !rule.packageName.equals(holder.boundPackage)) return;
+                AdapterAccess access = (AdapterAccess) holder.lvAccess.getAdapter();
+                if (access == null) return;
+                access.submit(entries);
+                holder.domainStatus.setText(entries.isEmpty() ? R.string.list_no_domains : R.string.list_domain_limit);
+                holder.domainStatus.setVisibility(entries.isEmpty() || entries.size() == 250 ? View.VISIBLE : View.GONE);
+            }
+        }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
     }
 
     public void setWifiActive() {
@@ -348,12 +513,15 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
 
         // Get rule
         final Rule rule = listFiltered.get(position);
+        boundHolders.add(holder);
+        holder.boundRule = rule;
 
         // Handle expanding/collapsing
         holder.llApplication.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 rule.expanded = !rule.expanded;
+                if (rule.expanded) expanded.add(rule.packageName); else expanded.remove(rule.packageName);
                 notifyItemChanged(holder.getAdapterPosition());
             }
         });
@@ -689,138 +857,45 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
             }
         });
 
-        // Show access rules
-        if (rule.expanded) {
-            // Access the database when expanded only
-            AdapterAccess old_badapter = (AdapterAccess)holder.lvAccess.getAdapter();
-            if (old_badapter != null) {
-                old_badapter.changeCursor(null);
+        Boolean appHideAllowed = hideAllowedDomains.get(rule.packageName);
+        final boolean hideAllowed = appHideAllowed == null
+                ? prefs.getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false) : appHideAllowed;
+        holder.cbHideAllowedDomains.setOnCheckedChangeListener(null);
+        holder.cbHideAllowedDomains.setChecked(hideAllowed);
+        holder.cbHideAllowedDomains.setOnCheckedChangeListener((button, checked) -> {
+            hideAllowedDomains.put(rule.packageName, checked);
+            int currentPosition = holder.getAdapterPosition();
+            if (currentPosition != RecyclerView.NO_POSITION)
+                notifyItemChanged(currentPosition);
+        });
+
+        if (holder.domainWatcher != null) holder.domainSearch.removeTextChangedListener(holder.domainWatcher);
+        String query = domainQueries.containsKey(rule.packageName) ? domainQueries.get(rule.packageName) : "";
+        if (!query.equals(holder.domainSearch.getText().toString())) holder.domainSearch.setText(query);
+        holder.domainWatcher = new TextWatcher() {
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+                domainQueries.put(rule.packageName, text.toString());
+                loadDomains(holder, rule);
             }
-            final AdapterAccess badapter = new AdapterAccess(context,
-                    DatabaseHelper.getInstance(context).getAccess(rule.uid));
-            holder.lvAccess.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-                @Override
-                public void onItemClick(AdapterView<?> parent, View view, final int bposition, long bid) {
-                    PackageManager pm = context.getPackageManager();
-                    Cursor cursor = (Cursor) badapter.getItem(bposition);
-                    final long id = cursor.getLong(cursor.getColumnIndex("ID"));
-                    final int version = cursor.getInt(cursor.getColumnIndex("version"));
-                    final int protocol = cursor.getInt(cursor.getColumnIndex("protocol"));
-                    final String daddr = cursor.getString(cursor.getColumnIndex("daddr"));
-                    final int dport = cursor.getInt(cursor.getColumnIndex("dport"));
-                    long time = cursor.getLong(cursor.getColumnIndex("time"));
-                    int block = cursor.getInt(cursor.getColumnIndex("block"));
-                    final int pending = cursor.getInt(cursor.getColumnIndexOrThrow("pending_allow"));
-
-                    PopupMenu popup = new PopupMenu(context, anchor);
-                    popup.inflate(R.menu.access);
-
-                    popup.getMenu().findItem(R.id.menu_host).setTitle(
-                            Util.getProtocolName(protocol, version, false) + " " +
-                                    daddr + (dport > 0 ? "/" + dport : ""));
-
-                    SubMenu sub = popup.getMenu().findItem(R.id.menu_host).getSubMenu();
-                    boolean multiple = false;
-                    Cursor alt = null;
-                    try {
-                        alt = DatabaseHelper.getInstance(context).getAlternateQNames(daddr);
-                        while (alt.moveToNext()) {
-                            multiple = true;
-                            sub.add(Menu.NONE, Menu.NONE, 0, alt.getString(0)).setEnabled(false);
-                        }
-                    } finally {
-                        if (alt != null)
-                            alt.close();
-                    }
-                    popup.getMenu().findItem(R.id.menu_host).setEnabled(multiple);
-
-                    markPro(context, popup.getMenu().findItem(R.id.menu_allow), ActivityPro.SKU_FILTER);
-
-                    popup.getMenu().findItem(R.id.menu_time).setTitle(
-                            SimpleDateFormat.getDateTimeInstance().format(time));
-
-                    popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
-                        @Override
-                        public boolean onMenuItemClick(MenuItem menuItem) {
-                            int menu = menuItem.getItemId();
-                            boolean result = false;
-                            switch (menu) {
-                                case R.id.menu_block_app:
-                                    DomainRuleDialog.show(context, rule.packageName, daddr, true);
-                                    return true;
-                                case R.id.menu_allow:
-                                case R.id.menu_allow_globally:
-                                    //if (IAB.isPurchased(ActivityPro.SKU_FILTER, context)) {
-                                    //    DatabaseHelper.getInstance(context).setAccess(id, 0);
-                                    //    ServiceSinkhole.reload("allow host", context, false);
-                                    //} else
-                                    //    context.startActivity(new Intent(context, ActivityPro.class));
-                                    // HeartGuard change - launch a window to queue a rule instead of directly allowing access
-                                    if (menu == R.id.menu_allow_globally)
-                                        DomainRuleDialog.show(context, "", daddr, false);
-                                    else
-                                        launchAllowUrlPage(context, rule.packageName, daddr);
-                                    result = true;
-                                    break;
-
-                                // HeartGuard change - resetting access means deleting all relevant rules
-                                case R.id.menu_reset:
-                                //    DatabaseHelper.getInstance(context).setAccess(id, -1);
-                                //    ServiceSinkhole.reload("reset host", context, false);
-                                //    result = true;
-                                //    break;
-                                    RulesManager rm = RulesManager.getInstance(context);
-                                    rm.resetRulesForAccess(context, rule.uid, daddr, pending);
-                                    result = true;
-                                    break;
-
-                                case R.id.menu_copy:
-                                    ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
-                                    ClipData clip = ClipData.newPlainText("netguard", daddr);
-                                    clipboard.setPrimaryClip(clip);
-                                    return true;
-
-                                case R.id.menu_ignore:
-                                    launchIgnoreUrlPage(context, rule.packageName, daddr);
-                                    result = true;
-                                    break;
-                            }
-
-                            // HeartGuard change - R.id.menu_reset removed
-                            if (menu == R.id.menu_allow || menu == R.id.menu_allow_globally/* || menu == R.id.menu_reset*/)
-                                new AsyncTask<Object, Object, Long>() {
-                                    @Override
-                                    protected Long doInBackground(Object... objects) {
-                                        return DatabaseHelper.getInstance(context).getHostCount(rule.uid, false);
-                                    }
-
-                                    @Override
-                                    protected void onPostExecute(Long hosts) {
-                                        rule.hosts = hosts;
-                                        notifyDataSetChanged();
-                                    }
-                                }.execute();
-
-                            return result;
-                        }
-                    });
-
-                    if (block == 0)
-                        popup.getMenu().removeItem(R.id.menu_allow);
-
-                    popup.show();
-                }
-            });
-
-            holder.lvAccess.setAdapter(badapter);
-        } else {
-            AdapterAccess badapter = (AdapterAccess)holder.lvAccess.getAdapter();
-            if (badapter != null) {
-                badapter.changeCursor(null);
-            }
-            holder.lvAccess.setAdapter(null);
-            holder.lvAccess.setOnItemClickListener(null);
+            public void afterTextChanged(Editable text) { }
+        };
+        holder.domainSearch.addTextChangedListener(holder.domainWatcher);
+        holder.domainSortButton.setText(context.getString(R.string.list_sort_domains) + ": " + context.getString(ListSort.label(domainSort)));
+        holder.domainSortButton.setOnClickListener(view -> SortDialog.show(context, R.string.list_sort_domains,
+                ListSort.DOMAINS, domainSort, ListSort.DOMAIN_DEFAULT, selected -> {
+                    domainSort = selected;
+                    for (ViewHolder bound : boundHolders)
+                        bound.domainSortButton.setText(context.getString(R.string.list_sort_domains) + ": " + context.getString(ListSort.label(selected)));
+                    refreshDomains();
+                }));
+        if (!rule.packageName.equals(holder.boundPackage)) {
+            holder.accessGeneration++;
+            holder.boundPackage = rule.packageName;
+            holder.lvAccess.setAdapter(new AdapterAccess(context, entry -> showAccessMenu(context, holder.boundRule, entry)));
         }
+        if (rule.expanded) loadDomains(holder, rule);
+        else holder.accessGeneration++;
 
         // Clear access log
         holder.btnClearAccess.setOnClickListener(new View.OnClickListener() {
@@ -874,28 +949,112 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
         holder.ivScreenOther.setVisibility(View.GONE);
     }
 
+    private void showAccessMenu(Context context, Rule rule, AccessEntry entry) {
+        final long id = entry.id;
+        final int version = entry.version, protocol = entry.protocol, dport = entry.port, pending = entry.pending;
+        final String daddr = entry.address;
+        long time = entry.time;
+        int block = entry.block;
+        PopupMenu popup = new PopupMenu(context, anchor);
+        popup.inflate(R.menu.access);
+
+        popup.getMenu().findItem(R.id.menu_host).setTitle(
+                Util.getProtocolName(protocol, version, false) + " " +
+                        daddr + (dport > 0 ? "/" + dport : ""));
+
+        SubMenu sub = popup.getMenu().findItem(R.id.menu_host).getSubMenu();
+        boolean multiple = false;
+        Cursor alt = null;
+        try {
+            alt = DatabaseHelper.getInstance(context).getAlternateQNames(daddr);
+            while (alt.moveToNext()) {
+                multiple = true;
+                sub.add(Menu.NONE, Menu.NONE, 0, alt.getString(0)).setEnabled(false);
+            }
+        } finally {
+            if (alt != null)
+                alt.close();
+        }
+        popup.getMenu().findItem(R.id.menu_host).setEnabled(multiple);
+
+        popup.getMenu().findItem(R.id.menu_time).setTitle(
+                SimpleDateFormat.getDateTimeInstance().format(time));
+
+        popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem menuItem) {
+                int menu = menuItem.getItemId();
+                boolean result = false;
+                switch (menu) {
+                    case R.id.menu_block_app:
+                        DomainRuleDialog.show(context, rule.packageName, daddr, true);
+                        return true;
+                    case R.id.menu_allow:
+                    case R.id.menu_allow_globally:
+                        // HeartGuard change - launch a window to queue a rule instead of directly allowing access
+                        if (menu == R.id.menu_allow_globally)
+                            DomainRuleDialog.show(context, "", daddr, false);
+                        else
+                            launchAllowUrlPage(context, rule.packageName, daddr);
+                        result = true;
+                        break;
+
+                    // HeartGuard change - resetting access means deleting all relevant rules
+                    case R.id.menu_reset:
+                    //    DatabaseHelper.getInstance(context).setAccess(id, -1);
+                    //    ServiceSinkhole.reload("reset host", context, false);
+                    //    result = true;
+                    //    break;
+                        RulesManager rm = RulesManager.getInstance(context);
+                        rm.resetRulesForAccess(context, rule.uid, daddr, pending);
+                        result = true;
+                        break;
+
+                    case R.id.menu_copy:
+                        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+                        ClipData clip = ClipData.newPlainText("netguard", daddr);
+                        clipboard.setPrimaryClip(clip);
+                        return true;
+
+                    case R.id.menu_ignore:
+                        launchIgnoreUrlPage(context, rule.packageName, daddr);
+                        result = true;
+                        break;
+                }
+
+                // HeartGuard change - R.id.menu_reset removed
+                if (menu == R.id.menu_allow || menu == R.id.menu_allow_globally/* || menu == R.id.menu_reset*/)
+                    new AsyncTask<Object, Object, Long>() {
+                        @Override
+                        protected Long doInBackground(Object... objects) {
+                            return DatabaseHelper.getInstance(context).getHostCount(rule.uid, false);
+                        }
+
+                        @Override
+                        protected void onPostExecute(Long hosts) {
+                            rule.hosts = hosts;
+                            refreshTraffic();
+                        }
+                    }.execute();
+
+                return result;
+            }
+        });
+
+        if (block == 0)
+            popup.getMenu().removeItem(R.id.menu_allow);
+
+        popup.show();
+    }
+
     @Override
     public void onViewRecycled(ViewHolder holder) {
         super.onViewRecycled(holder);
-
-        //Context context = holder.itemView.getContext();
-        //GlideApp.with(context).clear(holder.ivIcon);
-
-        CursorAdapter adapter = (CursorAdapter) holder.lvAccess.getAdapter();
-        if (adapter != null) {
-            adapter.changeCursor(null);
-            holder.lvAccess.setAdapter(null);
-        }
-    }
-
-    private void markPro(Context context, MenuItem menu, String sku) {
-        if (sku == null || !IAB.isPurchased(sku, context)) {
-            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-            boolean dark = prefs.getBoolean("dark_theme", false);
-            SpannableStringBuilder ssb = new SpannableStringBuilder("  " + menu.getTitle());
-            ssb.setSpan(new ImageSpan(context, dark ? R.drawable.ic_shopping_cart_white_24dp : R.drawable.ic_shopping_cart_black_24dp), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            menu.setTitle(ssb);
-        }
+        boundHolders.remove(holder);
+        holder.accessGeneration++;
+        holder.boundRule = null;
+        holder.boundPackage = null;
+        holder.lvAccess.setAdapter(null);
     }
 
     private void updateRule(Context context, Rule rule, boolean root, List<Rule> listAll) {
@@ -979,50 +1138,6 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
             NotificationManagerCompat.from(context).cancel(rule.uid);
             ServiceSinkhole.reload("rule changed", context, false);
         }
-    }
-
-    @Override
-    public Filter getFilter() {
-        return new Filter() {
-            @Override
-            protected FilterResults performFiltering(CharSequence query) {
-                List<Rule> listResult = new ArrayList<>();
-                if (query == null)
-                    listResult.addAll(listAll);
-                else {
-                    query = query.toString().toLowerCase().trim();
-                    int uid;
-                    try {
-                        uid = Integer.parseInt(query.toString());
-                    } catch (NumberFormatException ignore) {
-                        uid = -1;
-                    }
-                    for (Rule rule : listAll)
-                        if (rule.uid == uid ||
-                                rule.packageName.toLowerCase().contains(query) ||
-                                (rule.name != null && rule.name.toLowerCase().contains(query)))
-                            listResult.add(rule);
-                }
-
-                FilterResults result = new FilterResults();
-                result.values = listResult;
-                result.count = listResult.size();
-                return result;
-            }
-
-            @Override
-            protected void publishResults(CharSequence query, FilterResults result) {
-                listFiltered.clear();
-                if (result == null)
-                    listFiltered.addAll(listAll);
-                else {
-                    listFiltered.addAll((List<Rule>) result.values);
-                    if (listFiltered.size() == 1)
-                        listFiltered.get(0).expanded = true;
-                }
-                notifyDataSetChanged();
-            }
-        };
     }
 
     @Override

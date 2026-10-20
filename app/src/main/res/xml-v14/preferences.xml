@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <PreferenceScreen android:key="screen_google_backup" android:title="@string/settings_backup_title">
+        <Preference android:summary="@string/settings_backup_explanation" android:selectable="false" />
+        <Preference android:key="google_backup_request" android:title="@string/settings_backup_request" />
+        <CheckBoxPreference android:key="google_backup_auto" android:persistent="false"
+            android:title="@string/settings_backup_auto" android:summary="@string/settings_backup_auto_summary" />
+        <Preference android:key="google_backup_open" android:title="@string/settings_backup_open" />
+    </PreferenceScreen>
     <PreferenceScreen
         android:key="screen_defaults"
         android:title="@string/setting_defaults">
@@ -41,6 +48,15 @@
         <PreferenceCategory
             android:key="category_options"
             android:title="@string/setting_options">
+            <Preference
+                android:key="rule_delay"
+                android:persistent="false"
+                android:title="@string/rule_delay_title" />
+            <CheckBoxPreference
+                android:defaultValue="false"
+                android:key="hide_allowed_domains"
+                android:summary="@string/hide_allowed_domains_summary"
+                android:title="@string/hide_allowed_domains" />
             <ListPreference
                 android:defaultValue="teal"
                 android:entries="@array/themeNames"
@@ -351,10 +367,6 @@
                 android:key="ip6"
                 android:summary="@string/summary_ip6"
                 android:title="@string/setting_ip6" />
-            <CheckBoxPreference
-                android:defaultValue="false"
-                android:key="debug_iab"
-                android:title="Debug IAB" />
         </PreferenceCategory>
     </PreferenceScreen>
 

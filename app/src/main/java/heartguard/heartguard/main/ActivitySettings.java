@@ -43,10 +43,7 @@ import android.preference.PreferenceFragment;
 import android.preference.PreferenceGroup;
 import android.preference.PreferenceScreen;
 import android.preference.TwoStatePreference;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
 import android.text.TextUtils;
-import android.text.style.ImageSpan;
 import android.util.Log;
 import android.view.MenuItem;
 import android.widget.Toast;
@@ -87,6 +84,10 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
     private AlertDialog dialogFilter = null;
 
+    private final DatabaseHelper.RuleChangedListener delayChangedListener = () -> runOnUiThread(() -> {
+        if (running && !isFinishing()) updateRuleDelay();
+    });
+
     private static final Intent INTENT_VPN_SETTINGS = new Intent("android.net.vpn.SETTINGS");
 
     protected void onCreate(Bundle savedInstanceState) {
@@ -109,6 +110,12 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
         // HeartGuard change - sync with RulesMaster
         updateMainUi();
+        setupGoogleBackup(screen);
+        screen.findPreference("rule_delay").setOnPreferenceClickListener(preference -> {
+            if (getSupportFragmentManager().findFragmentByTag("rule_delay") == null)
+                new RuleDelayDialog().show(getSupportFragmentManager(), "rule_delay");
+            return true;
+        });
 
         PreferenceGroup cat_options = (PreferenceGroup) ((PreferenceGroup) screen.findPreference("screen_options")).findPreference("category_options");
         //PreferenceGroup cat_network = (PreferenceGroup) ((PreferenceGroup) screen.findPreference("screen_network_options")).findPreference("category_network_options");
@@ -419,7 +426,6 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
         // HeartGuard change - remove screens
         screen.removePreference(screen.findPreference("screen_network_options"));
-        screen.removePreference(screen.findPreference("screen_stats"));
         screen.removePreference(screen.findPreference("screen_backup"));
 
         if (Util.isPlayStoreInstall(this) || !Util.hasValidFingerprint(this))
@@ -541,9 +547,6 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         pref_technical_network.setOnPreferenceClickListener(listener);
         updateTechnicalInfo();
 
-        markPro(screen.findPreference("theme"), ActivityPro.SKU_THEME);
-        markPro(screen.findPreference("install"), ActivityPro.SKU_NOTIFY);
-        markPro(screen.findPreference("show_stats"), ActivityPro.SKU_SPEED);
     }
 
     @Override
@@ -570,6 +573,9 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         // HeartGuard change - Listen for rule set changes
         IntentFilter ifr = new IntentFilter(ActivityMain.ACTION_RULES_CHANGED);
         LocalBroadcastManager.getInstance(this).registerReceiver(onRulesChanged, ifr);
+        DatabaseHelper.getInstance(this).addRuleChangedListener(delayChangedListener);
+        RulesManager.getInstance(this).startTrueTimeRequest(this);
+        updateRuleDelay();
     }
 
     @Override
@@ -584,6 +590,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
         // HeartGuard change - listen to rules changes
         LocalBroadcastManager.getInstance(this).unregisterReceiver(onRulesChanged);
+        DatabaseHelper.getInstance(this).removeRuleChangedListener(delayChangedListener);
     }
 
     @Override
@@ -611,29 +618,8 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
     @Override
     @TargetApi(Build.VERSION_CODES.M)
     public void onSharedPreferenceChanged(SharedPreferences prefs, String name) {
-        // Pro features
-        if ("theme".equals(name)) {
-            if (!"teal".equals(prefs.getString(name, "teal")) && !IAB.isPurchased(ActivityPro.SKU_THEME, this)) {
-                prefs.edit().putString(name, "teal").apply();
-                ((ListPreference) getPreferenceScreen().findPreference(name)).setValue("teal");
-                startActivity(new Intent(this, ActivityPro.class));
-                return;
-            }
-        } else if ("install".equals(name)) {
-            if (prefs.getBoolean(name, false) && !IAB.isPurchased(ActivityPro.SKU_NOTIFY, this)) {
-                prefs.edit().putBoolean(name, false).apply();
-                ((TwoStatePreference) getPreferenceScreen().findPreference(name)).setChecked(false);
-                startActivity(new Intent(this, ActivityPro.class));
-                return;
-            }
-        } else if ("show_stats".equals(name)) {
-            if (prefs.getBoolean(name, false) && !IAB.isPurchased(ActivityPro.SKU_SPEED, this)) {
-                prefs.edit().putBoolean(name, false).apply();
-                startActivity(new Intent(this, ActivityPro.class));
-                return;
-            }
+        if ("show_stats".equals(name))
             ((TwoStatePreference) getPreferenceScreen().findPreference(name)).setChecked(prefs.getBoolean(name, false));
-        }
 
         Object value = prefs.getAll().get(name);
         if (value instanceof String && "".equals(value))
@@ -939,16 +925,6 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         }
     };
 
-    private void markPro(Preference pref, String sku) {
-        if (sku == null || !IAB.isPurchased(sku, this)) {
-            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-            boolean dark = prefs.getBoolean("dark_theme", false);
-            SpannableStringBuilder ssb = new SpannableStringBuilder("  " + pref.getTitle());
-            ssb.setSpan(new ImageSpan(this, dark ? R.drawable.ic_shopping_cart_white_24dp : R.drawable.ic_shopping_cart_black_24dp), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            pref.setTitle(ssb);
-        }
-    }
-
     private void updateTechnicalInfo() {
         PreferenceScreen screen = getPreferenceScreen();
         Preference pref_technical_info = screen.findPreference("technical_info");
@@ -1055,6 +1031,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
     // HeartGuard change - update UI to keep in sync with rules changes
     private void updateMainUi() {
+        updateRuleDelay();
         // Update the preferences that are actually controlled by RulesManager
         RulesManager rm = RulesManager.getInstance(ActivitySettings.this);
 
@@ -1067,6 +1044,40 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         final SwitchPreference pref_capture_all_traffic = (SwitchPreference)getPreferenceScreen().findPreference(Rule.PREFERENCE_STRING_CAPTURE_ALL_TRAFFIC);
         boolean capture_all_traffic = rm.getPreferenceCaptureAllTraffic(ActivitySettings.this);
         pref_capture_all_traffic.setChecked(capture_all_traffic);
+    }
+
+    private void updateRuleDelay() {
+        getPreferenceScreen().findPreference("rule_delay").setSummary(RuleDelay.read(this).summary(this));
+    }
+
+    private void setupGoogleBackup(PreferenceScreen screen) {
+        Preference request = screen.findPreference("google_backup_request");
+        long last = SettingsBackup.controls(this).getLong("last_requested", 0);
+        request.setSummary(last == 0 ? getString(R.string.settings_backup_never)
+                : getString(R.string.settings_backup_last_request,
+                        java.text.DateFormat.getDateTimeInstance().format(new java.util.Date(last))));
+        request.setOnPreferenceClickListener(preference -> {
+            SettingsBackup.request(this);
+            setupGoogleBackup(screen);
+            Toast.makeText(this, R.string.settings_backup_requested, Toast.LENGTH_LONG).show();
+            return true;
+        });
+        TwoStatePreference automatic = (TwoStatePreference) screen.findPreference("google_backup_auto");
+        automatic.setChecked(SettingsBackup.controls(this).getBoolean("automatic", false));
+        automatic.setOnPreferenceChangeListener((preference, value) -> {
+            SettingsBackup.controls(this).edit().putBoolean("automatic", (Boolean) value).apply();
+            if ((Boolean) value) SettingsBackup.request(this);
+            return true;
+        });
+        screen.findPreference("google_backup_open").setOnPreferenceClickListener(preference -> {
+            try {
+                startActivity(new Intent("com.google.android.gms.backup.ACTION_BACKUP_SETTINGS")
+                        .setPackage("com.google.android.gms"));
+            } catch (android.content.ActivityNotFoundException unavailable) {
+                startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
+            }
+            return true;
+        });
     }
 
     // HeartGuard change - receive rules updates while we are active

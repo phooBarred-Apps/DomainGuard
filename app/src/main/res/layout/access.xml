@@ -3,6 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:minHeight="36dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="6dp"
+    android:background="?android:attr/selectableItemBackground"
     android:orientation="horizontal"
     tools:context=".ActivityMain">
 
@@ -15,8 +19,8 @@
 
     <ImageView
         android:id="@+id/ivBlock"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
         android:layout_gravity="top" />
 
     <LinearLayout

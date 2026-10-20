@@ -9,7 +9,6 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="com.android.vending.BILLING" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -48,7 +47,10 @@
 
     <application
         android:name="heartguard.heartguard.main.ApplicationEx"
-        android:allowBackup="false"
+        android:allowBackup="true"
+        android:backupAgent="heartguard.heartguard.main.SettingsBackupAgent"
+        android:fullBackupOnly="false"
+        android:fullBackupContent="false"
         android:appCategory="productivity"
         android:description="@string/app_description"
         android:icon="@mipmap/ic_launcher"
@@ -125,16 +127,6 @@
         </activity>
 
         <activity
-            android:name="heartguard.heartguard.main.ActivityPro"
-            android:configChanges="orientation|screenSize"
-            android:label="@string/title_pro"
-            android:parentActivityName="heartguard.heartguard.main.ActivityMain">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="heartguard.heartguard.main.ActivityMain" />
-        </activity>
-
-        <activity
             android:name="heartguard.heartguard.main.ActivityDns"
             android:configChanges="orientation|screenSize"
             android:label="@string/setting_show_resolved"
@@ -203,6 +195,8 @@
                 <action android:name="eu.faircode.netguard.DOWNLOAD_HOSTS_FILE" />
             </intent-filter>
         </service>
+
+        <receiver android:name=".ReceiverAllowDomain" android:exported="false" />
 
         <receiver
             android:name="heartguard.heartguard.main.ReceiverAutostart"
