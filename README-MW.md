@@ -4,7 +4,7 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 Modifications for HeartGuard-MW were made on October 20, 2026.
 
-Version `2.317-mw.2` adds:
+Version `2.317-mw.3` adds:
 
 - **Global whitelist** in the main menu. Paste domains or HTTP/HTTPS URLs, one per
   line. Rules cover the host and its subdomains, across current and future apps.
@@ -47,6 +47,9 @@ verification and Android installer tests. This installs an older-version fixture
 on the disposable emulator. Rebuild normally afterward before distributing an APK.
 Lint uses a baseline generated from the untouched upstream revision; new issues
 are still checked.
+Run `./scripts/test-release.ps1` to install and launch the actual minified release
+on the disposable emulator. This checks for startup crashes that debug tests
+cannot detect.
 
 ## Distribution
 

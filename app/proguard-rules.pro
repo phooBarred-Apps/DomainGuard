@@ -29,6 +29,9 @@
 }
 
 #JNI callbacks
+# Android deserializes this enum from service intents using values()/valueOf().
+-keep enum heartguard.heartguard.main.ServiceSinkhole$Command { *; }
+
 -keep class heartguard.heartguard.main.Allowed { *; }
 -keep class heartguard.heartguard.main.Packet { *; }
 -keep class heartguard.heartguard.main.ResourceRecord { *; }
