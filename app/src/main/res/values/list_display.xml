@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="list_controls_title">Sort and filter buttons</string>
+    <string-array name="list_controls_choices">
+        <item>Always visible above the app list</item>
+        <item>Show in toolbar if room</item>
+        <item>Menu only</item>
+    </string-array>
+    <string-array name="list_controls_values" translatable="false">
+        <item>always</item>
+        <item>if_room</item>
+        <item>menu</item>
+    </string-array>
     <string name="list_sort_apps">Sort apps</string>
     <string name="list_sort_domains">Sort domains</string>
     <string name="list_sort_name">Name (A–Z)</string>
@@ -8,6 +19,8 @@
     <string name="list_sort_allowed">Allowed first</string>
     <string name="list_set_default">Set as default</string>
     <string name="list_default_saved">Default sort saved</string>
+    <string name="list_filter_default_saved">Default filters saved</string>
+    <string name="list_filter_default_explanation">Apply uses these filters for this session. Set as default also saves them for future sessions. Search text stays temporary.</string>
     <string name="list_done">Done</string>
     <string name="list_apply">Apply</string>
     <string name="list_filters">Filter apps</string>

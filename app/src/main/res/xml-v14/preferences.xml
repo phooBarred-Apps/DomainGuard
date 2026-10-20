@@ -49,6 +49,10 @@
             android:key="category_options"
             android:title="@string/setting_options">
             <Preference
+                android:key="app_list_controls"
+                android:persistent="false"
+                android:title="@string/list_controls_title" />
+            <Preference
                 android:key="rule_delay"
                 android:persistent="false"
                 android:title="@string/rule_delay_title" />

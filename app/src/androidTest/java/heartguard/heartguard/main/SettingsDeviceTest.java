@@ -75,6 +75,7 @@ public class SettingsDeviceTest {
             assertEquals(pair[1], find("rule_delay_preview").getText());
         }
         input.setText("604801");
+        device.waitForIdle();
         device.findObject(By.res("android", "button1")).click();
         assertNotNull(find("rule_delay_input"));
         assertEquals(0, RuleDelay.read(context).seconds);

@@ -73,6 +73,7 @@ public class Rule {
     public static final String PREFERENCE_STRING_CAPTURE_ALL_TRAFFIC = "capture_all_traffic";
     public static final String PREFERENCE_STRING_LOG = "log";
     public static final String PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS = "hide_allowed_domains";
+    public static final String PREFERENCE_STRING_LIST_CONTROLS = "app_list_controls";
 
     //public static final String PREFERENCE_STRING_PERAPP_WIFI = "wifi";
     //public static final String PREFERENCE_STRING_PERAPP_OTHER = "other";

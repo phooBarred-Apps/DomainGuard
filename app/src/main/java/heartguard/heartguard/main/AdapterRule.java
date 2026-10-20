@@ -294,6 +294,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     public AdapterRule(Context context, View anchor) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
 
+        options.loadFilterDefaults(prefs);
         options.sort = ListSort.valid(prefs.getString(ListSort.APP_DEFAULT, ListSort.NAME), ListSort.APPS);
         domainSort = ListSort.valid(prefs.getString(ListSort.DOMAIN_DEFAULT, ListSort.RECENT), ListSort.DOMAINS);
         this.anchor = anchor;

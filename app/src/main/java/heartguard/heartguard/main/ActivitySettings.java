@@ -111,6 +111,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         // HeartGuard change - sync with RulesMaster
         updateMainUi();
         setupGoogleBackup(screen);
+        setupListControls(screen);
         screen.findPreference("rule_delay").setOnPreferenceClickListener(preference -> {
             if (getSupportFragmentManager().findFragmentByTag("rule_delay") == null)
                 new RuleDelayDialog().show(getSupportFragmentManager(), "rule_delay");
@@ -647,6 +648,9 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         else if ("theme".equals(name) || "dark_theme".equals(name))
             recreate();
 
+        else if (Rule.PREFERENCE_STRING_LIST_CONTROLS.equals(name))
+            setupListControls(getPreferenceScreen());
+
         else if ("subnet".equals(name))
             ServiceSinkhole.reload("changed " + name, this, false);
 
@@ -1048,6 +1052,29 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
     private void updateRuleDelay() {
         getPreferenceScreen().findPreference("rule_delay").setSummary(RuleDelay.read(this).summary(this));
+    }
+
+    private void setupListControls(PreferenceScreen screen) {
+        Preference preference = screen.findPreference(Rule.PREFERENCE_STRING_LIST_CONTROLS);
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        String[] values = getResources().getStringArray(R.array.list_controls_values);
+        String[] labels = getResources().getStringArray(R.array.list_controls_choices);
+        String current = prefs.getString(Rule.PREFERENCE_STRING_LIST_CONTROLS, "always");
+        int selected = 0;
+        for (int i = 0; i < values.length; i++)
+            if (values[i].equals(current)) selected = i;
+        preference.setSummary(labels[selected]);
+        final int checked = selected;
+        preference.setOnPreferenceClickListener(clicked -> {
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setCustomTitle(SortDialog.title(this, R.string.list_controls_title))
+                    .setSingleChoiceItems(labels, checked, (window, index) ->
+                            prefs.edit().putString(Rule.PREFERENCE_STRING_LIST_CONTROLS, values[index]).apply())
+                    .setPositiveButton(R.string.list_done, null).create();
+            dialog.show();
+            DialogSurface.apply(dialog);
+            return true;
+        });
     }
 
     private void setupGoogleBackup(PreferenceScreen screen) {

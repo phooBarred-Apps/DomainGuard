@@ -4,7 +4,17 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 Modifications for HeartGuard-MW were made on October 20, 2026.
 
-Version `2.317-mw.4` adds:
+Version `2.317-mw.5` adds:
+
+- **Sort and filter buttons** in Settings > Options lets you choose always
+  visible above the app list (the default), in the toolbar when there is room,
+  or in the menu only. Always-visible controls remain available while searching.
+- **Set as default** in Filter apps applies and saves the selected filters for
+  future sessions. **Apply** uses them only for the current session. Search text
+  is not saved as a default. **Reset filters** clears the current filters and
+  search without overwriting the saved defaults.
+
+Version `2.317-mw.4` added:
 
 - **Allow for this app** on blocked-domain notifications. Each action refers to
   the domain and app shown, even when another connection arrives. Existing rule

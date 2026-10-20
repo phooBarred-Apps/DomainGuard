@@ -223,6 +223,8 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             }
         });
         findViewById(R.id.resetListFilters).setOnClickListener(view -> resetListFilters());
+        findViewById(R.id.filterApps).setOnClickListener(view -> showAppFilters());
+        findViewById(R.id.sortApps).setOnClickListener(view -> showAppSort());
 
         // Swipe to refresh
         TypedValue tv = new TypedValue();
@@ -549,6 +551,8 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             if (swEnabled.isChecked() != enabled)
                 swEnabled.setChecked(enabled);
 
+        } else if (Rule.PREFERENCE_STRING_LIST_CONTROLS.equals(name)) {
+            invalidateOptionsMenu();
         } else if (//Rule.PREFERENCE_STRING_WHITELIST_WIFI.equals(name) ||
                 //Rule.PREFERENCE_STRING_SCREEN_ON.equals(name) ||
                 //Rule.PREFERENCE_STRING_SCREEN_WIFI.equals(name) ||
@@ -665,6 +669,16 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.main, menu);
 
+        String placement = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(Rule.PREFERENCE_STRING_LIST_CONTROLS, "always");
+        boolean fixedControls = !"if_room".equals(placement) && !"menu".equals(placement);
+        findViewById(R.id.listControls).setVisibility(fixedControls ? View.VISIBLE : View.GONE);
+        for (int id : new int[]{R.id.menu_filter, R.id.menu_sort}) {
+            menu.findItem(id).setVisible(!fixedControls);
+            menu.findItem(id).setShowAsAction("if_room".equals(placement)
+                    ? MenuItem.SHOW_AS_ACTION_IF_ROOM : MenuItem.SHOW_AS_ACTION_NEVER);
+        }
+
         // Search
         menuSearch = menu.findItem(R.id.menu_search);
         menuSearch.setOnActionExpandListener(new MenuItem.OnActionExpandListener() {
@@ -751,6 +765,12 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             case R.id.menu_global_lists:
                 GlobalListsDialog.choose(this);
                 return true;
+            case R.id.menu_filter:
+                showAppFilters();
+                return true;
+            case R.id.menu_sort:
+                showAppSort();
+                return true;
             case R.id.menu_updates:
                 startActivity(new Intent(this, ActivityUpdates.class));
                 return true;
@@ -759,17 +779,6 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
                 // Updating the rules at this time, in case the alarm hasn't gone off
                 RulesManager.getInstance(this).startTrueTimeRequest(this);
                 startActivity(new Intent(this, ActivityRulesList.class));
-                return true;
-
-            case R.id.menu_filter:
-                AppFilterDialog.show(this, adapter.options, () -> adapter.applyOptions(false), this::resetListFilters);
-                return true;
-            case R.id.menu_sort:
-                SortDialog.show(this, R.string.list_sort_apps, ListSort.APPS, adapter.options.sort,
-                        ListSort.APP_DEFAULT, selected -> {
-                            adapter.options.sort = selected;
-                            adapter.applyOptions(false);
-                        });
                 return true;
 
             //case R.id.menu_lockdown:
@@ -940,6 +949,18 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         getIntent().removeExtra(EXTRA_SEARCH);
         if (menuSearch != null) ((SearchView) menuSearch.getActionView()).setQuery("", false);
         adapter.applyOptions(false);
+    }
+
+    private void showAppFilters() {
+        AppFilterDialog.show(this, adapter.options, () -> adapter.applyOptions(false), this::resetListFilters);
+    }
+
+    private void showAppSort() {
+        SortDialog.show(this, R.string.list_sort_apps, ListSort.APPS, adapter.options.sort,
+                ListSort.APP_DEFAULT, selected -> {
+                    adapter.options.sort = selected;
+                    adapter.applyOptions(false);
+                });
     }
 
     private void updateListSummary() {

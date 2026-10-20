@@ -1,13 +1,19 @@
 package heartguard.heartguard.main;
 
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import java.text.Collator;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.Map;
 
-/** Session-only view choices. Saved sort defaults are handled separately. */
+/** Session view choices, initialized from explicitly saved defaults. */
 final class AppListOptions {
+    private static final String DEFAULT_ACCESS = "app_filter_default_access";
+    private static final String DEFAULT_ACTIVITY = "app_filter_default_activity";
+    private static final String DEFAULT_TYPE = "app_filter_default_type";
+    private static final String DEFAULT_NO_INTERNET = "app_filter_default_no_internet";
+    private static final String DEFAULT_DISABLED = "app_filter_default_disabled";
     String query = "";
     String sort = ListSort.NAME;
     int access;   // All, allowed by default, blocked by default.
@@ -15,6 +21,27 @@ final class AppListOptions {
     int type;     // All, user apps, system apps.
     boolean includeNoInternet = true;
     boolean includeDisabled = true;
+
+    void loadFilterDefaults(SharedPreferences prefs) {
+        access = validFilter(prefs.getInt(DEFAULT_ACCESS, 0));
+        activity = validFilter(prefs.getInt(DEFAULT_ACTIVITY, 0));
+        type = validFilter(prefs.getInt(DEFAULT_TYPE, 0));
+        includeNoInternet = prefs.getBoolean(DEFAULT_NO_INTERNET, true);
+        includeDisabled = prefs.getBoolean(DEFAULT_DISABLED, true);
+    }
+
+    void saveFilterDefaults(SharedPreferences prefs) {
+        // Search text stays temporary; sort has its own Set as default button.
+        prefs.edit().putInt(DEFAULT_ACCESS, access)
+                .putInt(DEFAULT_ACTIVITY, activity)
+                .putInt(DEFAULT_TYPE, type)
+                .putBoolean(DEFAULT_NO_INTERNET, includeNoInternet)
+                .putBoolean(DEFAULT_DISABLED, includeDisabled).apply();
+    }
+
+    private static int validFilter(int value) {
+        return value >= 0 && value <= 2 ? value : 0;
+    }
 
     boolean matches(Rule app, DatabaseHelper.AccessStats stats) {
         String term = query.trim().toLowerCase(Locale.ROOT);
