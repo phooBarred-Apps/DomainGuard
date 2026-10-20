@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="com.android.vending.BILLING" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- http://developer.android.com/guide/topics/security/permissions.html#normal-dangerous -->
@@ -25,7 +26,7 @@
     </queries-->
 
     <permission
-        android:name="heartguard.heartguard.main.permission.ADMIN"
+        android:name="${applicationId}.permission.ADMIN"
         android:description="@string/app_description"
         android:label="@string/app_name"
         android:protectionLevel="signature" />
@@ -162,6 +163,27 @@
                 android:name="android.support.PARENT_ACTIVITY"
                 android:value="heartguard.heartguard.main.ActivityRulesList" />
         </activity>
+
+        <activity
+            android:name=".ActivityGlobalWhitelist"
+            android:exported="false"
+            android:label="@string/global_whitelist"
+            android:parentActivityName=".ActivityMain" />
+        <activity
+            android:name=".ActivityUpdates"
+            android:exported="false"
+            android:configChanges="orientation|screenSize"
+            android:label="@string/app_updates"
+            android:parentActivityName=".ActivityMain" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
 
         <service
             android:name="heartguard.heartguard.main.ServiceSinkhole"

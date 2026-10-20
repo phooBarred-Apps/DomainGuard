@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="16dp" android:focusableInTouchMode="true">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="@string/global_whitelist_description" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/whitelist_input_label" />
+    <EditText android:id="@+id/whitelist_input" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:inputType="textMultiLine|textNoSuggestions"
+        android:importantForAutofill="no"
+        android:gravity="top" android:minLines="2" android:maxLines="3"
+        android:hint="@string/whitelist_hint" />
+    <Button android:id="@+id/whitelist_add" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="@string/whitelist_add" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp" android:text="@string/whitelist_delay" />
+    <TextView android:id="@+id/whitelist_empty" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="@string/whitelist_empty" />
+    <ListView android:id="@+id/whitelist_entries" android:layout_width="match_parent"
+        android:layout_height="0dp" android:layout_weight="1" />
+</LinearLayout>

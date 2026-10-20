@@ -1,5 +1,38 @@
 <resources>
-    <string name="app_name" translatable="false">HeartGuard</string>
+    <string name="app_name" translatable="false">HeartGuard-MW</string>
+    <string name="global_whitelist">Global whitelist</string>
+    <string name="global_whitelist_description">Allow domains for every app, including apps installed later. Subdomains are included. A domain blocked for a specific app stays blocked there. Existing global domain blocks and lockdown still apply.</string>
+    <string name="whitelist_hint">example.com\nhttps://example.org/page</string>
+    <string name="whitelist_input_label">Domains or URLs, one per line</string>
+    <string name="whitelist_add">Add to whitelist</string>
+    <string name="whitelist_empty">No global domains yet. Add one above, or tap a domain in an app and choose Allow globally.</string>
+    <string name="whitelist_delay">Additions and removals follow your existing rule delays.</string>
+    <string name="whitelist_added">Whitelist changes queued</string>
+    <string name="whitelist_active">Active</string>
+    <string name="whitelist_pending">Pending</string>
+    <string name="whitelist_removing">Removal pending</string>
+    <string name="whitelist_remove">Remove from whitelist</string>
+    <string name="whitelist_cancel">Cancel pending change</string>
+    <string name="title_block_app">Block for this app</string>
+    <string name="block_app_description">Block this domain and its subdomains for this app, even when globally allowed. Removing the block follows your rule delay.</string>
+    <string name="domain_hint">Domain, IP address, or https://example.com/page</string>
+    <string name="domain_error">Enter a valid domain, IP address, or HTTP/HTTPS URL.</string>
+    <string name="domain_scope_all">Applies to all apps. An explicit block for an app takes priority.</string>
+    <string name="rule_queued">Rule change queued</string>
+    <string name="app_updates">App updates</string>
+    <string name="check_updates">Check for updates</string>
+    <string name="update_download">Download update</string>
+    <string name="update_install">Install update</string>
+    <string name="update_permission">Allow updates</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="update_downloading">Downloading and verifying update…</string>
+    <string name="update_verifying">Verifying the APK before installation…</string>
+    <string name="update_current">HeartGuard-MW %1$s is up to date.</string>
+    <string name="update_available">Installed: %1$s\nAvailable: %2$s\n\n%3$s</string>
+    <string name="update_allow_install">Android needs permission to install updates from HeartGuard-MW. Tap Allow updates, enable Allow from this source, then return here.</string>
+    <string name="update_install_prompt">Follow Android’s update confirmation. Your rules and settings are kept. If you cancel, tap Install update to try again.</string>
+    <string name="update_unavailable">Android could not open the installation screen. Check your device’s app installation restrictions.</string>
+    <string name="update_retry">Try again</string>
     <string name="app_description">HeartGuard provides simple and advanced ways to block access to the internet - no root required. Apps and addresses can individually be allowed or denied access to your Wi-Fi and/or mobile connection.</string>
     <string name="app_copyright" translatable="false">Copyright \u00A9 2015–2022 by M. Bokhorst (M66B). Further HeartGuard modifications added 2023 HP</string>
     <string name="app_android">HeartGuard requires Android 5.1 or later</string>
@@ -362,6 +395,8 @@ Your internet traffic is not being sent to a remote VPN server.</string>
 
     <string name="fingerprint" translatable="false">ef46f813d2c8a064d72c936b9b96d1cccc989378</string>
     <string name="allow_new_access" translatable="false">Allow New Access</string>
+    <string name="title_allow_globally">Allow globally</string>
+    <string name="allow_all_apps">Applies to all apps</string>
     <string name="package_name">Package Name</string>
     <string name="rules_list_pref">See all rules...</string>
     <string name="rules_list">Rules List</string>

@@ -10,10 +10,10 @@
 
     <wifi
         blocked="false"
-        package="heartguard.heartguard.main" />
+        package="heartguard.heartguard.main.mw" />
     <other
         blocked="false"
-        package="heartguard.heartguard.main"
+        package="heartguard.heartguard.main.mw"
         roaming="false" />
 
     <relation

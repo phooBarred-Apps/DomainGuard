@@ -672,7 +672,6 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             // Check for update
             SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ServiceSinkhole.this);
             if (!Util.isPlayStoreInstall(ServiceSinkhole.this) &&
-                    Util.hasValidFingerprint(ServiceSinkhole.this) &&
                     prefs.getBoolean("update_check", true))
                 checkUpdate();
         }
@@ -726,48 +725,12 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         }
 
         private void checkUpdate() {
-            StringBuilder json = new StringBuilder();
-            HttpsURLConnection urlConnection = null;
             try {
-                URL url = new URL(BuildConfig.GITHUB_LATEST_API);
-                urlConnection = (HttpsURLConnection) url.openConnection();
-                BufferedReader br = new BufferedReader(new InputStreamReader(urlConnection.getInputStream()));
-
-                String line;
-                while ((line = br.readLine()) != null)
-                    json.append(line);
-
-            } catch (Throwable ex) {
-                Log.e(TAG, ex.toString() + "\n" + Log.getStackTraceString(ex));
-            } finally {
-                if (urlConnection != null)
-                    urlConnection.disconnect();
-            }
-
-            try {
-                JSONObject jroot = new JSONObject(json.toString());
-                if (jroot.has("tag_name") && jroot.has("html_url") && jroot.has("assets")) {
-                    String url = jroot.getString("html_url");
-                    JSONArray jassets = jroot.getJSONArray("assets");
-                    if (jassets.length() > 0) {
-                        JSONObject jasset = jassets.getJSONObject(0);
-                        if (jasset.has("name")) {
-                            String version = jroot.getString("tag_name");
-                            String name = jasset.getString("name");
-                            Log.i(TAG, "Tag " + version + " name " + name + " url " + url);
-
-                            Version current = new Version(Util.getSelfVersionName(ServiceSinkhole.this));
-                            Version available = new Version(version);
-                            if (current.compareTo(available) < 0) {
-                                Log.i(TAG, "Update available from " + current + " to " + available);
-                                showUpdateNotification(name, url);
-                            } else
-                                Log.i(TAG, "Up-to-date current version " + current);
-                        }
-                    }
-                }
-            } catch (JSONException ex) {
-                Log.e(TAG, ex.toString() + "\n" + Log.getStackTraceString(ex));
+                UpdateRelease release = new UpdateClient().check(BuildConfig.VERSION_NAME);
+                if (release != null)
+                    showUpdateNotification("HeartGuard-MW " + release.version);
+            } catch (IOException | RuntimeException ex) {
+                Log.w(TAG, "Update check failed: " + ex.getMessage());
             }
         }
 
@@ -2076,7 +2039,10 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         packet.allowed = false;
         if (rm.getPreferenceFilter(ServiceSinkhole.this)) {
             // https://android.googlesource.com/platform/system/core/+/master/include/private/android_filesystem_config.h
-            if (capture_all_traffic && mapUidAllowed.containsKey(packet.uid) && mapUidAllowed.get(packet.uid)) {
+            if (WhitelistManager.getInstance(this).getExplicitBlock(this, packet.daddr, packet.uid) != null) {
+                // Explicit app exceptions override cached/global/whole-app allows.
+                packet.allowed = false;
+            } else if (capture_all_traffic && mapUidAllowed.containsKey(packet.uid) && mapUidAllowed.get(packet.uid)) {
                 // HeartGuard change - if we are capturing all traffic, accept based on the allowed UID list
                 packet.allowed = true;
             } else if (packet.protocol == 17 /* UDP */ && !rm.getPreferenceFilterUdp(ServiceSinkhole.this)) {
@@ -3291,9 +3257,12 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         NotificationManagerCompat.from(this).notify(uid + 10000, notification.build());
     }
 
-    private void showUpdateNotification(String name, String url) {
-        Intent download = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-        PendingIntent pi = PendingIntent.getActivity(this, 0, download, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+    private void showUpdateNotification(String name) {
+        Intent download = new Intent(this, ActivityUpdates.class);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent pi = PendingIntent.getActivity(this, 0, download, flags);
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorPrimary, tv, true);

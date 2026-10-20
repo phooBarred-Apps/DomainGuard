@@ -808,6 +808,12 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         // Handle item selection
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         switch (item.getItemId()) {
+            case R.id.menu_global_whitelist:
+                startActivity(new Intent(this, ActivityGlobalWhitelist.class));
+                return true;
+            case R.id.menu_updates:
+                startActivity(new Intent(this, ActivityUpdates.class));
+                return true;
             // HeartGuard change - option to show rules list window
             case R.id.menu_show_rules_list:
                 // Updating the rules at this time, in case the alarm hasn't gone off

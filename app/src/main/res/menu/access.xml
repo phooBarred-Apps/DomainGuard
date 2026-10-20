@@ -10,6 +10,10 @@
         android:id="@+id/menu_allow"
         android:title="@string/title_allow" />
     <item
+        android:id="@+id/menu_allow_globally"
+        android:title="@string/title_allow_globally" />
+    <item android:id="@+id/menu_block_app" android:title="@string/title_block_app" />
+    <item
         android:id="@+id/menu_ignore"
         android:title="@string/title_ignore" />
     <item

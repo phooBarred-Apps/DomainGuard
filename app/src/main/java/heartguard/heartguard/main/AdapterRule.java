@@ -745,14 +745,21 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
                             int menu = menuItem.getItemId();
                             boolean result = false;
                             switch (menu) {
+                                case R.id.menu_block_app:
+                                    DomainRuleDialog.show(context, rule.packageName, daddr, true);
+                                    return true;
                                 case R.id.menu_allow:
+                                case R.id.menu_allow_globally:
                                     //if (IAB.isPurchased(ActivityPro.SKU_FILTER, context)) {
                                     //    DatabaseHelper.getInstance(context).setAccess(id, 0);
                                     //    ServiceSinkhole.reload("allow host", context, false);
                                     //} else
                                     //    context.startActivity(new Intent(context, ActivityPro.class));
                                     // HeartGuard change - launch a window to queue a rule instead of directly allowing access
-                                    launchAllowUrlPage(context, rule.packageName, daddr);
+                                    if (menu == R.id.menu_allow_globally)
+                                        DomainRuleDialog.show(context, "", daddr, false);
+                                    else
+                                        launchAllowUrlPage(context, rule.packageName, daddr);
                                     result = true;
                                     break;
 
@@ -780,7 +787,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
                             }
 
                             // HeartGuard change - R.id.menu_reset removed
-                            if (menu == R.id.menu_allow/* || menu == R.id.menu_reset*/)
+                            if (menu == R.id.menu_allow || menu == R.id.menu_allow_globally/* || menu == R.id.menu_reset*/)
                                 new AsyncTask<Object, Object, Long>() {
                                     @Override
                                     protected Long doInBackground(Object... objects) {
@@ -1042,6 +1049,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
         final EditText etPackageName = view.findViewById(R.id.allow_new_access_package_name);
         etDAddr.setText(daddr);
         etPackageName.setText(packagename);
+        if (packagename.isEmpty()) {
+            ((TextView) view.findViewById(R.id.allow_new_access_title)).setText(R.string.title_allow_globally);
+            ((TextView) view.findViewById(R.id.allow_new_access_package_label)).setText(R.string.allow_all_apps);
+            etPackageName.setVisibility(View.GONE);
+        }
 
         AlertDialog dialog;
         dialog = new AlertDialog.Builder(context)

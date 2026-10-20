@@ -176,6 +176,9 @@ public class IAB implements ServiceConnection {
     }
 
     public static boolean isPurchased(String sku, Context context) {
+        // HeartGuard-MW is a free GPL build; it does not use NetGuard's billing.
+        if (!BuildConfig.PLAY_STORE_RELEASE)
+            return true;
         try {
             if (Util.isDebuggable(context)) {
                 SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);

@@ -42,16 +42,24 @@ class RuleAndPackage extends MyRule {
     private boolean m_sticky;
     private String m_packagename;
     private int m_uid;
+    private final boolean m_blocked;
 
     RuleAndPackage(String ruletext, Context context, RuleForApp rule, boolean sticky, String packagename) {
-        super(ruletext, MAJOR_CATEGORY_ALLOW);
+        this(ruletext, context, rule, sticky, packagename, false);
+    }
+
+    RuleAndPackage(String ruletext, Context context, RuleForApp rule, boolean sticky, String packagename, boolean blocked) {
+        super(ruletext, blocked ? MAJOR_CATEGORY_BLOCK : MAJOR_CATEGORY_ALLOW);
         this.rule = rule;
+        m_blocked = blocked;
         m_sticky = sticky;
         m_packagename = packagename;
         m_uid = getUidForPackageName(context, m_packagename);
     }
 
     public int getDelayToAdd(Context context, int main_delay) {
+        if (m_blocked)
+            return 0;
         // The RulesManager may have a shortened delay for this package
         if (m_packagename != null) {
             RulesManager rm = RulesManager.getInstance(context);
@@ -63,6 +71,8 @@ class RuleAndPackage extends MyRule {
         return main_delay;
     }
     public int getDelayToRemove(Context context, int main_delay) {
+        if (m_blocked)
+            return main_delay;
         if (m_sticky) {
             return main_delay;
         } else {
@@ -78,10 +88,14 @@ class RuleAndPackage extends MyRule {
         return m_uid;
     }
 
+    public boolean isBlocked() {
+        return m_blocked;
+    }
+
     // Static helper function to look up a UID
     // Can return UID_GLOBAL for non-package specific or UID_NOT_FOUND for UID not found
     private static int getUidForPackageName(Context context, String packageName) {
-        if ((packageName == null) || (packageName == "")) {
+        if (packageName == null || packageName.isEmpty()) {
             return UID_GLOBAL;
         }
         try {
@@ -117,6 +131,8 @@ class RuleAndPackage extends MyRule {
         for (int uid : uids_to_reload) {
             actions.add("uid " + uid);
         }
+        if (m_blocked)
+            actions.add("reload");
         return actions;
     }
 
@@ -130,6 +146,8 @@ class RuleAndPackage extends MyRule {
         for (int uid : uids_to_reload) {
             actions.add("uid " + uid);
         }
+        if (m_blocked)
+            actions.add("reload");
         return actions;
     }
 }
@@ -140,7 +158,7 @@ class DomainRule implements RuleForApp {
     private String m_ruletext;
 
     DomainRule(String ruletext, String domain, int allowed) {
-        this.domain = domain;
+        this.domain = domain.toLowerCase(java.util.Locale.ROOT);
         this.allowed = allowed;
         this.m_ruletext = ruletext;
     }
@@ -149,6 +167,9 @@ class DomainRule implements RuleForApp {
         if (dname == null) {
             return false;
         }
+        dname = dname.toLowerCase(java.util.Locale.ROOT);
+        if (dname.endsWith("."))
+            dname = dname.substring(0, dname.length() - 1);
         if (dname.equals(this.domain))
             return true;
         if (dname.endsWith("." + this.domain))
@@ -337,7 +358,8 @@ class IPV6Rule extends IPRule {
                 return null;
             }
 
-            if (subnetLen > 64) return null;
+            // Preserve legacy subnet support and additionally allow one exact IPv6 address.
+            if (subnetLen > 64 && subnetLen != 128) return null;
 
             return new IPV6Rule(ruletext, addr, subnetLen, allowed);
         }
@@ -450,6 +472,7 @@ public class WhitelistManager {
 
     private Map<Integer, List<RuleForApp>> app_specific_rules;
     private List<RuleForApp> global_rules;
+    private Map<Integer, List<RuleForApp>> app_blocks;
 
     private ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
 
@@ -472,6 +495,7 @@ public class WhitelistManager {
         try {
             this.app_specific_rules = new HashMap<>();
             this.global_rules = new LinkedList<>();
+            this.app_blocks = new HashMap<>();
 
             RulesManager rm = RulesManager.getInstance(context);
             List<RuleAndPackage> ruleslist = rm.getCurrentRules(context);
@@ -484,6 +508,11 @@ public class WhitelistManager {
                     // No package found, so no whitelisting right now
                 }else {
                     addAppRule(uid, ruleandpackage.rule);
+                    if (ruleandpackage.isBlocked()) {
+                        if (!app_blocks.containsKey(uid))
+                            app_blocks.put(uid, new LinkedList<RuleForApp>());
+                        app_blocks.get(uid).add(ruleandpackage.rule);
+                    }
                 }
             }
         } finally {
@@ -495,40 +524,39 @@ public class WhitelistManager {
 
     public RuleAllowData isAllowed(Context context, String daddr, int uid) {
         lock.readLock().lock();
-
-        List<String> alldnames = new LinkedList<>();
-        try (Cursor cursor = DatabaseHelper.getInstance(context).getAllQNames(daddr)) {
-            while (cursor.moveToNext()) {
-                alldnames.add(cursor.getString(0));
-            }
-        }
         try {
-            // TODO: common code for both loops
-            List<RuleForApp> rules = this.app_specific_rules.get(uid);
-            if (rules != null) {
-                for (RuleForApp rule : rules) {
-                    RuleAllowData result = rule.isAllowed(daddr, alldnames);
-                    if (result != null && result.allowed == 1) {
-                        return result;
-                    }
-                }
-            }
-
-            rules = this.global_rules;
-            for (RuleForApp rule : rules) {
-                RuleAllowData result = rule.isAllowed(daddr, alldnames);
-                if (result != null && result.allowed == 1) {
-                    return result;
-                }
-            }
-
-            return null;
+            return RuleDecision.resolve(app_specific_rules.get(uid), global_rules,
+                    daddr, getNames(context, daddr));
         } finally {
             lock.readLock().unlock();
         }
     }
 
+    public RuleAllowData getExplicitBlock(Context context, String daddr, int uid) {
+        lock.readLock().lock();
+        try {
+            List<RuleForApp> blocks = app_blocks.get(uid);
+            if (blocks == null)
+                return null;
+            return RuleDecision.resolve(blocks, java.util.Collections.<RuleForApp>emptyList(),
+                    daddr, getNames(context, daddr));
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    private List<String> getNames(Context context, String daddr) {
+        List<String> names = new LinkedList<>();
+        try (Cursor cursor = DatabaseHelper.getInstance(context).getAllQNames(daddr)) {
+            while (cursor.moveToNext())
+                names.add(cursor.getString(0));
+        }
+        return names;
+    }
+
     public RuleAllowData isPendingAllowed(Context context, String daddr, int uid) {
+        if (getExplicitBlock(context, daddr, uid) != null)
+            return null;
         lock.readLock().lock();
 
         List<String> alldnames = new LinkedList<>();
@@ -642,30 +670,12 @@ public class WhitelistManager {
 
                 if (match != null) {
                     long id = cursor.getLong(col_id);
-                    if (delete) {
-                        Log.w(TAG, String.format("Clearing access ID %d because uid %d daddr %s is a match", id, uid, match));
-                        dh.clearAccessId(id);
-                        uids_to_reload.add(uid);
-                    } else {
-                        int access_block = cursor.getInt(col_block);
-
-                        if (access_block != block) {
-                            Log.w(TAG, String.format("Setting access ID %d to %d because uid %d daddr %s is a match", id, block, uid, match));
-                            RuleAllowData ruleAllowData;
-                            if (block == 0)
-                            {
-                                ruleAllowData = new RuleAllowData();
-                                ruleAllowData.ruletext = addedrule.rule.getRuletext();
-                                ruleAllowData.allowed = 1;
-                                ruleAllowData.input_daddr = daddr;
-                                ruleAllowData.relevant_daddr = match;
-                            } else {
-                                ruleAllowData = null;
-                            }
-                            dh.setAccess(id, ruleAllowData, "writeAccessRulesForAddition, rule_uid = " + rule_uid);
-                            uids_to_reload.add(uid);
-                        }
-                    }
+                    // RulesManager has already applied the addition/removal. Re-evaluate
+                    // the complete policy so global additions never overwrite app blocks.
+                    RuleAllowData decision = isAllowed(context, daddr, uid);
+                    dh.setAccess(id, decision != null && decision.allowed == 1 ? decision : null,
+                            "Domain policy changed");
+                    uids_to_reload.add(uid);
                 }
             }
 

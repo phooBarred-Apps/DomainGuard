@@ -68,6 +68,7 @@ public class RulesManager {
     private Map<String, Boolean> m_ignoredApps;
     private List<IgnoreRule> m_specificIgnoreRules;
     private List<String> m_blockedDomains;
+    private volatile boolean m_hasAppSpecificBlocks;
     private List<String> m_dnses;
     private Map<String, FeatureRule> m_featureRules = new HashMap<>();
 
@@ -205,7 +206,8 @@ public class RulesManager {
     // (Only applies to a rule which allows a hostname/IP and optionally a package name.
     // Does not apply to rules which enable a package unconditionally.)
     public static RuleAndPackage parseTextToWhitelistRule(Context context, String ruletext) {
-        Bundle data_bundle = parseAllowTextToBundle(ruletext);
+        boolean blocked = ruletext.startsWith("block ");
+        Bundle data_bundle = parseAllowTextToBundle(blocked ? "allow " + ruletext.substring(6) : ruletext);
 
         if (data_bundle == null)
             return null;
@@ -216,6 +218,9 @@ public class RulesManager {
         } else {
             packagename = null;
         }
+        if (blocked && (packagename == null || packagename.isEmpty() ||
+                data_bundle.containsKey("directip") || data_bundle.containsKey("uid")))
+            return null;
 
         boolean sticky = false;
         if (data_bundle.containsKey("sticky")) {
@@ -240,7 +245,7 @@ public class RulesManager {
                 return null;
             }
 
-            apprule = new DomainRule(ruletext, data_bundle.getString("host"), 1);
+            apprule = new DomainRule(ruletext, data_bundle.getString("host"), blocked ? 0 : 1);
         }
         else if (data_bundle.containsKey("ip"))
         {
@@ -252,7 +257,7 @@ public class RulesManager {
                 Log.e(TAG, "Rule string " + ruletext + " has invalid combination of types");
                 return null;
             }
-            apprule = IPRule.factory(ruletext, data_bundle.getString("ip"), 1);
+            apprule = IPRule.factory(ruletext, data_bundle.getString("ip"), blocked ? 0 : 1);
         }
         else if (directip) {
             if (data_bundle.containsKey("ip")) {
@@ -269,7 +274,7 @@ public class RulesManager {
 
         if (apprule == null)
             return null;
-        return new RuleAndPackage(ruletext, context, apprule, sticky, packagename);
+        return new RuleAndPackage(ruletext, context, apprule, sticky, packagename, blocked);
     }
 
     // Give a copy of the current whitelist rules
@@ -368,7 +373,8 @@ public class RulesManager {
     // When capture_all_traffic is disabled, "Block connections without VPN" should NOT be turned on,
     // otherwise whitelisted apps will not work.
     public boolean getPreferenceCaptureAllTraffic(Context context) {
-        return hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
+        // Fully allowed apps must still pass through the VPN for their domain exceptions.
+        return m_hasAppSpecificBlocks || hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
     }
     public boolean getPreferenceAllowLogging(Context context) { return hasFeatureRule(FeatureRule.FEATURE_NAME_ALLOW_LOGGING);}
 
@@ -906,6 +912,7 @@ public class RulesManager {
         List<String> newBlockedDomains = new ArrayList<>();
         List<String> newDNSes = new ArrayList<>();
         Map<String, FeatureRule> newFeatureRules = new HashMap<>();
+        boolean hasAppSpecificBlocks = false;
 
         for (MyRule rule : m_allCurrentRules) {
             if (rule instanceof DelayRule) {
@@ -924,6 +931,8 @@ public class RulesManager {
                         newPackageDelays.put(packageName, max(delay, newPackageDelays.get(packageName)));
                     }
                 }
+            } else if (rule instanceof RuleAndPackage) {
+                hasAppSpecificBlocks |= ((RuleAndPackage) rule).isBlocked();
             } else if (rule instanceof FeatureRule) {
                 FeatureRule featureRule = (FeatureRule)rule;
 
@@ -978,6 +987,7 @@ public class RulesManager {
         m_blockedDomains = newBlockedDomains;
         m_dnses = newDNSes;
         m_featureRules = newFeatureRules;
+        m_hasAppSpecificBlocks = hasAppSpecificBlocks;
 
         // Make sure to turn the logging toggle switch off if you're not allow to reach it
         if (!getPreferenceAllowLogging(context)) {
@@ -1343,6 +1353,8 @@ class MyRule {
                 therule = new DelayRule(ruletext);
             } else if (category.equals("allow")) {
                 therule = AllowedPackageRule.parseRule(context, ruletext);
+            } else if (category.equals("block")) {
+                therule = RulesManager.parseTextToWhitelistRule(context, ruletext);
             } else if (category.equals("feature")) {
                 therule = FeatureRule.parseRule(ruletext);
             } else if (category.equals("partner")) {
