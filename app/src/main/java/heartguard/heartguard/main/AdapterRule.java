@@ -186,7 +186,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         public ImageView ivLive;
         public TextView tvLogging;
         public Button btnLogging;
-        public CheckBox cbHideAllowedDomains;
+        public ImageButton cbHideAllowedDomains;
         public RecyclerView lvAccess;
         public EditText domainSearch;
         public ImageButton domainSearchButton;
@@ -347,6 +347,42 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         viewChanged = null;
     }
 
+    private boolean searchingDomains;
+    private String globalDomainQuery = "";
+    private Map<String, Set<String>> domainMatches = new HashMap<>();
+    private final Set<String> domainAutoExpanded = new HashSet<>();
+    private final Set<String> optionsExpanded = new HashSet<>();
+
+    void setDomainSearch(boolean enabled, String query) {
+        String normalized = new DomainSearchQuery(query).text;
+        if (enabled == searchingDomains && normalized.equals(globalDomainQuery)) return;
+        searchingDomains = enabled;
+        globalDomainQuery = normalized;
+        domainAutoExpanded.clear();
+        domainMatches.clear();
+        refreshTraffic();
+    }
+
+    private java.util.SortedSet<String> matchingDomains() {
+        java.util.SortedSet<String> result = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (Rule rule : listFiltered) {
+            Set<String> names = domainMatches.get(rule.packageName);
+            if (names != null) result.addAll(names);
+        }
+        return result;
+    }
+
+    int matchingDomainCount() { return matchingDomains().size(); }
+
+    void copyMatchingDomains() {
+        Context context = inflater.getContext();
+        java.util.SortedSet<String> domains = matchingDomains();
+        if (domains.isEmpty()) return;
+        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.domains_label), android.text.TextUtils.join("\n", domains)));
+        android.widget.Toast.makeText(context, context.getString(R.string.domains_copied, domains.size()), android.widget.Toast.LENGTH_SHORT).show();
+    }
+
     void setViewChangedListener(Runnable listener) { viewChanged = listener; }
     int totalCount() { return listAll.size(); }
     void setQuery(String query) {
@@ -358,12 +394,23 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     void applyOptions(boolean preserveScroll) {
         List<Rule> previous = listFiltered;
         List<Rule> next = new ArrayList<>();
-        for (Rule app : listAll) if (options.matches(app, stats.get(app.uid))) next.add(app);
+        for (Rule app : listAll)
+            if (options.matches(app, stats.get(app.uid), searchingDomains)
+                    && (!searchingDomains || domainMatches.containsKey(app.packageName))) next.add(app);
         java.util.Collections.sort(next, options.comparator(stats));
-        boolean autoExpand = next.size() == 1 && !options.query.trim().isEmpty() && !next.get(0).expanded;
+        boolean autoExpand = !searchingDomains && next.size() == 1 && !options.query.trim().isEmpty() && !next.get(0).expanded;
         if (autoExpand) {
             next.get(0).expanded = true;
             expanded.add(next.get(0).packageName);
+        }
+        List<Integer> newlyExpanded = new ArrayList<>();
+        if (searchingDomains) for (int i = 0; i < next.size(); i++) {
+            Rule app = next.get(i);
+            if (domainAutoExpanded.add(app.packageName) && !app.expanded) {
+                app.expanded = true;
+                expanded.add(app.packageName);
+                newlyExpanded.add(i);
+            }
         }
         LinearLayoutManager layout = rv == null ? null : (LinearLayoutManager) rv.getLayoutManager();
         int first = layout == null ? -1 : layout.findFirstVisibleItemPosition();
@@ -386,6 +433,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         listFiltered = next;
         diff.dispatchUpdatesTo(this);
         if (autoExpand) notifyItemChanged(0);
+        for (int index : newlyExpanded) notifyItemChanged(index);
         if (layout != null) {
             if (!preserveScroll) layout.scrollToPositionWithOffset(0, 0);
             else if (orderChanged && anchorPackage != null)
@@ -401,13 +449,42 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     void refreshTraffic() {
         Context context = inflater.getContext();
         final int generation = ++trafficGeneration;
+        final boolean domainMode = searchingDomains;
+        final DomainSearchQuery query = new DomainSearchQuery(globalDomainQuery);
+        final Map<String, Set<String>> matches = new HashMap<>();
+        final Map<String, Boolean> hidden = new HashMap<>();
+        final Map<String, String> queries = new HashMap<>(domainQueries);
+        final Map<Integer, List<Rule>> appsByUid = new HashMap<>();
+        boolean defaultHide = PreferenceManager.getDefaultSharedPreferences(context).getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
+        for (Rule rule : listAll) {
+            hidden.put(rule.packageName, hideAllowedDomains.containsKey(rule.packageName) ? hideAllowedDomains.get(rule.packageName) : defaultHide);
+            if (!appsByUid.containsKey(rule.uid)) appsByUid.put(rule.uid, new ArrayList<>());
+            appsByUid.get(rule.uid).add(rule);
+        }
         new AsyncTask<Void, Void, Map<Integer, DatabaseHelper.AccessStats>>() {
             protected Map<Integer, DatabaseHelper.AccessStats> doInBackground(Void... ignored) {
-                return DatabaseHelper.getInstance(context).getAccessStats();
+                DatabaseHelper database = DatabaseHelper.getInstance(context);
+                if (domainMode) try (Cursor cursor = database.searchAccessDomains(query)) {
+                    while (cursor.moveToNext()) {
+                        int uid = cursor.getInt(0);
+                        List<Rule> apps = appsByUid.get(uid);
+                        if (apps == null) continue;
+                        for (Rule app : apps) {
+                            if (Boolean.TRUE.equals(hidden.get(app.packageName)) && (cursor.getInt(3) > 0 || cursor.getInt(5) == 0)) continue;
+                            String host = cursor.getString(1);
+                            String local = queries.get(app.packageName);
+                            if (local != null && !host.toLowerCase(java.util.Locale.ROOT).contains(local.trim().toLowerCase(java.util.Locale.ROOT))) continue;
+                            if (!matches.containsKey(app.packageName)) matches.put(app.packageName, new HashSet<>());
+                            matches.get(app.packageName).add(host);
+                        }
+                    }
+                }
+                return database.getAccessStats();
             }
             protected void onPostExecute(Map<Integer, DatabaseHelper.AccessStats> result) {
                 if (generation != trafficGeneration) return;
                 stats = result;
+                domainMatches = matches;
                 applyOptions(true);
             }
         }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
@@ -422,6 +499,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     Bundle saveViewState() {
         Bundle state = options.save();
         state.putString("domainSort", domainSort);
+        state.putStringArrayList("optionsExpanded", new ArrayList<>(optionsExpanded));
         state.putStringArrayList("expanded", new ArrayList<>(expanded));
         Bundle hidden = new Bundle(), queries = new Bundle();
         for (String name : hideAllowedDomains.keySet()) hidden.putBoolean(name, hideAllowedDomains.get(name));
@@ -435,6 +513,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     void restoreViewState(Bundle state) {
         if (state == null) return;
         options.restore(state);
+        ArrayList<String> openOptions = state.getStringArrayList("optionsExpanded");
+        if (openOptions != null) optionsExpanded.addAll(openOptions);
         domainSort = ListSort.valid(state.getString("domainSort"), ListSort.DOMAINS);
         ArrayList<String> packages = state.getStringArrayList("expanded");
         if (packages != null) expanded.addAll(packages);
@@ -466,6 +546,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         boolean hide = hideAllowedDomains.containsKey(rule.packageName) ? hideAllowedDomains.get(rule.packageName)
                 : PreferenceManager.getDefaultSharedPreferences(context).getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
         String query = domainQueries.containsKey(rule.packageName) ? domainQueries.get(rule.packageName) : "";
+        String mainQuery = searchingDomains ? globalDomainQuery : "";
         String sort = domainSort;
         new AsyncTask<Void, Void, List<AccessEntry>>() {
             protected List<AccessEntry> doInBackground(Void... ignored) {
@@ -476,7 +557,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                     while (cursor.moveToNext()) activeRules.add(cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
                 }
                 GlobalRuleIndicators indicators = new GlobalRuleIndicators(activeRules);
-                try (Cursor cursor = database.getAccess(rule.uid, hide, query, sort)) {
+                try (Cursor cursor = database.getAccess(rule.uid, hide, query, sort, mainQuery)) {
                     while (cursor.moveToNext()) entries.add(new AccessEntry(cursor, indicators));
                 }
                 return entries;
@@ -675,6 +756,14 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.llConfiguration.setVisibility(rule.expanded ? View.VISIBLE : View.GONE);
 
         // Show application details
+        View pauseButton = holder.itemView.findViewById(R.id.appPauseButton);
+        TooltipCompat.setTooltipText(pauseButton, context.getString(R.string.app_pause_title));
+        pauseButton.setOnClickListener(view -> AppPauseDialog.show(context, rule.packageName, rule.name));
+        TextView pauseStatus = holder.itemView.findViewById(R.id.appPauseStatus);
+        List<AppPause.Entry> pauses = rule.expanded ? AppPause.read(context, rule.packageName) : java.util.Collections.emptyList();
+        pauseStatus.setVisibility(pauses.isEmpty() ? View.GONE : View.VISIBLE);
+        if (!pauses.isEmpty()) pauseStatus.setText(pauses.get(0).label(context));
+        pauseStatus.setOnClickListener(view -> AppPauseDialog.show(context, rule.packageName, rule.name));
         holder.tvUid.setText(Integer.toString(rule.uid));
         holder.tvPackage.setText(rule.packageName);
         holder.tvVersion.setText(rule.version);
@@ -813,7 +902,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.btnClear.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Util.areYouSure(view.getContext(), R.string.msg_clear_rules, new Util.DoubtListener() {
+                Util.confirmRemoval(view.getContext(), R.string.msg_clear_rules, new Util.DoubtListener() {
                     @Override
                     public void onSure() {
                         holder.cbApply.setChecked(true);
@@ -884,20 +973,31 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         Boolean appHideAllowed = hideAllowedDomains.get(rule.packageName);
         final boolean hideAllowed = appHideAllowed == null
                 ? prefs.getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false) : appHideAllowed;
-        holder.cbHideAllowedDomains.setOnCheckedChangeListener(null);
-        holder.cbHideAllowedDomains.setChecked(hideAllowed);
-        holder.cbHideAllowedDomains.setOnCheckedChangeListener((button, checked) -> {
-            hideAllowedDomains.put(rule.packageName, checked);
+        holder.cbHideAllowedDomains.setSelected(hideAllowed);
+        holder.cbHideAllowedDomains.setAlpha(hideAllowed ? 1f : 0.5f);
+        holder.cbHideAllowedDomains.setContentDescription(context.getString(R.string.hide_allowed_domains) + ": "
+                + context.getString(hideAllowed ? R.string.control_on : R.string.control_off));
+        TooltipCompat.setTooltipText(holder.cbHideAllowedDomains, holder.cbHideAllowedDomains.getContentDescription());
+        holder.cbHideAllowedDomains.setOnClickListener(button -> {
+            hideAllowedDomains.put(rule.packageName, !hideAllowed);
+            refreshTraffic();
             int currentPosition = holder.getAdapterPosition();
-            if (currentPosition != RecyclerView.NO_POSITION)
-                notifyItemChanged(currentPosition);
+            if (currentPosition != RecyclerView.NO_POSITION) notifyItemChanged(currentPosition);
+        });
+        View details = holder.itemView.findViewById(R.id.appOptions);
+        details.setVisibility(optionsExpanded.contains(rule.packageName) ? View.VISIBLE : View.GONE);
+        View optionsButton = holder.itemView.findViewById(R.id.appOptionsButton);
+        TooltipCompat.setTooltipText(optionsButton, context.getString(R.string.options_label));
+        optionsButton.setOnClickListener(button -> {
+            if (!optionsExpanded.remove(rule.packageName)) optionsExpanded.add(rule.packageName);
+            details.setVisibility(optionsExpanded.contains(rule.packageName) ? View.VISIBLE : View.GONE);
         });
 
         if (holder.domainWatcher != null) holder.domainSearch.removeTextChangedListener(holder.domainWatcher);
         if (!rule.packageName.equals(holder.boundPackage)) holder.domainSearch.clearFocus();
         String query = domainQueries.containsKey(rule.packageName) ? domainQueries.get(rule.packageName) : "";
         if (!query.equals(holder.domainSearch.getText().toString())) holder.domainSearch.setText(query);
-        boolean alwaysShowSearch = prefs.getBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH, true);
+        boolean alwaysShowSearch = prefs.getBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH, false);
         holder.domainSearchButton.setVisibility(alwaysShowSearch ? View.GONE : View.VISIBLE);
         // Never conceal an active filter, including one restored after rotation.
         setDomainSearchVisible(holder, alwaysShowSearch || domainSearchExpanded.contains(rule.packageName) || !query.isEmpty());
@@ -921,7 +1021,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
             public void onTextChanged(CharSequence text, int start, int before, int count) {
                 domainQueries.put(rule.packageName, text.toString());
-                loadDomains(holder, rule);
+                if (searchingDomains) refreshTraffic(); else loadDomains(holder, rule);
             }
             public void afterTextChanged(Editable text) { }
         };
@@ -946,7 +1046,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.btnClearAccess.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Util.areYouSure(view.getContext(), R.string.msg_reset_access, new Util.DoubtListener() {
+                Util.confirmRemoval(view.getContext(), R.string.msg_reset_access, new Util.DoubtListener() {
                     @Override
                     public void onSure() {
                         //DatabaseHelper.getInstance(context).clearAccess(rule.uid, true);
@@ -999,7 +1099,6 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         final int version = entry.version, protocol = entry.protocol, dport = entry.port, pending = entry.pending;
         final String daddr = entry.address;
         long time = entry.time;
-        int block = entry.block;
         PopupMenu popup = new PopupMenu(context, anchor);
         popup.inflate(R.menu.access);
 
@@ -1023,7 +1122,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         popup.getMenu().findItem(R.id.menu_host).setEnabled(multiple);
 
         popup.getMenu().findItem(R.id.menu_time).setTitle(
-                SimpleDateFormat.getDateTimeInstance().format(time));
+                DomainTimestamp.full(time));
 
         popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
             @Override
@@ -1031,16 +1130,12 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                 int menu = menuItem.getItemId();
                 boolean result = false;
                 switch (menu) {
-                    case R.id.menu_block_app:
+                    case R.id.menu_block:
                         DomainRuleDialog.show(context, rule.packageName, daddr, true);
                         return true;
                     case R.id.menu_allow:
-                    case R.id.menu_allow_globally:
                         // HeartGuard change - launch a window to queue a rule instead of directly allowing access
-                        if (menu == R.id.menu_allow_globally)
-                            DomainRuleDialog.show(context, "", daddr, false);
-                        else
-                            launchAllowUrlPage(context, rule.packageName, daddr);
+                        DomainRuleDialog.show(context, rule.packageName, daddr, false);
                         result = true;
                         break;
 
@@ -1068,7 +1163,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                 }
 
                 // HeartGuard change - R.id.menu_reset removed
-                if (menu == R.id.menu_allow || menu == R.id.menu_allow_globally/* || menu == R.id.menu_reset*/)
+                if (menu == R.id.menu_allow/* || menu == R.id.menu_reset*/)
                     new AsyncTask<Object, Object, Long>() {
                         @Override
                         protected Long doInBackground(Object... objects) {
@@ -1085,9 +1180,6 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                 return result;
             }
         });
-
-        if (block == 0)
-            popup.getMenu().removeItem(R.id.menu_allow);
 
         popup.show();
     }
@@ -1199,75 +1291,6 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     @Override
     public int getItemCount() {
         return listFiltered.size();
-    }
-
-    // HeartGuard change - launch a dialog to allow a URL (package specific or not)
-    private void launchAllowUrlPage(final Context context, String packagename, String daddr) {
-        LayoutInflater inflater = LayoutInflater.from(context);
-        View view = inflater.inflate(R.layout.allowhost, null, false);
-        final EditText etDAddr = view.findViewById(R.id.allow_new_access_daddr);
-        final EditText etPackageName = view.findViewById(R.id.allow_new_access_package_name);
-        etDAddr.setText(daddr);
-        etPackageName.setText(packagename);
-        if (packagename.isEmpty()) {
-            ((TextView) view.findViewById(R.id.allow_new_access_title)).setText(R.string.title_allow_globally);
-            ((TextView) view.findViewById(R.id.allow_new_access_package_label)).setText(R.string.allow_all_apps);
-            etPackageName.setVisibility(View.GONE);
-        }
-
-        AlertDialog dialog;
-        dialog = new AlertDialog.Builder(context)
-                .setView(view)
-                .setCancelable(true)
-                .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        String newpackagename = etPackageName.getText().toString();
-                        String newdaddr = etDAddr.getText().toString();
-                        Log.w(TAG, String.format("click yes: newpackagename=\"%s\" newdaddr=\"%s\"", newpackagename, newdaddr));
-
-                        // Make sure that the text doesn't have whitespaces.
-                        // The package name can be empty, but the daddr can't (if they want to allow a whole package, they click on the app wifi logo)
-                        if (newdaddr.matches("\\S+")) {
-                            if (newpackagename.matches("\\S+") || newpackagename.length() == 0) {
-                                String destinationtext;
-
-                                if (newdaddr.equals("directip")) {
-                                    destinationtext = "directip";
-                                }
-                                else if (newdaddr.matches("\\d+\\.\\d+\\.\\d+\\.\\d+") ||
-                                    newdaddr.matches("[0-9a-fA-F:]+") ||
-                                    newdaddr.matches("(\\d+.\\d+.\\d+.\\d+)/(\\d+)")) {
-                                    destinationtext = "ip:" + newdaddr;
-                                } else {
-                                    destinationtext = "host:" + newdaddr;
-                                }
-
-                                String newruletext;
-                                if (newpackagename.length() == 0) {
-                                    newruletext = "allow " + destinationtext;
-                                } else {
-                                    newruletext = "allow package:" + newpackagename + " " + destinationtext;
-                                }
-                                RulesManager.getInstance(context).queueRuleText(context, newruletext);
-                            }
-                        }
-                        dialog.dismiss();
-                    }
-                })
-                .setNegativeButton(android.R.string.no, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        dialog.dismiss();
-                    }
-                })
-                .setOnDismissListener(new DialogInterface.OnDismissListener() {
-                    @Override
-                    public void onDismiss(DialogInterface dialogInterface) {
-                    }
-                })
-                .create();
-        dialog.show();
     }
 
     // HeartGuard change - launch a dialog to ignore a URL (package specific or not)

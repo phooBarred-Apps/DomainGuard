@@ -653,7 +653,7 @@ void dns_resolved(const struct arguments *args,
 
 static jmethodID midIsDomainBlocked = NULL;
 
-jboolean is_domain_blocked(const struct arguments *args, const char *name) {
+jboolean is_domain_blocked(const struct arguments *args, const char *name, int uid, jboolean svcb) {
 #ifdef PROFILE_JNI
     float mselapsed;
     struct timeval start, end;
@@ -663,15 +663,15 @@ jboolean is_domain_blocked(const struct arguments *args, const char *name) {
     jclass clsService = (*args->env)->GetObjectClass(args->env, args->instance);
     ng_add_alloc(clsService, "clsService");
 
-    const char *signature = "(Ljava/lang/String;)Z";
+    const char *signature = "(Ljava/lang/String;IZ)Z";
     if (midIsDomainBlocked == NULL)
-        midIsDomainBlocked = jniGetMethodID(args->env, clsService, "isDomainBlocked", signature);
+        midIsDomainBlocked = jniGetMethodID(args->env, clsService, "isDnsBlocked", signature);
 
     jstring jname = (*args->env)->NewStringUTF(args->env, name);
     ng_add_alloc(jname, "jname");
 
     jboolean jallowed = (*args->env)->CallBooleanMethod(
-            args->env, args->instance, midIsDomainBlocked, jname);
+            args->env, args->instance, midIsDomainBlocked, jname, uid, svcb);
     jniCheckException(args->env);
 
     (*args->env)->DeleteLocalRef(args->env, jname);
@@ -688,6 +688,17 @@ jboolean is_domain_blocked(const struct arguments *args, const char *name) {
 #endif
 
     return jallowed;
+}
+
+jlong next_app_pause_expiry(const struct arguments *args) {
+    static jmethodID method = NULL;
+    jclass service = (*args->env)->GetObjectClass(args->env, args->instance);
+    if (method == NULL)
+        method = jniGetMethodID(args->env, service, "nextAppPauseExpiry", "()J");
+    jlong result = (*args->env)->CallLongMethod(args->env, args->instance, method);
+    jniCheckException(args->env);
+    (*args->env)->DeleteLocalRef(args->env, service);
+    return result;
 }
 
 static jmethodID midGetUidQ = NULL;

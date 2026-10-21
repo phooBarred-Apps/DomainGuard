@@ -1,0 +1,5 @@
+Public Suffix List
+Source: https://publicsuffix.org/list/public_suffix_list.dat
+License: Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/)
+Downloaded 2026-10-21; SHA-256: 8228e4bdac6024c058a1e67859157e468a2613b826b53de0e5cae298e1b70755
+Bundled for offline domain choices.

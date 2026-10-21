@@ -114,7 +114,8 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
         TextView tvTraffic = view.findViewById(R.id.tvTraffic);
 
         // Set values
-        tvTime.setText(new SimpleDateFormat("dd HH:mm").format(time));
+        tvTime.setText(DomainTimestamp.format(context, time));
+        tvTime.setContentDescription(DomainTimestamp.full(time));
         ivBlock.setContentDescription(null);
         if (entry.globalScope != GlobalRuleIndicators.LOCAL) {
             boolean globallyBlocked = entry.globalScope == GlobalRuleIndicators.BLOCKED;
@@ -135,7 +136,8 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
                 " " + daddr + (dport > 0 ? "/" + dport : "") + (count > 1 ? " ?" + count : "");
         SpannableString span = new SpannableString(dest);
         span.setSpan(new UnderlineSpan(), 0, dest.length(), 0);
-        tvDest.setText(span);
+        tvDest.setText(daddr);
+        tvDest.setContentDescription(dest);
 
         if (allowed < 0)
             tvDest.setTextColor(colorText);

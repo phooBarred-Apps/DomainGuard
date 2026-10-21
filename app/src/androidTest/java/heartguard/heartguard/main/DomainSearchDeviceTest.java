@@ -95,13 +95,8 @@ public class DomainSearchDeviceTest {
             device.findObject(By.res("android", "button2")).click();
         device.wait(Until.findObject(By.desc("More options")), 5000).click();
         findText(context.getString(R.string.domain_search_title)).click();
-        await(() -> {
-            onMain(() -> {
-                for (Activity open : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))
-                    if (open instanceof ActivityDomainSearch) activity = open;
-            });
-            return activity instanceof ActivityDomainSearch;
-        });
+        assertTrue(device.wait(Until.hasObject(By.res(context.getPackageName(), "domain_search_copy")), 5000));
+        assertTrue("Menu search also stays in the main screen", activity instanceof ActivityMain);
         query("HTTPS://IMAGES.MW-SEARCH-TEST.INVALID:443/path");
         await(() -> rowTexts().size() == 2);
         String rows = rowTexts().toString();
@@ -127,11 +122,11 @@ public class DomainSearchDeviceTest {
         await(() -> {
             onMain(() -> {
                 for (Activity open : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))
-                    if (open instanceof ActivityDomainSearch) activity = open;
+                    if (open instanceof ActivityMain && open != beforeRecreation) activity = open;
             });
             return activity != beforeRecreation && rowTexts().size() == 2;
         });
-        onMain(() -> assertEquals(domain, ((SearchView) activity.findViewById(R.id.domain_search)).getQuery().toString()));
+        onMain(() -> assertEquals(domain, ((TextView) activity.findViewById(R.id.search_src_text)).getText().toString()));
     }
 
     // Test: Copy includes off-screen matches once per domain, ignores case, and follows the current search.
@@ -184,7 +179,11 @@ public class DomainSearchDeviceTest {
     }
 
     private void query(String query) {
-        onMain(() -> ((SearchView) activity.findViewById(R.id.domain_search)).setQuery(query, false));
+        onMain(() -> {
+            SearchView standaloneSearch = activity.findViewById(R.id.domain_search);
+            if (standaloneSearch != null) standaloneSearch.setQuery(query, false);
+            else ((TextView) activity.findViewById(R.id.search_src_text)).setText(query);
+        });
     }
 
     private void awaitClipboard(ClipboardManager clipboard, String expected) {

@@ -178,7 +178,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         pref_reset_usage.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
             @Override
             public boolean onPreferenceClick(Preference preference) {
-                Util.areYouSure(ActivitySettings.this, R.string.setting_reset_usage, new Util.DoubtListener() {
+                Util.confirmRemoval(ActivitySettings.this, R.string.setting_reset_usage, new Util.DoubtListener() {
                     @Override
                     public void onSure() {
                         new AsyncTask<Object, Object, Throwable>() {
@@ -212,7 +212,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         pref_reset_access.setOnPreferenceClickListener(new Preference.OnPreferenceClickListener() {
             @Override
             public boolean onPreferenceClick(Preference preference) {
-                Util.areYouSure(ActivitySettings.this, R.string.setting_reset_access, new Util.DoubtListener() {
+                Util.confirmRemoval(ActivitySettings.this, R.string.setting_reset_access, new Util.DoubtListener() {
                     @Override
                     public void onSure() {
                         new AsyncTask<Object, Object, Throwable>() {
@@ -555,6 +555,18 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         super.onResume();
 
         checkPermissions(null);
+        if (getIntent().getBooleanExtra("open_display_settings", false)) {
+            getIntent().removeExtra("open_display_settings");
+            PreferenceScreen root = getPreferenceScreen();
+            android.widget.ListAdapter adapter = root.getRootAdapter();
+            for (int i = 0; i < adapter.getCount(); i++) {
+                Object item = adapter.getItem(i);
+                if (item instanceof Preference && "screen_display".equals(((Preference) item).getKey())) {
+                    root.onItemClick(null, null, i, i);
+                    break;
+                }
+            }
+        }
 
         // Listen for preference changes
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
@@ -714,7 +726,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         else if ("notify_access".equals(name))
             ServiceSinkhole.reload("changed " + name, this, false);
 
-        else if (AccessNotification.HIDE_GLOBAL_BLOCKS.equals(name))
+        else if (AccessNotification.NOTIFY_GLOBAL_BLOCKS.equals(name))
             AccessNotification.hideExistingGlobalBlocks(this);
 
         //else if (Rule.PREFERENCE_STRING_USE_HOSTS.equals(name))
@@ -1081,31 +1093,8 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
     }
 
     private void setupGoogleBackup(PreferenceScreen screen) {
-        Preference request = screen.findPreference("google_backup_request");
-        long last = SettingsBackup.controls(this).getLong("last_requested", 0);
-        request.setSummary(last == 0 ? getString(R.string.settings_backup_never)
-                : getString(R.string.settings_backup_last_request,
-                        java.text.DateFormat.getDateTimeInstance().format(new java.util.Date(last))));
-        request.setOnPreferenceClickListener(preference -> {
-            SettingsBackup.request(this);
-            setupGoogleBackup(screen);
-            Toast.makeText(this, R.string.settings_backup_requested, Toast.LENGTH_LONG).show();
-            return true;
-        });
-        TwoStatePreference automatic = (TwoStatePreference) screen.findPreference("google_backup_auto");
-        automatic.setChecked(SettingsBackup.controls(this).getBoolean("automatic", false));
-        automatic.setOnPreferenceChangeListener((preference, value) -> {
-            SettingsBackup.controls(this).edit().putBoolean("automatic", (Boolean) value).apply();
-            if ((Boolean) value) SettingsBackup.request(this);
-            return true;
-        });
-        screen.findPreference("google_backup_open").setOnPreferenceClickListener(preference -> {
-            try {
-                startActivity(new Intent("com.google.android.gms.backup.ACTION_BACKUP_SETTINGS")
-                        .setPackage("com.google.android.gms"));
-            } catch (android.content.ActivityNotFoundException unavailable) {
-                startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));
-            }
+        screen.findPreference("screen_google_backup").setOnPreferenceClickListener(preference -> {
+            startActivity(new Intent(this, ActivityDeviceBackup.class));
             return true;
         });
     }

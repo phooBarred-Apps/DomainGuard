@@ -50,6 +50,10 @@ public class SettingsDeviceTest {
     }
 
     @After public void cleanup() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            for (Activity open : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))
+                if (open instanceof ActivityDeviceBackup || open instanceof ActivitySettings) open.finish();
+        });
         if (activity != null)
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> activity.finish());
         List<Long> ids = new ArrayList<>();
@@ -165,7 +169,7 @@ public class SettingsDeviceTest {
         for (String permission : info.requestedPermissions) assertNotEquals("com.android.vending.BILLING", permission);
         for (android.content.pm.ActivityInfo entry : info.activities) assertFalse(entry.name.endsWith(".ActivityPro"));
         openSettings();
-        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.setting_stats_category))), 5000));
+        clickPreference(R.string.setting_stats_category);
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         boolean oldInstall = prefs.getBoolean("install", false);
         boolean oldStats = prefs.getBoolean("show_stats", false);
@@ -186,9 +190,9 @@ public class SettingsDeviceTest {
         }
     }
 
-    // Test: Backup requests update their timestamp, automatic requests are optional, and phone backup settings open.
-    // Why: Android controls backup completion; the UI must report a request rather than claim an upload succeeded.
-    @Test public void backupControlsRequestWithoutClaimingCompletion() throws Exception {
+    // Test: The backup toggle opts into Android backup, the information dialog explains timing, and phone settings open.
+    // Why: The approved screen has no manual-request action and must not imply that enabling backup confirms an upload.
+    @Test public void backupToggleAndInformationExplainAndroidBackup() throws Exception {
         SharedPreferences controls = SettingsBackup.controls(context);
         boolean hadAuto = controls.contains("automatic");
         boolean oldAuto = controls.getBoolean("automatic", false);
@@ -198,12 +202,17 @@ public class SettingsDeviceTest {
             controls.edit().remove("automatic").remove("last_requested").commit();
             openSettings();
             device.wait(Until.findObject(By.text(context.getString(R.string.settings_backup_title))), 5000).click();
-            clickPreference(R.string.settings_backup_request);
-            assertTrue(controls.getLong("last_requested", 0) > 0);
+            assertFalse(device.hasObject(By.text(context.getString(R.string.settings_backup_request))));
             assertFalse(controls.getBoolean("automatic", false));
-            clickPreference(R.string.settings_backup_auto);
+            find("backup_automatic_toggle").click();
+            await(() -> controls.getLong("last_requested", 0) > 0);
+            assertTrue(controls.getLong("last_requested", 0) > 0);
             assertTrue(controls.getBoolean("automatic", false));
-            clickPreference(R.string.settings_backup_auto);
+            find("backup_information").click();
+            assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.backup_help_body))), 5000));
+            device.pressBack();
+            find("backup_automatic_toggle").click();
+            await(() -> !controls.getBoolean("automatic", true));
             assertFalse(controls.getBoolean("automatic", true));
             clickPreference(R.string.settings_backup_open);
             assertTrue(device.wait(Until.hasObject(By.pkg("com.google.android.gms")), 5000));

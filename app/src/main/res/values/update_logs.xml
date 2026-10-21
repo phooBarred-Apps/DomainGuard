@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_show_logs">Update history</string>
+    <string name="update_logs_title">Update history</string>
+    <string name="update_logs_version">Version</string>
+    <string name="update_logs_loading">Loading update logs…</string>
+    <string name="update_logs_empty">No DomainGuard update logs are available yet.</string>
+    <string name="update_logs_no_notes">No update notes were published for this version.</string>
+    <string name="update_logs_error">Could not load update logs.\n\n%1$s</string>
+    <string name="update_logs_prerelease">%1$s (pre-release)</string>
+</resources>

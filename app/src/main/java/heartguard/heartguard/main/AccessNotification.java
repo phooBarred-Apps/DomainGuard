@@ -17,7 +17,7 @@ import androidx.preference.PreferenceManager;
 final class AccessNotification {
     static final int ID = 1;
     static final String ALLOW = BuildConfig.APPLICATION_ID + ".ALLOW_DOMAIN";
-    static final String HIDE_GLOBAL_BLOCKS = "hide_global_block_notifications";
+    static final String NOTIFY_GLOBAL_BLOCKS = "notify_global_blocks";
     private static final String PREFIX = "domain-access:";
 
     static void show(Context context, int uid, String destination, String address) {
@@ -86,7 +86,7 @@ final class AccessNotification {
     }
 
     private static boolean shouldHideGlobalBlock(Context context, String host) {
-        if (!PreferenceManager.getDefaultSharedPreferences(context).getBoolean(HIDE_GLOBAL_BLOCKS, false)) return false;
+        if (PreferenceManager.getDefaultSharedPreferences(context).getBoolean(NOTIFY_GLOBAL_BLOCKS, false)) return false;
         for (String blocked : RulesManager.getInstance(context).getBlockedDomains())
             if (Util.isAddressInsideDomain(host, blocked)) return true;
         return false;

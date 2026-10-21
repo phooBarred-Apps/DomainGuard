@@ -2,7 +2,7 @@
 <resources>
     <string name="list_controls_title">Sort and filter buttons</string>
     <string-array name="list_controls_choices">
-        <item>Always visible above the app list</item>
+        <item>Always show in toolbar</item>
         <item>Show in toolbar if room</item>
         <item>Menu only</item>
     </string-array>
@@ -25,8 +25,8 @@
     <string name="list_apply">Apply</string>
     <string name="list_filters">Filter apps</string>
     <string name="list_reset_filters">Reset filters</string>
-    <string name="list_filter_access">App access</string>
-    <string name="list_filter_activity">Recorded activity</string>
+    <string name="list_filter_access">Access</string>
+    <string name="list_filter_activity">Activity</string>
     <string name="list_filter_type">App type</string>
     <string name="list_filter_explanation">Blocked by default apps can still allow individual domains.</string>
     <string name="list_include_no_internet">Include apps without internet permission</string>

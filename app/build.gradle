@@ -9,11 +9,11 @@ android {
 
     defaultConfig {
         applicationId = "heartguard.heartguard.main.mw"
-        versionName = "2.317-mw.7"
+        versionName = "2.4"
         minSdkVersion 22
         targetSdkVersion 31
-        versionCode = 2026102006
-        archivesBaseName = "HeartGuard-MW"
+        versionCode = 2026102100
+        archivesBaseName = "DomainGuard"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {
@@ -99,6 +99,10 @@ android {
         baseline = file('lint-baseline.xml')
     }
     ndkVersion '23.1.7779620'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
 }
 
 dependencies {

@@ -1,0 +1,20 @@
+<resources>
+    <style name="AppPauseUnitMenu" parent="Widget.AppCompat.ListPopupWindow">
+        <item name="overlapAnchor">false</item>
+    </style>
+    <string name="app_pause_title">Pause DomainGuard for this app</string>
+    <string name="app_pause_action">Pause</string>
+    <string name="app_pause_resume">Resume now</string>
+    <string name="app_pause_cancel_pending">Cancel pending pause</string>
+    <string name="app_pause_description">Allow all traffic, including domains blocked by global rules. Your rules return automatically when the pause ends.</string>
+    <string name="app_pause_duration_label">Duration</string>
+    <string name="app_pause_duration">Pause for %1$s</string>
+    <string name="app_pause_maximum">Up to 7 days</string>
+    <string name="app_pause_invalid">Enter a duration from 1 second to 7 days.</string>
+    <string name="app_pause_delay">Starts after the rule delay: %1$s.</string>
+    <string name="app_pause_active">All traffic is allowed until the pause ends.</string>
+    <string name="app_pause_until">Paused until %1$s</string>
+    <string name="app_pause_pending">%1$s pause starts at %2$s</string>
+    <string name="app_pause_shared">Android shares this app’s network identity with: %1$s. The pause applies to these apps together.</string>
+    <string name="app_pause_legend">Temporarily pause DomainGuard for an app</string>
+</resources>

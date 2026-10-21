@@ -4,7 +4,7 @@ if ($Serial -notmatch '^emulator-\d+$') { throw 'Use a disposable emulator.' }
 $root = Split-Path $PSScriptRoot
 $adb = Join-Path $env:ANDROID_HOME 'platform-tools/adb.exe'
 if ((& $adb -s $Serial shell getprop ro.kernel.qemu).Trim() -ne '1') { throw 'Target is not an emulator.' }
-$apk = Join-Path $root 'app/build/outputs/apk/release/HeartGuard-MW-release.apk'
+$apk = Join-Path $root 'app/build/outputs/apk/release/DomainGuard-release.apk'
 & $adb -s $Serial install -r $apk
 if ($LASTEXITCODE -ne 0) { throw 'Release installation failed.' }
 & $adb -s $Serial shell am force-stop heartguard.heartguard.main.mw
@@ -22,6 +22,6 @@ for ($attempt = 0; $attempt -lt 5; $attempt++) {
 }
 $activity = & $adb -s $Serial shell dumpsys activity activities
 if (-not ($activity | Select-String 'mResumedActivity:.*heartguard.heartguard.main.mw/')) {
-    throw 'HeartGuard-MW is not the resumed activity.'
+    throw 'DomainGuard is not the resumed activity.'
 }
 Write-Output 'Minified release launched and remained active without a crash.'

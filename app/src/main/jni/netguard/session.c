@@ -52,7 +52,8 @@ void *handle_events(void *a) {
     }
 
     // Terminate existing sessions not allowed anymore
-    check_allowed(args);
+    check_allowed(args, 1);
+    jlong pause_expiry = next_app_pause_expiry(args);
 
     // Open epoll file
     int epoll_fd = epoll_create(1);
@@ -177,8 +178,27 @@ void *handle_events(void *a) {
 
         // Poll
         struct epoll_event ev[EPOLL_EVENTS];
-        int ready = epoll_wait(epoll_fd, ev, EPOLL_EVENTS,
-                               recheck ? EPOLL_MIN_CHECK : timeout * 1000);
+        int wait_ms = recheck ? EPOLL_MIN_CHECK : timeout * 1000;
+        if (pause_expiry > 0) {
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            jlong remaining = pause_expiry - ((jlong) now.tv_sec * 1000 + now.tv_usec / 1000);
+            if (remaining < wait_ms) wait_ms = remaining > 0 ? (int) remaining : 0;
+        }
+        int ready = epoll_wait(epoll_fd, ev, EPOLL_EVENTS, wait_ms);
+        int pause_rechecked = 0;
+        if (pause_expiry > 0) {
+            struct timeval now;
+            gettimeofday(&now, NULL);
+            if ((jlong) now.tv_sec * 1000 + now.tv_usec / 1000 >= pause_expiry) {
+                // Keep objects referenced by the returned epoll events alive; close denied sessions.
+                pthread_mutex_lock(&args->ctx->lock);
+                check_allowed(args, 0);
+                pthread_mutex_unlock(&args->ctx->lock);
+                pause_rechecked = 1;
+                pause_expiry = next_app_pause_expiry(args);
+            }
+        }
 
         if (ready < 0) {
             if (errno == EINTR) {
@@ -243,6 +263,10 @@ void *handle_events(void *a) {
                                 ((struct ng_session *) ev[i].data.ptr)->socket);
 
                     struct ng_session *session = (struct ng_session *) ev[i].data.ptr;
+                    if (pause_rechecked && ((session->protocol == IPPROTO_UDP && session->udp.state != UDP_ACTIVE) ||
+                        (session->protocol == IPPROTO_TCP && (session->tcp.state == TCP_CLOSE || session->tcp.state == TCP_CLOSING)) ||
+                        ((session->protocol == IPPROTO_ICMP || session->protocol == IPPROTO_ICMPV6) && session->icmp.stop)))
+                        continue;
                     if (session->protocol == IPPROTO_ICMP ||
                         session->protocol == IPPROTO_ICMPV6)
                         check_icmp_socket(args, &ev[i]);
@@ -282,7 +306,7 @@ void *handle_events(void *a) {
     return NULL;
 }
 
-void check_allowed(const struct arguments *args) {
+void check_allowed(const struct arguments *args, int remove_blocked) {
     char source[INET6_ADDRSTRLEN + 1];
     char dest[INET6_ADDRSTRLEN + 1];
 
@@ -327,7 +351,7 @@ void check_allowed(const struct arguments *args) {
                     log_android(ANDROID_LOG_WARN, "UDP terminate session socket %d uid %d",
                                 s->socket, s->udp.uid);
                 }
-            } else if (s->udp.state == UDP_BLOCKED) {
+            } else if (s->udp.state == UDP_BLOCKED && remove_blocked) {
                 log_android(ANDROID_LOG_WARN, "UDP remove blocked session uid %d", s->udp.uid);
 
                 if (l == NULL)

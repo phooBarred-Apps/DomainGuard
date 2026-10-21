@@ -202,10 +202,8 @@ public class DomainVisibilityDeviceTest {
         assertRow(0, false, 2);
         String defaultSort = prefs.getString(ListSort.DOMAIN_DEFAULT, null);
         onMain(() -> holder(0).domainSortButton.performClick());
-        assertNotNull(device.wait(Until.findObject(By.res("android", "button3")), 5000));
-        assertTrue(context.getString(R.string.list_set_default).equalsIgnoreCase(
-                device.findObject(By.res("android", "button3")).getText()));
-        device.findObject(By.text(context.getString(R.string.list_sort_name))).click();
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.list_set_default))), 5000));
+        device.findObject(By.text(context.getString(R.string.sort_criterion_domain))).click();
         device.findObject(By.res("android", "button1")).click();
         assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
         device.waitForIdle();
@@ -220,13 +218,13 @@ public class DomainVisibilityDeviceTest {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         assertRow(0, false, 2);
         onMain(() -> {
-            assertEquals(View.VISIBLE, holder(0).domainSearch.getVisibility());
-            assertEquals(View.GONE, holder(0).domainSearchButton.getVisibility());
+            assertEquals(View.GONE, holder(0).domainSearch.getVisibility());
+            assertEquals(View.VISIBLE, holder(0).domainSearchButton.getVisibility());
         });
         assertRow(1, false, 2);
         onMain(() -> {
-            assertEquals(View.VISIBLE, holder(1).domainSearch.getVisibility());
-            assertEquals(View.GONE, holder(1).domainSearchButton.getVisibility());
+            assertEquals(View.GONE, holder(1).domainSearch.getVisibility());
+            assertEquals(View.VISIBLE, holder(1).domainSearchButton.getVisibility());
         });
     }
 
@@ -254,7 +252,7 @@ public class DomainVisibilityDeviceTest {
         do {
             onMain(() -> {
                 AdapterRule.ViewHolder row = holder(position);
-                matches[0] = row != null && row.cbHideAllowedDomains.isChecked() == hidden
+                matches[0] = row != null && row.cbHideAllowedDomains.isSelected() == hidden
                         && row.lvAccess.getAdapter() != null && row.lvAccess.getAdapter().getItemCount() == count;
             });
             if (!matches[0]) SystemClock.sleep(50);

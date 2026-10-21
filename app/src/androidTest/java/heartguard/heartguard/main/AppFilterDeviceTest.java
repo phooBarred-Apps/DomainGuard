@@ -82,7 +82,7 @@ public class AppFilterDeviceTest {
         for (int choice : new int[]{2, 1, 0}) {
             openOverflow();
             device.wait(Until.findObject(By.text(context.getString(R.string.menu_settings))), 5000).click();
-            device.wait(Until.findObject(By.text(context.getString(R.string.setting_options))), 5000).click();
+            device.wait(Until.findObject(By.text(context.getString(R.string.display_settings))), 5000).click();
             device.wait(Until.findObject(By.text(context.getString(R.string.list_controls_title))), 5000).click();
             String label = context.getResources().getStringArray(R.array.list_controls_choices)[choice];
             device.wait(Until.findObject(By.text(label)), 5000).click();
@@ -99,9 +99,8 @@ public class AppFilterDeviceTest {
             device.pressBack(); // Settings
             assertEquals("android", find("search_src_text").getText());
             if (choice == 0) {
-                find("filterApps"); find("sortApps");
+                find("menu_filter"); find("menu_sort");
             } else {
-                assertFalse(device.hasObject(By.res(context.getPackageName(), "filterApps")));
                 if (choice == 2) {
                     assertFalse(device.hasObject(By.res(context.getPackageName(), "menu_filter")));
                     assertFalse(device.hasObject(By.res(context.getPackageName(), "menu_sort")));
@@ -110,7 +109,7 @@ public class AppFilterDeviceTest {
                 find("filter_access");
                 closeFilter("button2");
                 openListAction("menu_sort", R.string.list_sort_apps);
-                assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.list_sort_recent))), 5000));
+                assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.sort_criterion_recent))), 5000));
                 device.findObject(By.res("android", "button1")).click();
                 assertEquals("android", find("search_src_text").getText());
             }
@@ -138,7 +137,7 @@ public class AppFilterDeviceTest {
         assertTrue("Sort has a full touch target", sort.width() >= 48 * density - 1);
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "toolbar-filter-and-sort.png"));
         find("menu_sort").click();
-        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.list_sort_recent))), 5000));
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.sort_criterion_recent))), 5000));
         device.findObject(By.res("android", "button1")).click();
         assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
         find("menu_filter").click();
@@ -148,7 +147,7 @@ public class AppFilterDeviceTest {
         find("search_src_text").setText("android");
         device.pressBack();
         openListAction("menu_sort", R.string.list_sort_apps);
-        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.list_sort_recent))), 5000));
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.sort_criterion_recent))), 5000));
         device.findObject(By.res("android", "button1")).click();
         assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
         assertEquals("android", find("search_src_text").getText());
@@ -166,27 +165,28 @@ public class AppFilterDeviceTest {
     // Test: Sort and Filter remain visible and usable during search, rotation and menu refreshes.
     // Why: Conditional toolbar placement previously moved these controls into overflow without warning.
     @Test public void controlsStayOnMainScreenWhileSearching() throws Exception {
-        find("filterApps"); find("sortApps");
+        find("menu_filter"); find("menu_sort");
         find("menu_search").click();
         find("search_src_text").setText("android");
         device.pressBack(); // Hide the keyboard, keeping the search open.
         onMain(() -> currentActivity().invalidateOptionsMenu());
         device.waitForIdle();
         assertEquals("android", find("search_src_text").getText());
-        find("filterApps").click();
+        find("menu_filter").click();
         find("filter_access");
         device.findObject(By.res("android", "button2")).click();
-        find("sortApps").click();
-        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.list_sort_recent))), 5000));
+        find("menu_sort").click();
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.sort_criterion_recent))), 5000));
         device.findObject(By.res("android", "button1")).click();
         assertEquals("android", find("search_src_text").getText());
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "main-fixed-controls.png"));
         device.setOrientationLeft();
         device.waitForIdle();
-        find("filterApps"); find("sortApps");
+        find("menu_filter"); find("menu_sort");
         assertEquals("android", find("search_src_text").getText());
-        find("filterApps").click();
-        assertTrue(device.wait(Until.findObject(By.res("android", "button3")), 5000).isClickable());
+        find("menu_filter").click();
+        scrollTo("filter_default");
+        assertTrue(find("filter_default").isClickable());
         scrollTo("filter_reset");
         find("filter_reset");
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "filter-default-landscape.png"));
@@ -200,12 +200,12 @@ public class AppFilterDeviceTest {
         find("search_src_text").setText("android");
         device.pressBack();
         onMain(() -> adapter().options.sort = ListSort.UID);
-        find("filterApps").click();
+        find("menu_filter").click();
         chooseFilters();
         closeFilter("button2");
         onMain(() -> assertFilters(adapter().options, false));
 
-        find("filterApps").click();
+        find("menu_filter").click();
         chooseFilters();
         closeFilter("button1");
         onMain(() -> {
@@ -214,7 +214,7 @@ public class AppFilterDeviceTest {
             assertFilters(new AdapterRule(currentActivity(), new FrameLayout(currentActivity())).options, false);
         });
 
-        find("filterApps").click();
+        find("menu_filter").click();
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "filter-set-default.png"));
         closeFilter("button3");
         onMain(() -> {
@@ -233,20 +233,21 @@ public class AppFilterDeviceTest {
         find("resetListFilters").click();
         device.setOrientationLeft();
         device.waitForIdle();
-        find("filterApps");
+        find("menu_filter");
         onMain(() -> {
             assertFilters(adapter().options, false);
             assertFilters(new AdapterRule(currentActivity(), new FrameLayout(currentActivity())).options, true);
         });
         device.setOrientationNatural();
         device.waitForIdle();
-        find("filterApps").click();
+        find("menu_filter").click();
         closeFilter("button3");
         onMain(() -> assertFilters(new AdapterRule(currentActivity(), new FrameLayout(currentActivity())).options, false));
     }
 
     private void closeFilter(String button) {
-        device.findObject(By.res("android", button)).click();
+        if ("button3".equals(button)) find("filter_default").click();
+        else device.findObject(By.res("android", button)).click();
         assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
     }
@@ -272,6 +273,7 @@ public class AppFilterDeviceTest {
     }
 
     private void scrollTo(String id) throws Exception {
+        if (device.hasObject(By.res(context.getPackageName(), id))) return;
         new UiScrollable(new UiSelector().resourceId(context.getPackageName() + ":id/filter_scroll"))
                 .scrollIntoView(new UiSelector().resourceId(context.getPackageName() + ":id/" + id));
     }
@@ -290,7 +292,7 @@ public class AppFilterDeviceTest {
         device.waitForIdle();
         if (device.hasObject(By.res(context.getPackageName(), "cbDontAsk")))
             device.findObject(By.res("android", "button2")).click();
-        find("filterApps");
+        find("menu_filter");
     }
 
     private Activity currentActivity() {

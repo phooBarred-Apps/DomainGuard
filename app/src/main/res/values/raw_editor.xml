@@ -1,0 +1,8 @@
+<resources>
+    <item type="id" name="raw_search" />
+    <string name="raw_find">Find in rules</string>
+    <string name="raw_previous">Previous match</string>
+    <string name="raw_next">Next match</string>
+    <string name="raw_no_match">No matches</string>
+    <string name="raw_found">Line %1$d</string>
+</resources>

@@ -722,7 +722,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             try {
                 UpdateRelease release = new UpdateClient().check(BuildConfig.VERSION_NAME);
                 if (release != null)
-                    showUpdateNotification("HeartGuard-MW " + release.version);
+                    showUpdateNotification("DomainGuard " + release.version);
             } catch (IOException | RuntimeException ex) {
                 Log.w(TAG, "Update check failed: " + ex.getMessage());
             }
@@ -1975,6 +1975,16 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
     }
 
     // Called from native code
+    private boolean isDnsBlocked(String name, int uid, boolean serviceBinding) {
+        return !RulesManager.getInstance(this).isUidPaused(uid) && (serviceBinding || isDomainBlocked(name));
+    }
+
+    // The native loop also enforces expiry, even if Android postpones an alarm during sleep.
+    private long nextAppPauseExpiry() {
+        return RulesManager.getInstance(this).nextPauseExpiry();
+    }
+
+    // Called from native code
     private boolean isDomainBlocked(String name) {
         boolean found = false;
         boolean blocked = false;
@@ -2030,7 +2040,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         packet.allowed = false;
         if (rm.getPreferenceFilter(ServiceSinkhole.this)) {
             // https://android.googlesource.com/platform/system/core/+/master/include/private/android_filesystem_config.h
-            if (WhitelistManager.getInstance(this).getExplicitBlock(this, packet.daddr, packet.uid) != null) {
+            if (rm.isUidPaused(packet.uid)) {
+                packet.allowed = true;
+            } else if (WhitelistManager.getInstance(this).getExplicitBlock(this, packet.daddr, packet.uid) != null) {
                 // Explicit app exceptions override cached/global/whole-app allows.
                 packet.allowed = false;
             } else if (capture_all_traffic && mapUidAllowed.containsKey(packet.uid) && mapUidAllowed.get(packet.uid)) {

@@ -29,7 +29,7 @@ final class UpdateApk {
         try {
             PackageInfo installed = pm.getPackageInfo(context.getPackageName(), flags);
             if (candidate == null || !installed.packageName.equals(candidate.packageName))
-                throw new IOException("This APK is not an update for HeartGuard-MW.");
+                throw new IOException("This APK is not an update for DomainGuard.");
             if (!release.version.equals(candidate.versionName) || code(candidate) <= code(installed))
                 throw new IOException("This APK is not the advertised newer version.");
             if (Build.VERSION.SDK_INT >= 24 && candidate.applicationInfo.minSdkVersion > Build.VERSION.SDK_INT)

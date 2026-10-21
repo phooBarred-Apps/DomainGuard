@@ -344,7 +344,7 @@ void report_exit(const struct arguments *args, const char *fmt, ...);
 
 void report_error(const struct arguments *args, jint error, const char *fmt, ...);
 
-void check_allowed(const struct arguments *args);
+void check_allowed(const struct arguments *args, int remove_blocked);
 
 void clear(struct context *ctx);
 
@@ -512,7 +512,8 @@ void log_packet(const struct arguments *args, jobject jpacket);
 void dns_resolved(const struct arguments *args,
                   const char *qname, const char *aname, const char *resource, int ttl);
 
-jboolean is_domain_blocked(const struct arguments *args, const char *name);
+jboolean is_domain_blocked(const struct arguments *args, const char *name, int uid, jboolean svcb);
+jlong next_app_pause_expiry(const struct arguments *args);
 
 jint get_uid_q(const struct arguments *args,
                jint version,

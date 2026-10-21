@@ -108,8 +108,8 @@ public class UpdateInstallDeviceTest {
             device.pressBack();
         }
         Pattern installer = Pattern.compile("com\\.(google\\.)?android\\.packageinstaller");
-        assertTrue("Installer recognized HeartGuard-MW", device.wait(Until.hasObject(
-                By.pkg(installer).text("HeartGuard-MW")), 15000));
+        assertTrue("Installer recognized DomainGuard", device.wait(Until.hasObject(
+                By.pkg(installer).text("DomainGuard")), 15000));
         assertTrue("Android offers installation after staging", device.wait(Until.hasObject(
                 By.pkg(installer).text(Pattern.compile("(?i)^(install|update)$")).enabled(true)), 15000));
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "update-installer.png"));

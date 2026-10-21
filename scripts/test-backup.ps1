@@ -22,8 +22,8 @@ function Invoke-Fixture {
 if ((Invoke-Adb -Arguments @('shell', 'getprop', 'ro.kernel.qemu')).Trim() -ne '1') {
     throw 'Target is not an emulator.'
 }
-Invoke-Adb -Arguments @('install', '-r', (Join-Path $root 'app/build/outputs/apk/debug/HeartGuard-MW-debug.apk')) | Write-Output
-Invoke-Adb -Arguments @('install', '-r', (Join-Path $root 'app/build/outputs/apk/androidTest/debug/HeartGuard-MW-debug-androidTest.apk')) | Write-Output
+Invoke-Adb -Arguments @('install', '-r', (Join-Path $root 'app/build/outputs/apk/debug/DomainGuard-debug.apk')) | Write-Output
+Invoke-Adb -Arguments @('install', '-r', (Join-Path $root 'app/build/outputs/apk/androidTest/debug/DomainGuard-debug-androidTest.apk')) | Write-Output
 $transports = Invoke-Adb -Arguments @('shell', 'bmgr', 'list', 'transports')
 $match = [regex]::Match($transports, '(?m)^\s*\*\s+(\S+)')
 if (-not $match.Success) { throw 'Cannot determine original backup transport.' }

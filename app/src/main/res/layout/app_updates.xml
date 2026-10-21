@@ -2,6 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical" android:padding="24dp">
+    <TextView android:id="@+id/update_installed" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingBottom="16dp" android:textAppearance="@style/TextMedium" />
     <ScrollView android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1" android:fillViewport="true">
         <TextView android:id="@+id/update_status" android:layout_width="match_parent"
@@ -12,4 +13,5 @@
         android:layout_marginTop="16dp" android:max="100" android:indeterminate="true" />
     <Button android:id="@+id/update_action" android:layout_width="match_parent"
         android:layout_height="wrap_content" android:text="@string/check_updates" />
+
 </LinearLayout>

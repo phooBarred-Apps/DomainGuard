@@ -1,0 +1,4 @@
+<resources>
+    <string name="search_mode_apps">Search apps</string>
+    <string name="search_mode_switch">Search mode. Touch and hold to switch.</string>
+</resources>

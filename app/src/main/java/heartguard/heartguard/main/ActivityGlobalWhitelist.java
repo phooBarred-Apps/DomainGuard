@@ -26,7 +26,7 @@ public class ActivityGlobalWhitelist extends AppCompatActivity {
     @Override protected void onCreate(Bundle state) {
         Util.setTheme(this);
         super.onCreate(state);
-        setContentView(R.layout.global_whitelist);
+        setContentView(R.layout.global_whitelist_legacy);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         input = findViewById(R.id.whitelist_input);
         ListView list = findViewById(R.id.whitelist_entries);
@@ -35,6 +35,7 @@ public class ActivityGlobalWhitelist extends AppCompatActivity {
         list.setEmptyView(findViewById(R.id.whitelist_empty));
         list.setOnItemClickListener((parent, view, position, id) -> remove(entries.get(position)));
         findViewById(R.id.whitelist_add).setOnClickListener(view -> add());
+        CompactUi.actionButton(findViewById(R.id.whitelist_add));
     }
 
     @Override protected void onResume() {
@@ -108,12 +109,14 @@ public class ActivityGlobalWhitelist extends AppCompatActivity {
     private void remove(Entry entry) {
         String action = entry.removing || !entry.active ? getString(R.string.whitelist_cancel)
                 : getString(R.string.whitelist_remove);
-        new AlertDialog.Builder(this).setTitle(action).setMessage(entry.domain)
+        AlertDialog confirmation = new AlertDialog.Builder(this).setTitle(action).setMessage(entry.domain)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(android.R.string.ok, (dialog, which) -> {
                     String command = entry.removing ? "abandon - " : entry.active ? "- " : "abandon ";
                     RulesManager.getInstance(this).queueRuleText(this, command + entry.rule);
                 }).show();
+        DialogSurface.apply(confirmation);
+        CompactUi.destructiveButton(confirmation.getButton(AlertDialog.BUTTON_POSITIVE));
     }
 
     private static final class Entry {

@@ -36,6 +36,7 @@ public class RuleDelayDialog extends DialogFragment {
         preview = content.findViewById(R.id.rule_delay_preview);
         current = content.findViewById(R.id.rule_delay_current);
         cancelPending = content.findViewById(R.id.rule_delay_cancel_pending);
+        CompactUi.destructiveButton((android.widget.Button) cancelPending);
         state = RuleDelay.read(requireContext());
         RuleDelay.Unit initialUnit = RuleDelay.displayUnit(state.seconds);
         input.setText(savedState == null ? Integer.toString(state.seconds / initialUnit.seconds)
@@ -80,12 +81,8 @@ public class RuleDelayDialog extends DialogFragment {
                 RulesManager.getInstance(requireContext()).queueRuleText(requireContext(), "abandon " + pending.rule);
             cancelPending.setEnabled(false);
         });
-        TextView title = new TextView(requireContext());
-        title.setText(R.string.rule_delay_title);
-        title.setTextAppearance(requireContext(), R.style.TextLarge);
-        title.setGravity(Gravity.CENTER);
-        int padding = (int) (24 * getResources().getDisplayMetrics().density);
-        title.setPadding(padding, padding, padding, padding / 2);
+        View title = CompactUi.header(requireContext(), R.string.rule_delay_title, R.drawable.ic_info_compact,
+                R.string.help_title, view -> CompactUi.help(requireContext(), R.string.rule_delay_title, getString(R.string.rule_delay_explanation)));
         return new AlertDialog.Builder(requireContext())
                 .setCustomTitle(title).setView(content)
                 .setNegativeButton(android.R.string.cancel, null)
@@ -94,6 +91,7 @@ public class RuleDelayDialog extends DialogFragment {
 
     @Override public void onResume() {
         super.onResume();
+        DialogSurface.apply((AlertDialog) requireDialog());
         DatabaseHelper.getInstance(requireContext()).addRuleChangedListener(listener);
         ((AlertDialog) requireDialog()).getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> save());
         RulesManager.getInstance(requireContext()).startTrueTimeRequest(requireContext());

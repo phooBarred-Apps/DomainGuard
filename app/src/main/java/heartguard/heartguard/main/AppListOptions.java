@@ -44,7 +44,11 @@ final class AppListOptions {
     }
 
     boolean matches(Rule app, DatabaseHelper.AccessStats stats) {
-        String term = query.trim().toLowerCase(Locale.ROOT);
+        return matches(app, stats, false);
+    }
+
+    boolean matches(Rule app, DatabaseHelper.AccessStats stats, boolean domains) {
+        String term = domains ? "" : query.trim().toLowerCase(Locale.ROOT);
         boolean searchMatch = term.isEmpty() || (app.name != null && app.name.toLowerCase(Locale.ROOT).contains(term))
                 || app.packageName.toLowerCase(Locale.ROOT).contains(term) || Integer.toString(app.uid).equals(term);
         boolean blocked = app.wifi_blocked && app.other_blocked && app.apply;
@@ -62,17 +66,22 @@ final class AppListOptions {
         names.setStrength(Collator.SECONDARY);
         return (left, right) -> {
             int order = 0;
-            if (ListSort.RECENT.equals(sort))
+            if (ListSort.RECENT.equals(sort) || ListSort.OLDEST.equals(sort)) {
                 order = Long.compare(lastTime(stats.get(right.uid)), lastTime(stats.get(left.uid)));
-            else if (ListSort.UID.equals(sort))
+                if (ListSort.OLDEST.equals(sort)) order = -order;
+            } else if (ListSort.UID.equals(sort) || ListSort.UID_DESC.equals(sort)) {
                 order = Integer.compare(left.uid, right.uid);
-            else if (ListSort.BLOCKED.equals(sort) || ListSort.ALLOWED.equals(sort)) {
+                if (ListSort.UID_DESC.equals(sort)) order = -order;
+            } else if (ListSort.BLOCKED.equals(sort) || ListSort.ALLOWED.equals(sort)) {
                 boolean leftBlocked = left.wifi_blocked && left.other_blocked && left.apply;
                 boolean rightBlocked = right.wifi_blocked && right.other_blocked && right.apply;
                 order = Boolean.compare(leftBlocked, rightBlocked);
                 if (ListSort.BLOCKED.equals(sort)) order = -order;
             }
-            if (order == 0) order = names.compare(left.name, right.name);
+            if (order == 0) {
+                order = names.compare(left.name, right.name);
+                if (ListSort.NAME_DESC.equals(sort)) order = -order;
+            }
             return order == 0 ? left.packageName.compareTo(right.packageName) : order;
         };
     }

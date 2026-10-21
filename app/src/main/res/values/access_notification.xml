@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="notification_hide_global_blocks">Hide global block notifications</string>
-    <string name="notification_hide_global_blocks_summary">Hide access notifications for domains in your active global blacklist. Blocking and access history are unchanged.</string>
+    <string name="notification_global_blocks">Notify on global blocks</string>
+    <string name="notification_global_blocks_summary">Include domains blocked by global rules in access notifications.</string>
     <string name="notification_allow_app">Allow for this app</string>
     <string name="notification_domain_blocked">Blocked: %1$s</string>
     <string name="notification_allow_queued">Allow requested: %1$s\nYour existing rule delay applies. Tap to review.</string>

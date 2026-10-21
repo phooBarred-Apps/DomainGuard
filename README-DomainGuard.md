@@ -1,8 +1,29 @@
-# HeartGuard-MW
+# DomainGuard
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Modifications for HeartGuard-MW were made on October 20, 2026.
+DomainGuard continues the HeartGuard-MW fork. Latest changes: October 21, 2026.
+
+Version `2.4` (DomainGuard) adds:
+
+- **DomainGuard branding** with the same Android package and signing certificate, so existing settings remain in place. Earlier HeartGuard-MW versions and their original release notes remain in Update history.
+- **Compact toolbar and expanded apps:** Search, Filter and Sort stay in the top toolbar; app count and Reset appear only when filtering. Expanded apps put domain tools together, with app details under Options. Buttons are frameless.
+- **Consistent action colors:** Add, Agree, Save, Apply and Resume use green; Delete, Remove, Cancel pending and Pause use red; plain Cancel and Done use gray. Shades adapt to light and dark themes.
+- **Main-screen domain search:** hold Search to choose apps or domains. Domain mode uses the normal app layout, expands matching apps, and copies every distinct matching domain. Switching modes retains separate queries. Restoring a query does not summon the keyboard.
+- **Central global lists:** an icon-labelled Blacklist/Whitelist chooser, search and add controls, separate bulk-add dialogs, consistent pending timers, and Back/Done navigation to the chooser.
+- **Allow/Block dialogs:** a plain globe toggles Apply globally off/on. The parent-domain dropdown is connected to the input and lists every parent down to the registrable domain, using an offline Public Suffix List. Delay notices reflect the selected action and scope.
+- **Display settings:** consolidated appearance and domain-list controls, the approved Hide allowed icon, and exact timestamps with day-of-month and seconds or optional elapsed time. Per-app domain search starts hidden; tap the magnifying glass to open it, or enable Always show domain search per app.
+- **Pause DomainGuard for an app:** choose seconds, minutes, hours or days, up to seven days. The normal rule delay applies before the pause begins. While paused, all of that app's traffic is allowed, including global and app-specific blocks; existing rules are retained and restored automatically afterward. Pending pauses show their duration and start time, with Cancel pending pause directly below. Active pauses offer a green Resume now button below the end time. Android apps sharing a network UID pause together, with a notice in the dialog. The red pause icon is explained in the Legend.
+- **Filter and sort defaults:** Set as default stays separate from confirmation buttons; Filter has Reset on the right, and applicable sort directions share the selected criterion's row.
+- **Rule delay:** units and readable duration, with help in the top-right corner.
+- **Updates:** one Install update action and a compact history control. History retains all published MW releases and DomainGuard releases, including full versions and dates.
+- **Device backup:** Automatic backup toggle, phone backup settings link, and an information dialog. Android controls timing and restore; there is no manual backup-request button.
+- **Legend and help:** grouped icon descriptions, a persistent scrollbar when needed, and Help & tutorials in the menu.
+- **Notify on global blocks:** off by default. Enable it to include global-rule blocks in access notifications; other block notifications continue normally.
+- **Raw rule editor:** literal search with previous/next matches and a draggable right-edge scrollbar. Navigation preserves the entire document; there are no top/bottom shortcut buttons.
+- **Traffic history:** changing global blocks retains existing access logs.
+
+Install 2.4 using its direct APK link once: the old MW updater recognizes only MW version tags. Future DomainGuard releases are supported by the new updater.
 
 Version `2.317-mw.7` adds:
 
@@ -102,13 +123,15 @@ Set `JAVA_HOME` and `ANDROID_HOME`. For signed builds, also set
 release APK is unsigned. To update an installed MW build, its original key is
 required; a newly generated key cannot replace it.
 
-Run `./Build-HeartGuard-MW.ps1` on Windows, or
+Run `./Build-DomainGuard.ps1` on Windows, or
 `./gradlew testDebugUnitTest lintRelease assembleRelease` on other systems.
 The output is in `app/build/outputs/apk/release/`.
 Run `./gradlew connectedDebugAndroidTest` with a disposable emulator for device
 tests, selecting the relevant test classes. The backup and installer fixtures
 require the scripts below; the public update test requires GitHub connectivity.
 The instrumentation tests create and remove their own example-domain rules.
+After installing the debug app and test APK, run `python scripts/test-pause-network.py`
+to verify real TCP and UDP connections stop at pause expiry, using host-local echo servers.
 Run `./scripts/test-backup.ps1` to exercise Android's backup and restore agent
 using the emulator's local transport. This does not test a Google account upload.
 Run `./scripts/test-updater.ps1` with the same signing environment for upgrade
@@ -127,3 +150,5 @@ The development repository is private. Public releases are in
 and the corresponding GPLv3 source archive (including build scripts).
 The private repository does not restrict recipients' GPL rights to that released
 source. Original notices and [LICENSE](LICENSE) are retained.
+
+The bundled Public Suffix List is distributed under MPL 2.0; see [its license](LICENSE-public-suffix-list.txt) and `app/src/main/res/raw/public_suffix_notice.txt`.

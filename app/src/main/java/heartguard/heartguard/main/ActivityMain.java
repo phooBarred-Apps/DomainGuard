@@ -45,6 +45,7 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
@@ -57,8 +58,11 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SearchView;
+import androidx.appcompat.widget.PopupMenu;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -79,6 +83,13 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     private AdapterRule adapter = null;
     private int applicationGeneration;
     private MenuItem menuSearch = null;
+    private Menu mainMenu;
+    private boolean searchDomains;
+    private boolean restoringSearch;
+    private boolean restoreSearchFocus;
+    private boolean searchExpanded;
+    private boolean resumed;
+    private String domainQuery = "";
     private AlertDialog dialogFirst = null;
     private AlertDialog dialogVpn = null;
     private AlertDialog dialogDoze = null;
@@ -134,6 +145,13 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         Util.setTheme(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
+
+        if (savedInstanceState != null) {
+            searchDomains = savedInstanceState.getBoolean("searchDomains");
+            searchExpanded = savedInstanceState.getBoolean("searchExpanded");
+            domainQuery = savedInstanceState.getString("domainQuery", "");
+        }
+        updateSearchContent();
 
         running = true;
 
@@ -223,8 +241,10 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             }
         });
         findViewById(R.id.resetListFilters).setOnClickListener(view -> resetListFilters());
-        findViewById(R.id.filterApps).setOnClickListener(view -> showAppFilters());
-        findViewById(R.id.sortApps).setOnClickListener(view -> showAppSort());
+        findViewById(R.id.copyMatchingDomains).setOnClickListener(view -> adapter.copyMatchingDomains());
+        androidx.appcompat.widget.TooltipCompat.setTooltipText(findViewById(R.id.resetListFilters), getString(R.string.reset_search_filters));
+        androidx.appcompat.widget.TooltipCompat.setTooltipText(findViewById(R.id.copyMatchingDomains), getString(R.string.domain_search_copy));
+        adapter.setDomainSearch(searchDomains, domainQuery);
 
         // Swipe to refresh
         TypedValue tv = new TypedValue();
@@ -421,12 +441,15 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             adapter.notifyDataSetChanged();
 
         super.onResume();
+        resumed = true;
+        if (adapter != null) adapter.refreshTraffic();
     }
 
     @Override
     protected void onPause() {
         Log.i(TAG, "Pause");
         super.onPause();
+        resumed = false;
 
         if (Build.VERSION.SDK_INT < MIN_SDK || Util.hasXposed(this))
             return;
@@ -584,8 +607,9 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             llSystem.setVisibility(!system && hint ? View.VISIBLE : View.GONE);
 
         } else if (Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS.equals(name)
-                || Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH.equals(name)) {
-            if (adapter != null) adapter.notifyDataSetChanged();
+                || Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH.equals(name)
+                || "domain_timestamp_format".equals(name)) {
+            if (adapter != null) { adapter.notifyDataSetChanged(); adapter.refreshTraffic(); }
         } else if ("theme".equals(name) || "dark_theme".equals(name))
             recreate();
     }
@@ -654,10 +678,21 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         // That is not a user edit and must not reset the adapter's active query.
         if (menuSearch != null) {
             SearchView oldSearch = (SearchView) menuSearch.getActionView();
+            WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(oldSearch);
+            restoreSearchFocus |= oldSearch.hasFocus() && oldSearch.hasWindowFocus()
+                    && insets != null && insets.isVisible(WindowInsetsCompat.Type.ime());
+            searchExpanded |= menuSearch.isActionViewExpanded();
+            menuSearch.setOnActionExpandListener(null);
             oldSearch.setOnQueryTextListener(null);
             oldSearch.setOnCloseListener(null);
         }
         super.invalidateOptionsMenu();
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // Returning from a rule dialog or another screen must not resume app-search editing.
+        if (!hasFocus && menuSearch != null) ((SearchView) menuSearch.getActionView()).clearFocus();
     }
 
     @Override
@@ -669,15 +704,15 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
 
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.main, menu);
+        mainMenu = menu;
 
         String placement = PreferenceManager.getDefaultSharedPreferences(this)
                 .getString(Rule.PREFERENCE_STRING_LIST_CONTROLS, "always");
-        boolean fixedControls = !"if_room".equals(placement) && !"menu".equals(placement);
-        findViewById(R.id.listControls).setVisibility(fixedControls ? View.VISIBLE : View.GONE);
         for (int id : new int[]{R.id.menu_filter, R.id.menu_sort}) {
-            menu.findItem(id).setVisible(!fixedControls);
+            menu.findItem(id).setVisible(true);
             menu.findItem(id).setShowAsAction("if_room".equals(placement)
-                    ? MenuItem.SHOW_AS_ACTION_IF_ROOM : MenuItem.SHOW_AS_ACTION_NEVER);
+                    ? MenuItem.SHOW_AS_ACTION_IF_ROOM : "menu".equals(placement)
+                    ? MenuItem.SHOW_AS_ACTION_NEVER : MenuItem.SHOW_AS_ACTION_ALWAYS);
         }
 
         // Search
@@ -685,11 +720,14 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         menuSearch.setOnActionExpandListener(new MenuItem.OnActionExpandListener() {
             @Override
             public boolean onMenuItemActionExpand(MenuItem item) {
+                searchExpanded = true;
                 return true;
             }
 
             @Override
             public boolean onMenuItemActionCollapse(MenuItem item) {
+                searchExpanded = false;
+                bindSearchModeShortcut();
                 if (getIntent().hasExtra(EXTRA_SEARCH) && !getIntent().getBooleanExtra(EXTRA_RELATED, false))
                     finish();
                 return true;
@@ -697,26 +735,36 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         });
 
         final SearchView searchView = (SearchView) menuSearch.getActionView();
-        searchView.setQueryHint(getString(R.string.list_search_apps));
-        String savedQuery = adapter.options.query;
-        if (!savedQuery.isEmpty()) {
-            menuSearch.expandActionView();
-            searchView.setQuery(savedQuery, false);
-            searchView.clearFocus();
+        // Keep a magnifying glass available for switching modes while the editor is expanded.
+        searchView.setIconifiedByDefault(false);
+        View modeIcon = searchView.findViewById(androidx.appcompat.R.id.search_mag_icon);
+        modeIcon.setContentDescription(getString(R.string.search_mode_switch));
+        modeIcon.setOnLongClickListener(this::showSearchModes);
+        modeIcon.setOnClickListener(this::showSearchModes);
+        int modeIconSize = (int) (48 * getResources().getDisplayMetrics().density);
+        modeIcon.getLayoutParams().width = modeIconSize;
+        modeIcon.getLayoutParams().height = modeIconSize;
+        searchView.setQueryHint(getString(searchDomains ? R.string.domain_search_hint : R.string.list_search_apps));
+        String savedQuery = currentSearchQuery();
+        if (!savedQuery.isEmpty() || searchExpanded || searchDomains) {
+            if (restoreSearchFocus) {
+                menuSearch.expandActionView();
+                searchView.setQuery(savedQuery, false);
+            } else restoreSearch(savedQuery);
         }
+        restoreSearchFocus = false;
+        bindSearchModeShortcut();
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
-                if (adapter != null)
-                    adapter.setQuery(query);
+                applySearchQuery(query);
                 searchView.clearFocus();
                 return true;
             }
 
             @Override
             public boolean onQueryTextChange(String newText) {
-                if (adapter != null)
-                    adapter.setQuery(newText);
+                if (!restoringSearch) applySearchQuery(newText);
                 return true;
             }
         });
@@ -726,8 +774,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
                 Intent intent = getIntent();
                 intent.removeExtra(EXTRA_SEARCH);
 
-                if (adapter != null)
-                    adapter.setQuery("");
+                applySearchQuery("");
                 return true;
             }
         });
@@ -764,7 +811,13 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         switch (item.getItemId()) {
             case R.id.menu_domain_search:
-                startActivity(new Intent(this, ActivityDomainSearch.class));
+                setSearchMode(true);
+                return true;
+            case R.id.menu_display_settings:
+                startActivity(new Intent(this, ActivitySettings.class).putExtra("open_display_settings", true));
+                return true;
+            case R.id.menu_help_tutorials:
+                CompactUi.help(this, R.string.help_tutorials, getString(R.string.help_tutorials_body));
                 return true;
             case R.id.menu_global_lists:
                 GlobalListsDialog.choose(this);
@@ -937,21 +990,101 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     private void updateSearch(String search) {
         if (search == null) return;
         adapter.setQuery(search);
+        if (searchDomains) setSearchMode(false);
         if (menuSearch != null) {
-            menuSearch.expandActionView();
-            ((SearchView) menuSearch.getActionView()).setQuery(search, false);
+            restoreSearch(search);
         }
+    }
+
+    private String currentSearchQuery() {
+        return searchDomains ? domainQuery : adapter.options.query;
+    }
+
+    private void applySearchQuery(String query) {
+        if (searchDomains) { domainQuery = query; adapter.setDomainSearch(true, query); }
+        else if (adapter != null) adapter.setQuery(query);
+    }
+
+    private void restoreSearch(String query) {
+        SearchView search = (SearchView) menuSearch.getActionView();
+        int descendants = search.getDescendantFocusability();
+        // Expanding a SearchView normally requests editor focus and schedules the IME.
+        // Restoring a filter is not an editing gesture, and must leave other fields alone.
+        restoringSearch = true;
+        try {
+            search.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+            menuSearch.expandActionView();
+            search.setQuery(query, false);
+            search.clearFocus();
+        } finally {
+            search.setDescendantFocusability(descendants);
+            restoringSearch = false;
+        }
+    }
+
+    private boolean showSearchModes(View anchor) {
+        if (menuSearch != null) ((SearchView) menuSearch.getActionView()).clearFocus();
+        PopupMenu popup = new PopupMenu(this, anchor);
+        popup.getMenu().add(0, R.id.menu_search, 0, R.string.search_mode_apps).setChecked(!searchDomains);
+        popup.getMenu().add(0, R.id.menu_domain_search, 1, R.string.domain_search_title).setChecked(searchDomains);
+        popup.getMenu().setGroupCheckable(0, true, true);
+        popup.setOnMenuItemClickListener(item -> {
+            setSearchMode(item.getItemId() == R.id.menu_domain_search);
+            return true;
+        });
+        popup.show();
+        return true;
+    }
+
+    private void bindSearchModeShortcut() {
+        View decor = getWindow().getDecorView();
+        // The action item is created and given its default long-press tooltip during layout.
+        decor.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                decor.getViewTreeObserver().removeOnPreDrawListener(this);
+                View button = findViewById(R.id.menu_search);
+                if (button != null) button.setOnLongClickListener(ActivityMain.this::showSearchModes);
+                return true;
+            }
+        });
+    }
+
+    private void setSearchMode(boolean domains) {
+        searchDomains = domains;
+        updateSearchContent();
+        adapter.setDomainSearch(domains, domainQuery);
+        if (menuSearch != null) {
+            SearchView search = (SearchView) menuSearch.getActionView();
+            search.setQueryHint(getString(domains ? R.string.domain_search_hint : R.string.list_search_apps));
+            restoreSearch(currentSearchQuery());
+        }
+    }
+
+    private void updateSearchContent() {
+        if (adapter != null) adapter.setDomainSearch(searchDomains, domainQuery);
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         if (adapter != null) state.putBundle("appListView", adapter.saveViewState());
+        state.putBoolean("searchDomains", searchDomains);
+        state.putBoolean("searchExpanded", menuSearch != null && menuSearch.isActionViewExpanded());
+        state.putString("domainQuery", domainQuery);
     }
 
     private void resetListFilters() {
         adapter.options.reset();
+        domainQuery = "";
+        searchDomains = false;
+        adapter.setDomainSearch(false, "");
         getIntent().removeExtra(EXTRA_SEARCH);
-        if (menuSearch != null) ((SearchView) menuSearch.getActionView()).setQuery("", false);
+        if (menuSearch != null) {
+            SearchView search = (SearchView) menuSearch.getActionView();
+            search.setQuery("", false);
+            search.setQueryHint(getString(R.string.list_search_apps));
+            search.clearFocus();
+            menuSearch.collapseActionView();
+        }
         adapter.applyOptions(false);
     }
 
@@ -970,16 +1103,19 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     private void updateListSummary() {
         AppListOptions options = adapter.options;
         java.util.List<String> active = new java.util.ArrayList<>();
-        if (!options.query.trim().isEmpty()) active.add(getString(R.string.list_search_active, options.query));
+        if (!searchDomains && !options.query.trim().isEmpty()) active.add(getString(R.string.list_search_active, options.query));
         if (options.access != 0) active.add(getResources().getStringArray(R.array.list_access_choices)[options.access]);
         if (options.activity != 0) active.add(getResources().getStringArray(R.array.list_activity_choices)[options.activity]);
         if (options.type != 0) active.add(getResources().getStringArray(R.array.list_type_choices)[options.type]);
         if (!options.includeNoInternet) active.add(getString(R.string.list_filter_internet_only));
         if (!options.includeDisabled) active.add(getString(R.string.list_filter_enabled_only));
+        boolean filtered = !active.isEmpty() || searchDomains;
         String summary = getString(R.string.list_app_count, adapter.getItemCount(), adapter.totalCount());
-        if (!active.isEmpty()) summary += " \u00b7 " + android.text.TextUtils.join(" \u00b7 ", active);
+        if (searchDomains) summary += " · " + getString(R.string.matching_domain_count, adapter.matchingDomainCount());
         ((TextView) findViewById(R.id.listSummary)).setText(summary);
-        findViewById(R.id.resetListFilters).setVisibility(active.isEmpty() ? View.GONE : View.VISIBLE);
+        findViewById(R.id.listSummaryRow).setVisibility(filtered ? View.VISIBLE : View.GONE);
+        findViewById(R.id.copyMatchingDomains).setVisibility(searchDomains ? View.VISIBLE : View.GONE);
+        findViewById(R.id.copyMatchingDomains).setEnabled(adapter.matchingDomainCount() > 0);
         findViewById(R.id.emptyApplications).setVisibility(adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
     }
 
@@ -1108,6 +1244,8 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
 
         // Show dialog
         dialogLegend = new AlertDialog.Builder(this)
+                .setCustomTitle(SortDialog.title(this, R.string.menu_legend))
+                .setPositiveButton(R.string.list_done, null)
                 .setView(view)
                 .setCancelable(true)
                 .setOnDismissListener(new DialogInterface.OnDismissListener() {
@@ -1118,6 +1256,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
                 })
                 .create();
         dialogLegend.show();
+        DialogSurface.apply(dialogLegend);
     }
 
     //private void menu_lockdown(MenuItem item) {

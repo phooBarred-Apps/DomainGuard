@@ -27,6 +27,11 @@ public class ActivityRulesEntry extends AppCompatActivity {
     public final static int MODE_SUBMIT_CHANGES = 3;
 
     private int m_mode = MODE_ADD_RULES;
+    private FastScrollEditText editor;
+    private String findQuery = "";
+    private int match = -1;
+    private android.text.style.BackgroundColorSpan highlight;
+
     List<String> m_solid_rules = new LinkedList<>();
     List<String> m_pending_additions = new LinkedList<>();
     List<String> m_pending_deletions = new LinkedList<>();
@@ -63,6 +68,7 @@ public class ActivityRulesEntry extends AppCompatActivity {
                 et.setText(text);
             }
             Button cancelButton = findViewById(R.id.cancel_button);
+            CompactUi.dismissButton(cancelButton);
             cancelButton.setVisibility(View.VISIBLE);
             cancelButton.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -75,7 +81,21 @@ public class ActivityRulesEntry extends AppCompatActivity {
             super.finish();
         }
 
+        editor = findViewById(R.id.etAddMultipleRules);
+        getSupportActionBar().setTitle(m_mode == MODE_EDIT_RULES ? R.string.edit_rules
+                : m_mode == MODE_SUBMIT_CHANGES ? R.string.submit_these_changes : R.string.add_multiple_rules);
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        findViewById(R.id.rawPrevious).setOnClickListener(view -> findMatch(true, false));
+        findViewById(R.id.rawNext).setOnClickListener(view -> findMatch(false, false));
+        editor.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+            public void onTextChanged(CharSequence text, int start, int before, int count) {
+                if (!findQuery.isEmpty()) { match = -1; clearHighlight(); }
+            }
+            public void afterTextChanged(android.text.Editable text) { }
+        });
         Button submit = findViewById(R.id.submit_button);
+        CompactUi.actionButton(submit);
         submit.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -93,6 +113,56 @@ public class ActivityRulesEntry extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    @Override public boolean onCreateOptionsMenu(android.view.Menu menu) {
+        androidx.appcompat.widget.SearchView search = new androidx.appcompat.widget.SearchView(this);
+        search.setQueryHint(getString(R.string.raw_find));
+        android.view.MenuItem item = menu.add(0, R.id.raw_search, 0, R.string.raw_find);
+        item.setIcon(R.drawable.ic_search_white_24dp);
+        item.setActionView(search);
+        item.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS | android.view.MenuItem.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW);
+        item.setOnActionExpandListener(new android.view.MenuItem.OnActionExpandListener() {
+            public boolean onMenuItemActionExpand(android.view.MenuItem ignored) {
+                findViewById(R.id.rawSearchNavigation).setVisibility(View.VISIBLE);
+                return true;
+            }
+            public boolean onMenuItemActionCollapse(android.view.MenuItem ignored) {
+                findQuery = ""; clearHighlight();
+                findViewById(R.id.rawSearchNavigation).setVisibility(View.GONE);
+                return true;
+            }
+        });
+        search.setOnQueryTextListener(new androidx.appcompat.widget.SearchView.OnQueryTextListener() {
+            public boolean onQueryTextSubmit(String text) { findMatch(false, false); return true; }
+            public boolean onQueryTextChange(String text) { findQuery = text; findMatch(false, true); return true; }
+        });
+        return true;
+    }
+
+    @Override public boolean onOptionsItemSelected(android.view.MenuItem item) {
+        if (item.getItemId() == android.R.id.home) { finish(); return true; }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void clearHighlight() {
+        if (highlight != null) editor.getText().removeSpan(highlight);
+        highlight = null;
+    }
+
+    private void findMatch(boolean backwards, boolean restart) {
+        clearHighlight();
+        int from = restart || match < 0 ? 0 : match + (backwards ? -1 : 1);
+        match = RuleTextSearch.find(editor.getText().toString(), findQuery, from, backwards);
+        TextView status = findViewById(R.id.rawSearchStatus);
+        if (match < 0) { status.setText(findQuery.isEmpty() ? "" : getString(R.string.raw_no_match)); return; }
+        highlight = new android.text.style.BackgroundColorSpan(0x6680cbc4);
+        editor.getText().setSpan(highlight, match, match + findQuery.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        if (editor.getLayout() != null) {
+            int line = editor.getLayout().getLineForOffset(match);
+            status.setText(getString(R.string.raw_found, line + 1));
+            editor.revealLine(line);
+        }
     }
 
     // The submit button has been pressed, so submit all lines

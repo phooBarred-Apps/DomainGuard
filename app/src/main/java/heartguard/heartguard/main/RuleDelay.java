@@ -47,6 +47,10 @@ final class RuleDelay {
     }
 
     static String duration(Context context, int seconds) {
+        return duration(context, seconds, false);
+    }
+
+    static String duration(Context context, int seconds, boolean singularUnits) {
         if (seconds == 0) return context.getString(R.string.rule_delay_none);
         List<String> parts = new ArrayList<>();
         int[] amounts = {seconds / 86400, seconds / 3600 % 24, seconds / 60 % 60, seconds % 60};
@@ -54,7 +58,7 @@ final class RuleDelay {
                 R.plurals.rule_delay_minutes, R.plurals.rule_delay_seconds};
         for (int i = 0; i < amounts.length; i++)
             if (amounts[i] > 0)
-                parts.add(context.getResources().getQuantityString(plurals[i], amounts[i], amounts[i]));
+                parts.add(context.getResources().getQuantityString(plurals[i], singularUnits ? 1 : amounts[i], amounts[i]));
         return TextUtils.join(" ", parts);
     }
 

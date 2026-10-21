@@ -12,6 +12,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.List;
 
 final class UpdateClient {
     interface Progress { void changed(int percent); }
@@ -19,7 +20,16 @@ final class UpdateClient {
     private volatile HttpURLConnection connection;
 
     UpdateRelease check(String installed) throws IOException {
-        HttpURLConnection request = open(URI.create(BuildConfig.GITHUB_LATEST_API), false);
+        return UpdateRelease.parse(readListing(URI.create(BuildConfig.GITHUB_LATEST_API)), installed);
+    }
+
+    List<UpdateHistory.Entry> history() throws IOException {
+        return UpdateHistory.load(page -> readListing(URI.create("https://api.github.com/repos/"
+                + UpdateRelease.REPOSITORY + "/releases?per_page=" + UpdateHistory.PAGE_SIZE + "&page=" + page)));
+    }
+
+    private String readListing(URI uri) throws IOException {
+        HttpURLConnection request = open(uri, false);
         try (InputStream input = request.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
             int count;
@@ -28,7 +38,7 @@ final class UpdateClient {
                 if (output.size() + count > 2 * 1024 * 1024) throw new IOException("The update listing is too large.");
                 output.write(buffer, 0, count);
             }
-            return UpdateRelease.parse(output.toString("UTF-8"), installed);
+            return output.toString("UTF-8");
         } finally { request.disconnect(); connection = null; }
     }
 
@@ -79,7 +89,7 @@ final class UpdateClient {
             request.setConnectTimeout(15000);
             request.setReadTimeout(15000);
             request.setUseCaches(false);
-            request.setRequestProperty("User-Agent", "HeartGuard-MW-Updater");
+            request.setRequestProperty("User-Agent", "DomainGuard-Updater");
             request.setRequestProperty("Accept", download ? "application/octet-stream" : "application/vnd.github+json");
             int status;
             try { status = request.getResponseCode(); }
@@ -92,7 +102,7 @@ final class UpdateClient {
                 catch (IllegalArgumentException invalid) { throw new IOException("Invalid update redirect.", invalid); }
                 continue;
             }
-            if (status == 404) throw new IOException("No public HeartGuard-MW release is available yet.");
+            if (status == 404) throw new IOException("No public DomainGuard release is available yet.");
             if (status == 403 || status == 429) throw new IOException("GitHub is limiting update checks. Try again later.");
             throw new IOException("GitHub could not provide the update (HTTP " + status + ").");
         }

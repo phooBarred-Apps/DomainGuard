@@ -806,6 +806,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public Cursor getAccess(int uid, boolean hideAllowed, String search, String sort) {
+        return getAccess(uid, hideAllowed, search, sort, "");
+    }
+
+    public Cursor getAccess(int uid, boolean hideAllowed, String search, String sort, String mainSearch) {
         lock.readLock().lock();
         try {
             SQLiteDatabase db = this.getReadableDatabase();
@@ -824,8 +828,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 query += " AND a.daddr LIKE ? ESCAPE '\\'";
                 args.add("%" + search.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
             }
+            if (mainSearch != null && !mainSearch.isEmpty()) {
+                query += " AND a.daddr LIKE ? ESCAPE '\\'";
+                args.add(new DomainSearchQuery(mainSearch).sqlContains());
+            }
             String order = "a.time DESC";
             if (ListSort.NAME.equals(sort)) order = "a.daddr COLLATE NOCASE";
+            else if (ListSort.NAME_DESC.equals(sort)) order = "a.daddr COLLATE NOCASE DESC";
+            else if (ListSort.OLDEST.equals(sort)) order = "a.time ASC";
             else if (ListSort.BLOCKED.equals(sort)) order = "(a.block > 0) DESC, a.time DESC";
             else if (ListSort.ALLOWED.equals(sort)) order = "(a.block = 0) DESC, a.time DESC";
             query += " ORDER BY " + order + ", a.ID DESC LIMIT 250";
@@ -845,7 +855,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             // Search all recorded apps before grouping, independent of app filters and the per-app limit.
             return getReadableDatabase().rawQuery(
-                    "SELECT uid, daddr, time, allowed, pending_allow FROM access"
+                    "SELECT uid, daddr, time, allowed, pending_allow, COALESCE(block, -1) FROM access"
                             + " WHERE daddr LIKE ? ESCAPE '\\'"
                             + " ORDER BY uid, daddr COLLATE NOCASE, time DESC, ID DESC",
                     new String[]{search.sqlContains()});

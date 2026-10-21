@@ -85,6 +85,8 @@ public class ActivityRulesList extends AppCompatActivity {
                 //Log.w(TAG, "clicked id " + Long.toString(id) + " or, from cursor, " + Long.toString(otherid));
                 PopupMenu popup = new PopupMenu(ActivityRulesList.this, view);
                 popup.inflate(R.menu.rules_list_popup);
+                CompactUi.destructiveMenuItem(ActivityRulesList.this, popup.getMenu().findItem(R.id.menu_ruleslist_popup_delete));
+                CompactUi.destructiveMenuItem(ActivityRulesList.this, popup.getMenu().findItem(R.id.menu_ruleslist_popup_abandon));
                 if (!enacted) {
                     popup.getMenu().removeItem(R.id.menu_ruleslist_popup_delete);
                 }
@@ -98,7 +100,7 @@ public class ActivityRulesList extends AppCompatActivity {
                         int menuitem = menuItem.getItemId();
                         if (menuitem == R.id.menu_ruleslist_popup_delete) {
                             String message = ActivityRulesList.this.getString(R.string.confirm_delete_rule, displayableRuletext);
-                            Util.areYouSure(ActivityRulesList.this, message, new Util.DoubtListener() {
+                            Util.confirmRemoval(ActivityRulesList.this, message, new Util.DoubtListener() {
                                 @Override
                                 public void onSure() {
                                     try {
@@ -111,7 +113,7 @@ public class ActivityRulesList extends AppCompatActivity {
                             return true;
                         } else if (menuitem == R.id.menu_ruleslist_popup_abandon) {
                             String message = ActivityRulesList.this.getString(R.string.confirm_abandon_rule, displayableRuletext);
-                            Util.areYouSure(ActivityRulesList.this, message, new Util.DoubtListener() {
+                            Util.confirmRemoval(ActivityRulesList.this, message, new Util.DoubtListener() {
                                 @Override
                                 public void onSure() {
                                     try {

@@ -1,0 +1,21 @@
+<resources>
+    <item name="whitelist_input" type="id" />
+    <string name="global_add_hint">Domains or URLs, one per line</string>
+    <string name="global_add_action">Add</string>
+    <item name="backup_information" type="id" />
+    <item name="backup_automatic_toggle" type="id" />
+    <item name="update_show_logs" type="id" />
+    <string name="display_appearance">Appearance</string>
+    <string name="display_app_list">App list</string>
+    <string name="display_domain_lists">Domain lists</string>
+    <string name="matching_domain_count">%1$d domains</string>
+    <string name="domains_copied">Copied %1$d distinct domains</string>
+    <string name="control_on">On</string>
+    <string name="control_off">Off</string>
+    <string name="elapsed_seconds">%1$ds ago</string>
+    <string name="elapsed_minutes">%1$dm ago</string>
+    <string name="elapsed_hours">%1$dh ago</string>
+    <string name="elapsed_days">%1$dd ago</string>
+    <string-array name="timestamp_choices"><item>Exact time</item><item>Time elapsed</item></string-array>
+    <string-array name="timestamp_values" translatable="false"><item>exact</item><item>elapsed</item></string-array>
+</resources>

@@ -11,13 +11,35 @@
     <attr name="iconDelete" format="reference" />
     <attr name="iconPlay" format="reference" />
     <attr name="iconPause" format="reference" />
+    <attr name="colorActionPositive" format="color" />
+    <attr name="colorActionDestructive" format="color" />
+
+    <style name="ActionButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">?attr/colorActionPositive</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="CancelButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
 
     <style name="AppDialog" parent="Theme.AppCompat.Dialog">
+        <item name="buttonBarNegativeButtonStyle">@style/CancelButton</item>
+        <item name="buttonBarPositiveButtonStyle">@style/ActionButton</item>
+        <item name="colorActionPositive">#81c784</item>
+        <item name="colorActionDestructive">#ef9a9a</item>
         <item name="windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 
     <style name="BaseThemeDark" parent="Theme.AppCompat.Light.DarkActionBar">
+        <item name="buttonBarNegativeButtonStyle">@style/CancelButton</item>
+        <item name="buttonBarPositiveButtonStyle">@style/ActionButton</item>
+        <item name="colorActionPositive">#2e7d32</item>
+        <item name="colorActionDestructive">#c62828</item>
         <item name="expander">@drawable/expander_black</item>
         <item name="iconQueue">@drawable/ic_hourglass_empty_black_24dp</item>
         <item name="iconMetered">@drawable/ic_attach_money_black_24dp</item>
@@ -31,6 +53,10 @@
     </style>
 
     <style name="BaseThemeLight" parent="Theme.AppCompat">
+        <item name="buttonBarNegativeButtonStyle">@style/CancelButton</item>
+        <item name="buttonBarPositiveButtonStyle">@style/ActionButton</item>
+        <item name="colorActionPositive">#81c784</item>
+        <item name="colorActionDestructive">#ef9a9a</item>
         <item name="expander">@drawable/expander_white</item>
         <item name="iconQueue">@drawable/ic_hourglass_empty_white_24dp</item>
         <item name="iconMetered">@drawable/ic_attach_money_white_24dp</item>

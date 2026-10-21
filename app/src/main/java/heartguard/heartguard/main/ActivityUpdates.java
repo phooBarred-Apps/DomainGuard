@@ -37,6 +37,9 @@ public class ActivityUpdates extends AppCompatActivity {
         status = findViewById(R.id.update_status);
         progress = findViewById(R.id.update_progress);
         action = findViewById(R.id.update_action);
+        CompactUi.frameless(action);
+        CompactUi.actionButton(action);
+        ((TextView) findViewById(R.id.update_installed)).setText(getString(R.string.installed_version, BuildConfig.VERSION_NAME));
         check();
     }
 
@@ -50,7 +53,9 @@ public class ActivityUpdates extends AppCompatActivity {
                     if (found == null)
                         ready(getString(R.string.update_current, BuildConfig.VERSION_NAME), R.string.check_updates, this::check);
                     else
-                        ready(getString(R.string.update_available, BuildConfig.VERSION_NAME, found.version, found.notes),
+                        ready(getString(R.string.available_version, found.version)
+                                        + (found.publishedAt.length() >= 10 ? " · " + found.publishedAt.substring(0, 10) : "")
+                                        + "\n\n" + found.notes,
                                 R.string.update_install, this::download);
                 });
             } catch (IOException | RuntimeException failure) { fail(failure, this::check); }
@@ -123,7 +128,17 @@ public class ActivityUpdates extends AppCompatActivity {
         super.onDestroy();
     }
 
+    @Override public boolean onCreateOptionsMenu(android.view.Menu menu) {
+        menu.add(0, R.id.update_show_logs, 0, R.string.update_show_logs)
+                .setIcon(R.drawable.ic_history_compact).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+        return true;
+    }
+
     @Override public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == R.id.update_show_logs) {
+            startActivity(new Intent(this, ActivityUpdateLogs.class));
+            return true;
+        }
         if (item.getItemId() == android.R.id.home) { finish(); return true; }
         return super.onOptionsItemSelected(item);
     }

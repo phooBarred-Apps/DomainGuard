@@ -617,11 +617,23 @@ public class Util {
     }
 
     public static void areYouSure(Context context, String message, final DoubtListener listener) {
+        showConfirmation(context, message, listener, false);
+    }
+
+    public static void confirmRemoval(Context context, int explanation, final DoubtListener listener) {
+        confirmRemoval(context, context.getString(explanation), listener);
+    }
+
+    public static void confirmRemoval(Context context, String message, final DoubtListener listener) {
+        showConfirmation(context, message, listener, true);
+    }
+
+    private static void showConfirmation(Context context, String message, final DoubtListener listener, boolean removal) {
         LayoutInflater inflater = LayoutInflater.from(context);
         View view = inflater.inflate(R.layout.sure, null, false);
         TextView tvExplanation = view.findViewById(R.id.tvExplanation);
         tvExplanation.setText(message);
-        new AlertDialog.Builder(context)
+        AlertDialog confirmation = new AlertDialog.Builder(context)
                 .setView(view)
                 .setCancelable(true)
                 .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
@@ -636,7 +648,10 @@ public class Util {
                         // Do nothing
                     }
                 })
-                .create().show();
+                .create();
+        confirmation.show();
+        DialogSurface.apply(confirmation);
+        if (removal) CompactUi.destructiveButton(confirmation.getButton(AlertDialog.BUTTON_POSITIVE));
     }
 
     private static final Map<String, String> mapIPOrganization = new HashMap<>();
@@ -872,7 +887,7 @@ public class Util {
 
                 // Get version info
                 String version = getSelfVersionName(context);
-                sb.append(String.format("NetGuard: %s/%d\r\n", version, getSelfVersionCode(context)));
+                sb.append(String.format("DomainGuard: %s/%d\r\n", version, getSelfVersionCode(context)));
                 sb.append(String.format("Android: %s (SDK %d)\r\n", Build.VERSION.RELEASE, Build.VERSION.SDK_INT));
                 sb.append("\r\n");
 
@@ -978,7 +993,7 @@ public class Util {
                 Intent sendEmail = new Intent(Intent.ACTION_SEND);
                 sendEmail.setType("message/rfc822");
                 sendEmail.putExtra(Intent.EXTRA_EMAIL, new String[]{"marcel+netguard@faircode.eu"});
-                sendEmail.putExtra(Intent.EXTRA_SUBJECT, "NetGuard " + version + " logcat");
+                sendEmail.putExtra(Intent.EXTRA_SUBJECT, "DomainGuard " + version + " logcat");
                 sendEmail.putExtra(Intent.EXTRA_TEXT, sb.toString());
                 sendEmail.putExtra(Intent.EXTRA_STREAM, uri);
                 return sendEmail;

@@ -94,7 +94,7 @@ public class ActivityDns extends AppCompatActivity {
                 return true;
 
             case R.id.menu_clear:
-                Util.areYouSure(this, R.string.menu_clear, new Util.DoubtListener() {
+                Util.confirmRemoval(this, R.string.menu_clear, new Util.DoubtListener() {
                     @Override
                     public void onSure() {
                         clear();

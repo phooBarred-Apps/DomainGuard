@@ -1,44 +1,127 @@
 package heartguard.heartguard.main;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.widget.ListPopupWindow;
+import androidx.appcompat.widget.TooltipCompat;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
 
 final class DomainRuleDialog {
+    private static ParentDomains parentDomains;
+
     static void show(Context context, String packageName, String address, boolean blocked) {
         View view = LayoutInflater.from(context).inflate(R.layout.allowhost, null, false);
         EditText input = view.findViewById(R.id.allow_new_access_daddr);
-        EditText packageInput = view.findViewById(R.id.allow_new_access_package_name);
         TextView title = view.findViewById(R.id.allow_new_access_title);
         TextView scope = view.findViewById(R.id.allow_new_access_package_label);
+        TextView delay = view.findViewById(R.id.domain_action_delay);
+        ImageButton global = view.findViewById(R.id.allow_new_access_global);
+        ImageButton parents = view.findViewById(R.id.domain_parent_choices);
+        ImageView appIcon = view.findViewById(R.id.domain_scope_icon);
+        boolean[] applyGlobally = {false};
         input.setText(address);
-        input.setHint(R.string.domain_hint);
-        packageInput.setText(packageName);
-        packageInput.setVisibility(View.GONE);
-        title.setText(blocked ? R.string.title_block_app : packageName.isEmpty()
-                ? R.string.title_allow_globally : R.string.title_allow);
-        scope.setText(packageName.isEmpty() ? context.getString(R.string.domain_scope_all)
-                : packageName + (blocked ? "\n\n" + context.getString(R.string.block_app_description) : ""));
+        input.clearFocus();
+        title.setText(blocked ? R.string.domain_block_title : R.string.domain_allow_title);
+        String app = appName(context, packageName);
+        try { appIcon.setImageDrawable(context.getPackageManager().getApplicationIcon(packageName)); }
+        catch (android.content.pm.PackageManager.NameNotFoundException missing) { appIcon.setImageResource(R.drawable.ic_globe_compact); }
+        Runnable refresh = () -> {
+            scope.setText(applyGlobally[0] ? context.getString(R.string.scope_all_apps) : app);
+            appIcon.setVisibility(applyGlobally[0] ? View.GONE : View.VISIBLE);
+            global.setSelected(applyGlobally[0]);
+            global.setImageTintList(applyGlobally[0] ? ColorStateList.valueOf(0xff80cbc4) : null);
+            global.setContentDescription(context.getString(applyGlobally[0] ? R.string.scope_on : R.string.scope_off));
+            TooltipCompat.setTooltipText(global, global.getContentDescription());
+            parents.setEnabled(!parents(context, input.getText().toString()).isEmpty());
+            parents.setAlpha(parents.isEnabled() ? 1f : 0.3f);
+            int seconds = 0;
+            try { seconds = RulesManager.getInstance(context).previewDelay(context,
+                    rule(packageName, DomainInput.normalize(input.getText().toString()), blocked, applyGlobally[0])); }
+            catch (IllegalArgumentException ignored) { }
+            delay.setText(context.getString(R.string.domain_delay, RuleDelay.duration(context, seconds)));
+            delay.setVisibility(seconds > 0 ? View.VISIBLE : View.GONE);
+        };
+        global.setOnClickListener(button -> { applyGlobally[0] = !applyGlobally[0]; input.setError(null); refresh.run(); });
+        parents.setOnClickListener(button -> {
+            List<String> choices = parents(context, input.getText().toString());
+            View field = view.findViewById(R.id.domain_input_row);
+            ListPopupWindow popup = new ListPopupWindow(context);
+            popup.setAnchorView(field);
+            popup.setWidth(field.getWidth());
+            popup.setModal(true);
+            popup.setInputMethodMode(android.widget.PopupWindow.INPUT_METHOD_NOT_NEEDED);
+            popup.setAdapter(new android.widget.ArrayAdapter<>(context, android.R.layout.simple_list_item_1, choices));
+            popup.setOnItemClickListener((list, row, position, id) -> {
+                input.setText(choices.get(position));
+                input.setSelection(input.length());
+                input.clearFocus();
+                view.findViewById(R.id.domain_parent_notice).setVisibility(View.VISIBLE);
+                popup.dismiss();
+            });
+            popup.show();
+        });
+        input.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+            public void onTextChanged(CharSequence text, int start, int before, int count) { refresh.run(); }
+            public void afterTextChanged(Editable text) { }
+        });
         AlertDialog dialog = new AlertDialog.Builder(context).setView(view)
-                .setPositiveButton(android.R.string.ok, null)
+                .setPositiveButton(blocked ? R.string.title_block : R.string.title_allow, null)
                 .setNegativeButton(android.R.string.cancel, null).create();
+        DatabaseHelper.RuleChangedListener listener = () -> view.post(refresh);
+        dialog.setOnDismissListener(ignored -> DatabaseHelper.getInstance(context).removeRuleChangedListener(listener));
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
             try {
                 String host = DomainInput.normalize(input.getText().toString());
-                String rule = (blocked ? "block " : "allow ")
-                        + (packageName.isEmpty() ? "" : "package:" + packageName + " ")
-                        + DomainInput.destination(host);
-                RulesManager.getInstance(context).queueRuleText(context, rule);
+                String text = rule(packageName, host, blocked, applyGlobally[0]);
+                RulesManager.getInstance(context).queueRuleText(context, text);
                 Toast.makeText(context, R.string.rule_queued, Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
             } catch (IllegalArgumentException invalid) {
-                input.setError(context.getString(R.string.domain_error));
+                input.setError(context.getString(blocked && applyGlobally[0] ? R.string.blacklist_domain_error : R.string.domain_error));
             }
         }));
         dialog.show();
+        dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        DialogSurface.apply(dialog);
+        DatabaseHelper.getInstance(context).addRuleChangedListener(listener);
+        refresh.run();
+    }
+
+    private static synchronized List<String> parents(Context context, String input) {
+        if (parentDomains == null) {
+            try (InputStreamReader source = new InputStreamReader(context.getResources().openRawResource(R.raw.public_suffix_list), StandardCharsets.UTF_8)) {
+                parentDomains = new ParentDomains(source);
+            } catch (java.io.IOException | IllegalArgumentException unavailable) { return Collections.emptyList(); }
+        }
+        return parentDomains.choices(input);
+    }
+
+    private static String rule(String packageName, String host, boolean blocked, boolean global) {
+        if (blocked && global) {
+            if (host.contains(":") || host.matches("[0-9.]+")) throw new IllegalArgumentException();
+            return "blockdomain " + host;
+        }
+        return (blocked ? "block " : "allow ") + (global ? "" : "package:" + packageName + " ") + DomainInput.destination(host);
+    }
+
+    private static String appName(Context context, String packageName) {
+        try {
+            android.content.pm.PackageManager packages = context.getPackageManager();
+            return packages.getApplicationLabel(packages.getApplicationInfo(packageName, 0)).toString();
+        } catch (android.content.pm.PackageManager.NameNotFoundException missing) { return packageName; }
     }
 }

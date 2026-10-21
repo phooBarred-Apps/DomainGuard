@@ -65,6 +65,7 @@
             android:name="android.max_aspect"
             android:value="2.1" />
 
+        <activity android:name=".ActivityDeviceBackup" android:exported="false" android:label="@string/settings_backup_title" />
         <activity
             android:name="heartguard.heartguard.main.ActivityMain"
             android:configChanges="orientation|screenSize"
@@ -172,6 +173,11 @@
             android:configChanges="orientation|screenSize"
             android:label="@string/app_updates"
             android:parentActivityName=".ActivityMain" />
+        <activity
+            android:name=".ActivityUpdateLogs"
+            android:exported="false"
+            android:label="@string/update_logs_title"
+            android:parentActivityName=".ActivityUpdates" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

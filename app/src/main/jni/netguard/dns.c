@@ -177,8 +177,8 @@ void parse_dns_response(const struct arguments *args, const struct ng_session *s
             }
         }
 
-        if (qcount > 0 &&
-            (svcb || is_domain_blocked(args, qname))) {
+        int uid = s->protocol == IPPROTO_UDP ? s->udp.uid : s->tcp.uid;
+        if (qcount > 0 && is_domain_blocked(args, qname, uid, svcb)) {
             dns->qr = 1;
             dns->aa = 0;
             dns->tc = 0;

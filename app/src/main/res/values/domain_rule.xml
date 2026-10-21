@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="title_block_globally">Block globally</string>
+    <string name="domain_scope_app">Applies only to %1$s. Existing rule delays still apply.</string>
+    <string name="domain_scope_block_all">Blocks this domain and its subdomains for every app. Global blocks take priority over allow rules. Existing rule delays still apply.</string>
+</resources>

@@ -1,3 +1,7 @@
+# DomainGuard
+
+This fork continues HeartGuard-MW. See [DomainGuard changes and build instructions](README-DomainGuard.md). The original upstream documentation follows.
+
 # HeartGuard
 
 *HeartGuard* is a self-control utility that is based on [NetGuard](https://github.com/M66B/NetGuard/tree/master)

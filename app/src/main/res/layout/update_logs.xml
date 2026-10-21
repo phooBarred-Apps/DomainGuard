@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="24dp">
+    <LinearLayout android:id="@+id/update_logs_selector"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:visibility="gone">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:labelFor="@id/update_logs_versions" android:text="@string/update_logs_version"
+            android:textAppearance="@style/TextSmall" />
+        <Spinner android:id="@+id/update_logs_versions"
+            android:layout_width="match_parent" android:layout_height="48dp"
+            android:spinnerMode="dropdown" />
+    </LinearLayout>
+    <ProgressBar android:id="@+id/update_logs_progress"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal" />
+    <ScrollView android:id="@+id/update_logs_scroll"
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:fillViewport="true" android:layout_marginTop="16dp">
+        <TextView android:id="@+id/update_logs_notes"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textSize="16sp" android:textIsSelectable="true" />
+    </ScrollView>
+    <Button android:id="@+id/update_logs_retry" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:visibility="gone" android:text="@string/update_retry" />
+</LinearLayout>

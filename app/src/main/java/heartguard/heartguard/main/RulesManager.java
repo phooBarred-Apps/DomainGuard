@@ -69,6 +69,8 @@ public class RulesManager {
     private List<IgnoreRule> m_specificIgnoreRules;
     private List<String> m_blockedDomains;
     private volatile boolean m_hasAppSpecificBlocks;
+    private volatile Map<Integer, Long> m_pausedUids = java.util.Collections.emptyMap();
+    private Runnable pauseExpiryTask;
     private List<String> m_dnses;
     private Map<String, FeatureRule> m_featureRules = new HashMap<>();
 
@@ -374,7 +376,8 @@ public class RulesManager {
     // otherwise whitelisted apps will not work.
     public boolean getPreferenceCaptureAllTraffic(Context context) {
         // Fully allowed apps must still pass through the VPN for their domain exceptions.
-        return m_hasAppSpecificBlocks || hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
+        // Paused apps stay inside the VPN so expiry cannot leave them excluded from filtering.
+        return !m_pausedUids.isEmpty() || m_hasAppSpecificBlocks || hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
     }
     public boolean getPreferenceAllowLogging(Context context) { return hasFeatureRule(FeatureRule.FEATURE_NAME_ALLOW_LOGGING);}
 
@@ -431,29 +434,19 @@ public class RulesManager {
     }
 
     private void setAlarmForPending(Context context, long realTime, long systemTime) {
+        long next = nextPauseExpiry();
+        if (pauseExpiryTask != null) handler.removeCallbacks(pauseExpiryTask);
         DatabaseHelper dh = DatabaseHelper.getInstance(context);
         try (Cursor cursor = dh.getPendingRules()) {
-
-            if (!cursor.moveToFirst()) {
-                // No pending rules
-                return;
+            if (cursor.moveToFirst()) {
+                long pending = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) + systemTime - realTime;
+                next = next == 0 ? pending : Math.min(next, pending);
             }
-
-            int col_ruletext = cursor.getColumnIndexOrThrow("ruletext");
-            int col_id = cursor.getColumnIndexOrThrow("_id");
-            int col_enact_time = cursor.getColumnIndexOrThrow("enact_time");
-
-            String ruletext = cursor.getString(col_ruletext);
-            long id = cursor.getLong(col_id);
-            long enact_time = cursor.getLong(col_enact_time);
-
-            Log.w(TAG, "Pending rule \"" + sanitizeRuletext(ruletext) + "\" ID=" + Long.toString(id) + " enact_time=" + Long.toString(enact_time));
-
-            // enact_time is in real time, but the alarm is set in system time
-            // So do some math to make it true
-            long offset = systemTime - realTime;
-            long enact_system_time = enact_time + offset;
-            setAlarmForTime(context, enact_system_time);
+        }
+        if (next > 0) {
+            setAlarmForTime(context, next);
+            pauseExpiryTask = () -> startTrueTimeRequest(context);
+            handler.postDelayed(pauseExpiryTask, Math.max(1, next - systemTime));
         }
     }
 
@@ -495,6 +488,8 @@ public class RulesManager {
                 // Move all rules from text to RM and WM
                 getAllEnactedRulesFromDb(context);
                 WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
+                if (num_enacted == 0 && !startup)
+                    LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
             }
             if (num_enacted > 0) {
                 if (!startup) {
@@ -597,14 +592,20 @@ public class RulesManager {
         }
 
         DatabaseHelper dh = DatabaseHelper.getInstance(context);
+        MyRule rule = MyRule.getRuleFromText(context, ruletext);
         lock.writeLock().lock();
         try {
+            if (rule instanceof AppPauseRule) {
+                // The duration starts on activation, not while the rule is waiting for its delay.
+                ContentValues activated = new ContentValues();
+                activated.put("enact_time", System.currentTimeMillis());
+                dh.updateRuleWithCV(Long.toString(id), activated);
+            }
             dh.setRuleEnacted(Long.toString(id), 1);
         } finally {
             lock.writeLock().unlock();
         }
 
-        MyRule rule = MyRule.getRuleFromText(context, ruletext);
         if (rule == null) {
             Log.e(TAG, "Ruletext \"" + ruletext + "\" didn't make a rule");
             return 0;
@@ -738,6 +739,11 @@ public class RulesManager {
         // Those rules may be pending, but we want to load them and give them to WM for pending colors
         getAllEnactedRulesFromDb(context);
         WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
+        for (String text : rulesToCommit)
+            if (text.startsWith("pause ") || text.startsWith("- pause ") || text.startsWith("abandon pause ")) {
+                LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
+                break;
+            }
     }
 
     // Commits a rule to the database, but uses realTime to be sure
@@ -850,6 +856,9 @@ public class RulesManager {
                     continue;
                 }
                 if (enacted > 0) {
+                    if (rule instanceof AppPauseRule)
+                        ((AppPauseRule) rule).expiresAt = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))
+                                + ((AppPauseRule) rule).seconds * 1000L;
                     allrules.add(rule);
                 } else {
                     allPendingRules.add(rule);
@@ -913,9 +922,17 @@ public class RulesManager {
         List<String> newDNSes = new ArrayList<>();
         Map<String, FeatureRule> newFeatureRules = new HashMap<>();
         boolean hasAppSpecificBlocks = false;
+        Map<Integer, Long> pausedUids = new HashMap<>();
 
         for (MyRule rule : m_allCurrentRules) {
-            if (rule instanceof DelayRule) {
+            if (rule instanceof AppPauseRule) {
+                AppPauseRule pause = (AppPauseRule) rule;
+                try {
+                    int uid = context.getPackageManager().getApplicationInfo(pause.packageName, 0).uid;
+                    Long previous = pausedUids.get(uid);
+                    pausedUids.put(uid, previous == null ? pause.expiresAt : Math.max(previous, pause.expiresAt));
+                } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
+            } else if (rule instanceof DelayRule) {
                 DelayRule delayRule = (DelayRule)rule;
                 String packageName = delayRule.getPackageName();
                 int delay = delayRule.getDelay();
@@ -988,6 +1005,7 @@ public class RulesManager {
         m_dnses = newDNSes;
         m_featureRules = newFeatureRules;
         m_hasAppSpecificBlocks = hasAppSpecificBlocks;
+        m_pausedUids = java.util.Collections.unmodifiableMap(pausedUids);
 
         // Make sure to turn the logging toggle switch off if you're not allow to reach it
         if (!getPreferenceAllowLogging(context)) {
@@ -1089,6 +1107,50 @@ public class RulesManager {
     }
 
     // Some apps may have lowered delays so that they can be in trial mode
+    int getPauseDelay(String packageName) {
+        // Even an otherwise allowed app may have domain blocks: bypassing those still waits.
+        Integer specific = m_packageDelays.get(packageName);
+        return specific == null ? m_delay : Math.min(m_delay, specific);
+    }
+
+    boolean isUidPaused(int uid) {
+        Long until = m_pausedUids.get(uid);
+        return until != null && until > System.currentTimeMillis();
+    }
+
+    long nextPauseExpiry() {
+        long next = 0;
+        long now = System.currentTimeMillis();
+        for (long until : m_pausedUids.values())
+            if (until > now && (next == 0 || until < next)) next = until;
+        return next;
+    }
+
+    private void expireAppPauses(Context context, long now) {
+        DatabaseHelper db = DatabaseHelper.getInstance(context);
+        List<Long> expired = new ArrayList<>();
+        try (Cursor cursor = db.getEnactedRules()) {
+            while (cursor.moveToNext()) {
+                MyRule rule = MyRule.getRuleFromText(context, cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
+                if (rule instanceof AppPauseRule && cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))
+                        + ((AppPauseRule) rule).seconds * 1000L <= now)
+                    expired.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
+            }
+        }
+        if (expired.isEmpty()) return;
+        db.removeRulesById(expired.toArray(new Long[0]));
+        getAllEnactedRulesFromDb(context);
+        LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
+        if (getPreferenceEnabled(context)) ServiceSinkhole.reload("app pause expired", context, false);
+    }
+
+    int previewDelay(Context context, String text) {
+        boolean removing = text.startsWith("- ");
+        MyRule rule = MyRule.getRuleFromText(context, removing ? text.substring(2) : text);
+        if (rule == null) return 0;
+        return removing ? rule.getDelayToRemove(context, m_delay) : rule.getDelayToAdd(context, m_delay);
+    }
+
     public int getSpecificDelayForPackage(String packageName) {
         // Whitelisted packages have 0 delay
         if (m_allowedPackages.containsKey(packageName)) {
@@ -1168,6 +1230,7 @@ public class RulesManager {
                         lock.writeLock().unlock();
                     }
                     activateRulesUpTo(context, realTime, false);
+                    expireAppPauses(context, systemTime);
                     setAlarmForPending(context, realTime, systemTime);
 
                     // That was successful, now quit
@@ -1351,6 +1414,8 @@ class MyRule {
         try {
             if (category.equals("delay")) {
                 therule = new DelayRule(ruletext);
+            } else if (category.equals("pause")) {
+                therule = new AppPauseRule(ruletext);
             } else if (category.equals("allow")) {
                 therule = AllowedPackageRule.parseRule(context, ruletext);
             } else if (category.equals("block")) {
@@ -2047,7 +2112,7 @@ class BlockedDomainRule extends MyRule {
 
         Set<String> results = new HashSet<>();
         results.add("reload");
-        results.add("clear_accesses");
+        // Refresh DNS enforcement without deleting recorded traffic or its stable row IDs.
         results.add("clear_dns");
         return results;
     }
