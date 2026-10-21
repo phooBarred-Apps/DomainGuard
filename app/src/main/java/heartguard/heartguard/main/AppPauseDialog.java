@@ -65,6 +65,8 @@ final class AppPauseDialog {
             input.setEnabled(!occupied); unit.setEnabled(!occupied);
             stateAction.setVisibility(occupied ? View.VISIBLE : View.GONE);
             stateAction.setText(active ? R.string.app_pause_resume : R.string.app_pause_cancel_pending);
+            stateAction.setCompoundDrawablesRelativeWithIntrinsicBounds(active ? R.drawable.ic_app_resume : 0, 0, 0, 0);
+            stateAction.setCompoundDrawablePadding(CompactUi.dp(context, 8));
             if (active) CompactUi.actionButton(stateAction); else CompactUi.destructiveButton(stateAction);
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(occupied ? View.GONE : View.VISIBLE);
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setText(occupied ? R.string.list_done : android.R.string.cancel);

@@ -1695,7 +1695,8 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
                             boolean exists = mapUidIPFilters.get(key).containsKey(iname);
                             if (!exists || !mapUidIPFilters.get(key).get(iname).isBlocked()) {
-                                IPRule rule = new IPRule(key, name + "/" + iname, block, time, ttl);
+                                IPRule rule = new IPRule(key, name + "/" + iname, block, time, ttl,
+                                        cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
                                 mapUidIPFilters.get(key).put(iname, rule);
                                 //if (exists)
                                 //    Log.i(TAG, "Address conflict " + key + " " + daddr + "/" + dresource);
@@ -1778,7 +1779,8 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
                             boolean exists = mapUidIPFilters.get(key).containsKey(iname);
                             if (!exists || !mapUidIPFilters.get(key).get(iname).isBlocked()) {
-                                IPRule rule = new IPRule(key, name + "/" + iname, block, time, ttl);
+                                IPRule rule = new IPRule(key, name + "/" + iname, block, time, ttl,
+                                        cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
                                 mapUidIPFilters.get(key).put(iname, rule);
                                 //if (exists)
                                 //    Log.i(TAG, "Address conflict " + key + " " + daddr + "/" + dresource);
@@ -1980,27 +1982,13 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
     }
 
     // The native loop also enforces expiry, even if Android postpones an alarm during sleep.
-    private long nextAppPauseExpiry() {
-        return RulesManager.getInstance(this).nextPauseExpiry();
+    private long nextTemporaryExpiry() {
+        return RulesManager.getInstance(this).nextTemporaryExpiry();
     }
 
     // Called from native code
     private boolean isDomainBlocked(String name) {
-        boolean found = false;
-        boolean blocked = false;
-        lock.readLock().lock();
-        if (mapHostsBlocked.containsKey(name)) {
-            found = true;
-            blocked = mapHostsBlocked.get(name);
-        }
-        //boolean blocked = (mapHostsBlocked.containsKey(name) && mapHostsBlocked.get(name));
-        lock.readLock().unlock();
-        if (found)
-            return blocked;
-        if (name.contains(".")) {
-            return isDomainBlocked(name.substring(name.indexOf(".") + 1));
-        }
-        return false;
+        return RulesManager.getInstance(this).isGlobalDomainBlocked(name);
     }
 
     // Called from native code
@@ -3350,13 +3338,15 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         private boolean block;
         private long time;
         private long ttl;
+        private final String sourceRule;
 
-        public IPRule(IPKey key, String name, boolean block, long time, long ttl) {
+        public IPRule(IPKey key, String name, boolean block, long time, long ttl, String sourceRule) {
             this.key = key;
             this.name = name;
             this.block = block;
             this.time = time;
             this.ttl = ttl;
+            this.sourceRule = sourceRule;
         }
 
         public boolean isBlocked() {
@@ -3364,7 +3354,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         }
 
         public boolean isExpired() {
-            return System.currentTimeMillis() > (this.time + this.ttl * 2);
+            return System.currentTimeMillis() > (this.time + this.ttl * 2)
+                    || (TemporaryRuleText.isTemporary(sourceRule)
+                    && !RulesManager.getInstance(ServiceSinkhole.this).isTemporaryRuleActive(sourceRule));
         }
 
         public void updateExpires(long time, long ttl) {

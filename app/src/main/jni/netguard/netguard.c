@@ -690,11 +690,11 @@ jboolean is_domain_blocked(const struct arguments *args, const char *name, int u
     return jallowed;
 }
 
-jlong next_app_pause_expiry(const struct arguments *args) {
+jlong next_temporary_expiry(const struct arguments *args) {
     static jmethodID method = NULL;
     jclass service = (*args->env)->GetObjectClass(args->env, args->instance);
     if (method == NULL)
-        method = jniGetMethodID(args->env, service, "nextAppPauseExpiry", "()J");
+        method = jniGetMethodID(args->env, service, "nextTemporaryExpiry", "()J");
     jlong result = (*args->env)->CallLongMethod(args->env, args->instance, method);
     jniCheckException(args->env);
     (*args->env)->DeleteLocalRef(args->env, service);

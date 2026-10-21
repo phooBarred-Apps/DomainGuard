@@ -70,7 +70,9 @@ public class RulesManager {
     private List<String> m_blockedDomains;
     private volatile boolean m_hasAppSpecificBlocks;
     private volatile Map<Integer, Long> m_pausedUids = java.util.Collections.emptyMap();
-    private Runnable pauseExpiryTask;
+    private volatile Map<String, Long> m_temporaryRules = Collections.emptyMap();
+    private volatile Map<String, Long> m_blockedDomainExpiries = Collections.emptyMap();
+    private Runnable temporaryExpiryTask;
     private List<String> m_dnses;
     private Map<String, FeatureRule> m_featureRules = new HashMap<>();
 
@@ -434,8 +436,8 @@ public class RulesManager {
     }
 
     private void setAlarmForPending(Context context, long realTime, long systemTime) {
-        long next = nextPauseExpiry();
-        if (pauseExpiryTask != null) handler.removeCallbacks(pauseExpiryTask);
+        long next = nextTemporaryExpiry();
+        if (temporaryExpiryTask != null) handler.removeCallbacks(temporaryExpiryTask);
         DatabaseHelper dh = DatabaseHelper.getInstance(context);
         try (Cursor cursor = dh.getPendingRules()) {
             if (cursor.moveToFirst()) {
@@ -445,8 +447,8 @@ public class RulesManager {
         }
         if (next > 0) {
             setAlarmForTime(context, next);
-            pauseExpiryTask = () -> startTrueTimeRequest(context);
-            handler.postDelayed(pauseExpiryTask, Math.max(1, next - systemTime));
+            temporaryExpiryTask = () -> startTrueTimeRequest(context);
+            handler.postDelayed(temporaryExpiryTask, Math.max(1, next - System.currentTimeMillis()));
         }
     }
 
@@ -595,7 +597,7 @@ public class RulesManager {
         MyRule rule = MyRule.getRuleFromText(context, ruletext);
         lock.writeLock().lock();
         try {
-            if (rule instanceof AppPauseRule) {
+            if (rule instanceof AppPauseRule || (rule != null && rule.temporarySeconds > 0)) {
                 // The duration starts on activation, not while the rule is waiting for its delay.
                 ContentValues activated = new ContentValues();
                 activated.put("enact_time", System.currentTimeMillis());
@@ -856,6 +858,9 @@ public class RulesManager {
                     continue;
                 }
                 if (enacted > 0) {
+                    if (rule.temporarySeconds > 0)
+                        rule.temporaryExpiresAt = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))
+                                + rule.temporarySeconds * 1000L;
                     if (rule instanceof AppPauseRule)
                         ((AppPauseRule) rule).expiresAt = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))
                                 + ((AppPauseRule) rule).seconds * 1000L;
@@ -923,8 +928,14 @@ public class RulesManager {
         Map<String, FeatureRule> newFeatureRules = new HashMap<>();
         boolean hasAppSpecificBlocks = false;
         Map<Integer, Long> pausedUids = new HashMap<>();
+        Map<String, Long> temporaryRules = new HashMap<>();
+        Map<String, Long> blockedDomainExpiries = new HashMap<>();
 
         for (MyRule rule : m_allCurrentRules) {
+            if (rule.temporarySeconds > 0) {
+                if (rule.temporaryExpiresAt <= System.currentTimeMillis()) continue;
+                temporaryRules.put(rule.getRuleText(), rule.temporaryExpiresAt);
+            }
             if (rule instanceof AppPauseRule) {
                 AppPauseRule pause = (AppPauseRule) rule;
                 try {
@@ -974,6 +985,10 @@ public class RulesManager {
             } else if (rule instanceof BlockedDomainRule) {
                 BlockedDomainRule blockedDomainRule = (BlockedDomainRule)rule;
                 newBlockedDomains.add(blockedDomainRule.getDomainName());
+                String domain = blockedDomainRule.getDomainName().toLowerCase(java.util.Locale.ROOT);
+                Long previous = blockedDomainExpiries.get(domain);
+                blockedDomainExpiries.put(domain, previous == null ? rule.temporaryExpiresAt
+                        : Math.max(previous, rule.temporaryExpiresAt));
             } else if (rule instanceof DNSRule) {
                 DNSRule dnsrule = (DNSRule)rule;
                 for (String name : dnsrule.getDomains()) {
@@ -1006,6 +1021,8 @@ public class RulesManager {
         m_featureRules = newFeatureRules;
         m_hasAppSpecificBlocks = hasAppSpecificBlocks;
         m_pausedUids = java.util.Collections.unmodifiableMap(pausedUids);
+        m_temporaryRules = Collections.unmodifiableMap(temporaryRules);
+        m_blockedDomainExpiries = Collections.unmodifiableMap(blockedDomainExpiries);
 
         // Make sure to turn the logging toggle switch off if you're not allow to reach it
         if (!getPreferenceAllowLogging(context)) {
@@ -1118,30 +1135,72 @@ public class RulesManager {
         return until != null && until > System.currentTimeMillis();
     }
 
-    long nextPauseExpiry() {
+    long nextTemporaryExpiry() {
         long next = 0;
         long now = System.currentTimeMillis();
         for (long until : m_pausedUids.values())
             if (until > now && (next == 0 || until < next)) next = until;
+        for (long until : m_temporaryRules.values())
+            if (until > now && (next == 0 || until < next)) next = until;
         return next;
     }
 
-    private void expireAppPauses(Context context, long now) {
+    boolean isTemporaryRuleActive(String text) {
+        Long until = m_temporaryRules.get(text);
+        return until != null && until > System.currentTimeMillis();
+    }
+
+    boolean isGlobalDomainBlocked(String name) {
+        if (name == null) return false;
+        String host = name.toLowerCase(java.util.Locale.ROOT);
+        if (host.endsWith(".")) host = host.substring(0, host.length() - 1);
+        Map<String, Long> deadlines = m_blockedDomainExpiries;
+        long now = System.currentTimeMillis();
+        while (!host.isEmpty()) {
+            Long until = deadlines.get(host);
+            if (until != null && until > now) return true;
+            int dot = host.indexOf('.');
+            if (dot < 0) break;
+            host = host.substring(dot + 1);
+        }
+        return false;
+    }
+
+    private void expireTemporaryRules(Context context, long now) {
         DatabaseHelper db = DatabaseHelper.getInstance(context);
         List<Long> expired = new ArrayList<>();
+        List<MyRule> removedRules = new ArrayList<>();
         try (Cursor cursor = db.getEnactedRules()) {
             while (cursor.moveToNext()) {
                 MyRule rule = MyRule.getRuleFromText(context, cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
-                if (rule instanceof AppPauseRule && cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))
-                        + ((AppPauseRule) rule).seconds * 1000L <= now)
+                int duration = rule instanceof AppPauseRule ? ((AppPauseRule) rule).seconds
+                        : rule == null ? 0 : rule.temporarySeconds;
+                if (duration > 0 && cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))
+                        + duration * 1000L <= now) {
                     expired.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
+                    removedRules.add(rule);
+                }
             }
         }
         if (expired.isEmpty()) return;
+        // A queued early removal must not later delete a newly added rule with the same text.
+        try (Cursor cursor = db.getPendingRules()) {
+            while (cursor.moveToNext()) {
+                String text = cursor.getString(cursor.getColumnIndexOrThrow("ruletext"));
+                for (MyRule rule : removedRules)
+                    if (text.equals("- " + rule.getRuleText()) || text.equals("abandon - " + rule.getRuleText()))
+                        expired.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
+            }
+        }
         db.removeRulesById(expired.toArray(new Long[0]));
         getAllEnactedRulesFromDb(context);
+        WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
+        for (MyRule rule : removedRules) {
+            rule.getActionsAfterRemove(context);
+            if (rule instanceof BlockedDomainRule) db.clearDns();
+        }
         LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
-        if (getPreferenceEnabled(context)) ServiceSinkhole.reload("app pause expired", context, false);
+        if (getPreferenceEnabled(context)) ServiceSinkhole.reload("temporary rule expired", context, false);
     }
 
     int previewDelay(Context context, String text) {
@@ -1222,6 +1281,7 @@ public class RulesManager {
                     boolean expedite = m_pleaseExpedite;
                     lock.readLock().unlock();
 
+                    expireTemporaryRules(context, systemTime);
                     commitQueuedRules(context, realTime);
                     if (expedite) {
                         expediteRules(context, realTime);
@@ -1230,7 +1290,7 @@ public class RulesManager {
                         lock.writeLock().unlock();
                     }
                     activateRulesUpTo(context, realTime, false);
-                    expireAppPauses(context, systemTime);
+                    expireTemporaryRules(context, System.currentTimeMillis());
                     setAlarmForPending(context, realTime, systemTime);
 
                     // That was successful, now quit
@@ -1354,6 +1414,8 @@ class MyRule {
     public static final int MAJOR_CATEGORY_COMMENT = 600;
 
     private String m_ruletext;
+    int temporarySeconds;
+    long temporaryExpiresAt = Long.MAX_VALUE;
     private int m_major_category;
     private int m_minor_category;
 
@@ -1412,7 +1474,18 @@ class MyRule {
 
         MyRule therule = null;
         try {
-            if (category.equals("delay")) {
+            if (category.equals("temporary")) {
+                TemporaryRuleText temporary = TemporaryRuleText.parse(ruletext);
+                therule = getRuleFromText(context, temporary.rule);
+                if (!(therule instanceof RuleAndPackage) && !(therule instanceof BlockedDomainRule)) return null;
+                therule.temporarySeconds = temporary.seconds;
+                therule.m_ruletext = ruletext;
+                if (therule instanceof RuleAndPackage) {
+                    RuleAndPackage scoped = (RuleAndPackage) therule;
+                    if (!(scoped.rule instanceof DomainRule) && !(scoped.rule instanceof IPRule)) return null;
+                    scoped.rule = new TemporaryRuleForApp(therule, scoped.rule);
+                }
+            } else if (category.equals("delay")) {
                 therule = new DelayRule(ruletext);
             } else if (category.equals("pause")) {
                 therule = new AppPauseRule(ruletext);

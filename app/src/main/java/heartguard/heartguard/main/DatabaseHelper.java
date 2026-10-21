@@ -1138,7 +1138,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
             // There is a segmented index on dns.qname
             // There is an index on access.daddr and access.block
-            String query = "SELECT a.uid, a.version, a.protocol, a.daddr, d.resource, a.dport, a.block, d.time, d.ttl";
+            String query = "SELECT a.uid, a.version, a.protocol, a.daddr, d.resource, a.dport, a.block, a.ruletext, d.time, d.ttl";
             query += " FROM access AS a";
             query += " LEFT JOIN dns AS d";
             query += "   ON d.qname = a.daddr";
@@ -1161,7 +1161,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
             // There is a segmented index on dns.qname
             // There is an index on access.daddr and access.block
-            String query = "SELECT a.uid, a.version, a.protocol, a.daddr, d.resource, a.dport, a.block, d.time, d.ttl";
+            String query = "SELECT a.uid, a.version, a.protocol, a.daddr, d.resource, a.dport, a.block, a.ruletext, d.time, d.ttl";
             query += " FROM access AS a";
             query += " LEFT JOIN dns AS d";
             query += "   ON d.qname = a.daddr";

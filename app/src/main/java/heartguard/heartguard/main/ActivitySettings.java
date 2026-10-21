@@ -112,6 +112,11 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         updateMainUi();
         setupGoogleBackup(screen);
         setupListControls(screen);
+        screen.findPreference(CompactDomainLists.ENABLED).setOnPreferenceClickListener(preference -> {
+            if (getSupportFragmentManager().findFragmentByTag(CompactDomainLists.ENABLED) == null)
+                new CompactDomainListDialog().show(getSupportFragmentManager(), CompactDomainLists.ENABLED);
+            return true;
+        });
         screen.findPreference("rule_delay").setOnPreferenceClickListener(preference -> {
             if (getSupportFragmentManager().findFragmentByTag("rule_delay") == null)
                 new RuleDelayDialog().show(getSupportFragmentManager(), "rule_delay");

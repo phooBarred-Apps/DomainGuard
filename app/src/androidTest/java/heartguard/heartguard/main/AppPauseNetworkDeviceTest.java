@@ -27,6 +27,16 @@ public class AppPauseNetworkDeviceTest {
     // Test: Real TCP and UDP sessions stop carrying data when the app pause expires.
     // Why: Packet-policy unit checks cannot detect a native session retaining a stale allow decision.
     @Test public void nativeConnectionsStopAtPauseExpiry() throws Exception {
+        verifyExpiry(false);
+    }
+
+    // Test: Temporary IP allows stop existing TCP/UDP sessions and reject new ones on expiry.
+    // Why: An expired allow must not survive in native connections or in the cached IP decision table.
+    @Test public void nativeConnectionsStopAtTemporaryAllowExpiry() throws Exception {
+        verifyExpiry(true);
+    }
+
+    private void verifyExpiry(boolean temporaryAllow) throws Exception {
         String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
         assumeTrue(port.matches("[0-9]{1,5}"));
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
@@ -36,18 +46,35 @@ public class AppPauseNetworkDeviceTest {
         boolean wasEnabled = rules.getPreferenceEnabled(context);
         assertTrue(AppPause.read(context, "com.android.shell").isEmpty());
         List<String> owned = new ArrayList<>();
+        CountDownLatch allowCleanup = new CountDownLatch(1);
         try {
             shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
             assertNull(VpnService.prepare(context));
-            add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
+            if (!temporaryAllow) add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
+            else if (!rules.hasFeatureRule(FeatureRule.FEATURE_NAME_MANAGE_SYSTEM))
+                add(context, rules, owned, "feature manage_system");
             if (!wasEnabled) add(context, rules, owned, "feature enabled");
             ServiceSinkhole.start("pause network fixture", context);
             SystemClock.sleep(2500);
             assertFalse("TCP blocked before pause", probe(port, false).contains("probe"));
             assertFalse("UDP blocked before pause", probe(port, true).contains("probe"));
-            add(context, rules, owned, AppPauseRule.text("com.android.shell", 15));
-            long deadline = AppPause.read(context, "com.android.shell").get(0).time;
+            String timed = temporaryAllow ? TemporaryRuleText.text("allow package:com.android.shell ip:10.0.2.2", 15)
+                    : AppPauseRule.text("com.android.shell", 15);
+            add(context, rules, owned, timed);
+            long deadline;
+            try (Cursor cursor = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(timed)) {
+                assertTrue(cursor.moveToFirst());
+                deadline = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) + 15000;
+            }
             SystemClock.sleep(1500);
+            // Hold background cleanup past expiry: only packet/cache/native deadline checks can stop these flows.
+            CountDownLatch cleanupHeld = new CountDownLatch(1);
+            rules.handler.post(() -> {
+                cleanupHeld.countDown();
+                try { allowCleanup.await(40, TimeUnit.SECONDS); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            });
+            assertTrue(cleanupHeld.await(5, TimeUnit.SECONDS));
             Flow tcp = new Flow(port, false);
             Flow udp = new Flow(port, true);
             tcp.start(); udp.start();
@@ -62,7 +89,11 @@ public class AppPauseNetworkDeviceTest {
             assertFalse(rules.isUidPaused(2000));
             assertFalse("Fresh TCP blocked after pause", probe(port, false).contains("probe"));
             assertFalse("Fresh UDP blocked after pause", probe(port, true).contains("probe"));
+            try (Cursor cursor = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(timed)) {
+                assertTrue("Expiry enforcement must succeed before cleanup removes the rule", cursor.moveToFirst());
+            }
         } finally {
+            allowCleanup.countDown(); barrier(rules);
             List<Long> ids = new ArrayList<>();
             DatabaseHelper db = DatabaseHelper.getInstance(context);
             try (Cursor cursor = db.getAllRules()) {
@@ -71,6 +102,9 @@ public class AppPauseNetworkDeviceTest {
                         ids.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
             }
             db.removeRulesById(ids.toArray(new Long[0]));
+            java.lang.reflect.Method refresh = RulesManager.class.getDeclaredMethod("getAllEnactedRulesFromDb", Context.class);
+            refresh.setAccessible(true); refresh.invoke(rules, context);
+            WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
             rules.startTrueTimeRequest(context); barrier(rules);
             if (wasEnabled) ServiceSinkhole.reload("pause network fixture cleanup", context, false);
             else ServiceSinkhole.stop("pause network fixture cleanup", context, false);

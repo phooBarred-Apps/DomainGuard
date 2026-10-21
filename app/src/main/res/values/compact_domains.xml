@@ -1,0 +1,18 @@
+<resources>
+    <string name="compact_domains_title">Compact domain lists</string>
+    <string name="compact_domains_enabled">Limit domain list height</string>
+    <string name="compact_domains_summary">Choose the maximum height and try it with an example app.</string>
+    <string name="compact_domains_height">Maximum height: about %1$d rows</string>
+    <string name="compact_domains_preview">Preview</string>
+    <string name="compact_domains_example">Example app</string>
+    <string name="compact_domains_tap_preview">Tap to preview full screen</string>
+    <string name="compact_domains_preview_note">Sample domains. No real app rules are changed here.</string>
+    <string name="compact_domains_save">Save</string>
+    <string name="pause_live_updates">Pause live updates</string>
+    <string name="resume_live_updates">Resume live updates</string>
+    <string name="clear_access_history">Clear this app’s access history</string>
+    <string name="live_updates_running_logging">Updates on for all apps. Logging and filtering are unchanged.</string>
+    <string name="live_updates_paused_logging">Updates paused for all apps. Logging and filtering are unchanged.</string>
+    <string name="live_updates_pause_legend">Pause display updates; keep logging and filtering</string>
+    <string name="live_updates_resume_legend">Resume display updates</string>
+</resources>

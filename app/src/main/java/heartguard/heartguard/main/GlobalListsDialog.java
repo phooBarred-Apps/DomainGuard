@@ -136,6 +136,8 @@ final class GlobalListsDialog {
     }
 
     private String domain(String text) {
+        try { text = TemporaryRuleText.base(text); }
+        catch (IllegalArgumentException invalid) { return null; }
         if (!blocked) return DomainInput.globalDomain(text);
         if (!text.matches("blockdomain \\S+( try)?")) return null;
         return text.split(" ")[1];
@@ -176,6 +178,13 @@ final class GlobalListsDialog {
                 long seconds = Math.max(0, (entry.enactTime - System.currentTimeMillis() + 999) / 1000);
                 String duration = seconds == 0 ? getString(R.string.pending_due) : RuleDelay.duration(context, (int) Math.min(Integer.MAX_VALUE, seconds));
                 label += "\n◷ " + context.getString(entry.removing ? R.string.pending_removing : R.string.pending_adding, duration);
+            }
+            if (TemporaryRuleText.isTemporary(entry.rule)) {
+                TemporaryRuleText temporary = TemporaryRuleText.parse(entry.rule);
+                long remaining = entry.active ? Math.max(0, (temporary.expiresAt(entry.activatedAt) - System.currentTimeMillis() + 999) / 1000)
+                        : temporary.seconds;
+                label += "\n◷ " + context.getString(entry.active ? R.string.temporary_remaining : R.string.temporary_after_activation,
+                        RuleDelay.duration(context, (int) remaining));
             }
             if (search.coversSearch(entry.domain)) label += " \u00b7 " + getString(R.string.global_search_parent);
             labels.add(label);
@@ -267,7 +276,7 @@ final class GlobalListsDialog {
         // Validate the entire paste before queuing any changes.
         for (String domain : domains) {
             boolean existing = false;
-            for (Entry entry : entries) existing |= entry.domain.equals(domain);
+            for (Entry entry : entries) existing |= entry.domain.equals(domain) && !TemporaryRuleText.isTemporary(entry.rule);
             if (!existing)
                 RulesManager.getInstance(context).queueRuleText(context, blocked ? "blockdomain " + domain : "allow " + DomainInput.destination(domain));
         }
@@ -302,8 +311,10 @@ final class GlobalListsDialog {
         final boolean active;
         boolean removing;
         long enactTime;
+        final long activatedAt;
         Entry(String rule, String domain, boolean active, long enactTime) {
             this.enactTime = enactTime;
+            this.activatedAt = enactTime;
             this.rule = rule; this.domain = domain; this.active = active;
         }
     }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="temporary_rule">Temporary</string>
+    <string name="temporary_summary">Lasts %1$s after it starts. Then your other rules apply. Existing blocks still take priority.</string>
+    <string name="temporary_invalid">Enter a duration from 1 second to 7 days.</string>
+    <string name="temporary_remaining">Expires in %1$s</string>
+    <string name="temporary_after_activation">Lasts %1$s after it starts</string>
+</resources>

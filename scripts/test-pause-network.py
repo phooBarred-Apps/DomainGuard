@@ -1,7 +1,7 @@
 """Run the installed debug instrumentation against host-local TCP/UDP echo servers.
 
-Test: Existing and new connections are blocked again when an app pause expires.
-Why: Java policy tests alone cannot prove native VPN sessions discard stale allows.
+Test: Existing and new connections are blocked when an app pause or temporary allow expires.
+Why: Java policy tests alone cannot prove native VPN sessions and IP caches discard stale allows.
 Build/install the debug app and androidTest APK first. Requires an Android emulator.
 """
 import argparse
@@ -49,9 +49,9 @@ def main():
                     '-e', 'pauseNetworkPort', str(port), '-e', 'class',
                     'heartguard.heartguard.main.AppPauseNetworkDeviceTest',
                     'heartguard.heartguard.main.mw.test/androidx.test.runner.AndroidJUnitRunner',
-                ], capture_output=True, text=True, timeout=120)
+                ], capture_output=True, text=True, timeout=180)
                 print(result.stdout)
-                if result.returncode or 'OK (1 test)' not in result.stdout:
+                if result.returncode or 'OK (2 tests)' not in result.stdout:
                     raise SystemExit(result.stderr or 'Native pause test failed.')
             finally:
                 tcp.shutdown()

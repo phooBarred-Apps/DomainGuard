@@ -15,9 +15,11 @@ final class GlobalRuleIndicators {
 
     GlobalRuleIndicators(Collection<String> rules) {
         active = new HashSet<>(rules);
-        for (String rule : rules)
+        for (String text : rules) {
+            String rule = TemporaryRuleText.base(text);
             if (rule.matches("blockdomain \\S+( try)?"))
                 blockedDomains.add(rule.split(" ")[1].toLowerCase(Locale.ROOT));
+        }
     }
 
     int scope(int block, String ruleText, String address) {
@@ -27,8 +29,9 @@ final class GlobalRuleIndicators {
             for (String domain : blockedDomains)
                 if (host.equals(domain) || host.endsWith("." + domain)) return BLOCKED;
         }
-        if (block == 0 && ruleText != null && active.contains(ruleText) && ruleText.startsWith("allow ")) {
-            for (String token : ruleText.split("\\s+"))
+        String base = TemporaryRuleText.base(ruleText);
+        if (block == 0 && base != null && active.contains(ruleText) && base.startsWith("allow ")) {
+            for (String token : base.split("\\s+"))
                 if (token.startsWith("package:") || token.startsWith("uid:")) return LOCAL;
             return ALLOWED;
         }

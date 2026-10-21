@@ -31,6 +31,7 @@ final class DomainRuleDialog {
         ImageButton global = view.findViewById(R.id.allow_new_access_global);
         ImageButton parents = view.findViewById(R.id.domain_parent_choices);
         ImageView appIcon = view.findViewById(R.id.domain_scope_icon);
+        TemporaryRuleControls temporary = new TemporaryRuleControls(view);
         boolean[] applyGlobally = {false};
         input.setText(address);
         input.clearFocus();
@@ -42,7 +43,8 @@ final class DomainRuleDialog {
             scope.setText(applyGlobally[0] ? context.getString(R.string.scope_all_apps) : app);
             appIcon.setVisibility(applyGlobally[0] ? View.GONE : View.VISIBLE);
             global.setSelected(applyGlobally[0]);
-            global.setImageTintList(applyGlobally[0] ? ColorStateList.valueOf(0xff80cbc4) : null);
+            global.setImageTintList(applyGlobally[0]
+                    ? ColorStateList.valueOf(CompactUi.color(context, R.attr.colorActionPositive)) : null);
             global.setContentDescription(context.getString(applyGlobally[0] ? R.string.scope_on : R.string.scope_off));
             TooltipCompat.setTooltipText(global, global.getContentDescription());
             parents.setEnabled(!parents(context, input.getText().toString()).isEmpty());
@@ -86,7 +88,8 @@ final class DomainRuleDialog {
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
             try {
                 String host = DomainInput.normalize(input.getText().toString());
-                String text = rule(packageName, host, blocked, applyGlobally[0]);
+                String text = temporary.apply(rule(packageName, host, blocked, applyGlobally[0]));
+                if (text == null) return;
                 RulesManager.getInstance(context).queueRuleText(context, text);
                 Toast.makeText(context, R.string.rule_queued, Toast.LENGTH_SHORT).show();
                 dialog.dismiss();

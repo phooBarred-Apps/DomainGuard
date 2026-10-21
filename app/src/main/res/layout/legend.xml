@@ -127,5 +127,17 @@
             <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_app_pause" android:layout_marginEnd="12dp" />
             <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/app_pause_legend" android:textAppearance="@style/TextSmall" />
         </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:minHeight="44dp">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_app_resume" android:layout_marginEnd="12dp" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/app_resume_legend" android:textAppearance="@style/TextSmall" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:minHeight="44dp">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="?attr/iconPause" android:layout_marginEnd="12dp" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/live_updates_pause_legend" android:textAppearance="@style/TextSmall" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:minHeight="44dp">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="?attr/iconPlay" android:layout_marginEnd="12dp" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/live_updates_resume_legend" android:textAppearance="@style/TextSmall" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

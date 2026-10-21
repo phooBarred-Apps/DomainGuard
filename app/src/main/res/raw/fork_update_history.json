@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.5",
+    "name": "DomainGuard 2.5",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-21",
+    "body": "DomainGuard 2.5\n\n- Temporary Allow and Block for domains and IP addresses, per app or globally. Enable Temporary and choose seconds, minutes, hours or days, up to seven days. Allows wait for the normal delay; blocks start immediately. The duration starts when the rule becomes active. Expiry removes only that temporary rule and leaves permanent rules and traffic history intact. Existing blocks still take priority over allows. Global lists show remaining time.\n- Compact domain lists in Display settings: choose a height from 2 to 10 rows, with a scrollbar for longer lists. Tap the example app for a full-screen Preview with a Back arrow. Previewing does not save settings or create traffic history.\n- Paused apps show a green Play/Resume button instead of the red Pause button.\n- Live updates now clearly describes pausing only the displayed traffic updates for all apps. Logging and filtering are unchanged.\n- The access-history trash icon is beside the app Pause and gear controls.\n- Open the unchanged Legend through Help & tutorials. Done or Back returns to Help. Resume and Live updates controls are explained in the Legend.\n\nInstall DomainGuard.apk to update in place. The Android package and signing key are unchanged. Earlier HeartGuard-MW update history is retained. Corresponding GPLv3 source and SHA-256 checksums accompany the release."
+  },
+  {
     "tag_name": "v2.4",
     "name": "DomainGuard 2.4",
     "draft": false,

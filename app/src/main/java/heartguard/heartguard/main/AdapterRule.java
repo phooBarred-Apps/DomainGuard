@@ -756,11 +756,21 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.llConfiguration.setVisibility(rule.expanded ? View.VISIBLE : View.GONE);
 
         // Show application details
-        View pauseButton = holder.itemView.findViewById(R.id.appPauseButton);
-        TooltipCompat.setTooltipText(pauseButton, context.getString(R.string.app_pause_title));
-        pauseButton.setOnClickListener(view -> AppPauseDialog.show(context, rule.packageName, rule.name));
+        ImageButton pauseButton = holder.itemView.findViewById(R.id.appPauseButton);
         TextView pauseStatus = holder.itemView.findViewById(R.id.appPauseStatus);
         List<AppPause.Entry> pauses = rule.expanded ? AppPause.read(context, rule.packageName) : java.util.Collections.emptyList();
+        boolean paused = false;
+        for (AppPause.Entry entry : pauses) paused |= entry.active;
+        pauseButton.setImageResource(paused ? R.drawable.ic_app_resume : R.drawable.ic_app_pause);
+        pauseButton.setContentDescription(context.getString(paused ? R.string.app_pause_resume : R.string.app_pause_title));
+        TooltipCompat.setTooltipText(pauseButton, pauseButton.getContentDescription());
+        pauseButton.setOnClickListener(view -> {
+            // Recheck at the tap: the pause can expire while this row is visible.
+            for (AppPause.Entry entry : AppPause.read(context, rule.packageName))
+                if (entry.active) { AppPause.resume(context, rule.packageName); return; }
+            AppPauseDialog.show(context, rule.packageName, rule.name);
+        });
+        pauseStatus.setCompoundDrawablesRelativeWithIntrinsicBounds(paused ? R.drawable.ic_app_resume : R.drawable.ic_app_pause, 0, 0, 0);
         pauseStatus.setVisibility(pauses.isEmpty() ? View.GONE : View.VISIBLE);
         if (!pauses.isEmpty()) pauseStatus.setText(pauses.get(0).label(context));
         pauseStatus.setOnClickListener(view -> AppPauseDialog.show(context, rule.packageName, rule.name));
@@ -920,20 +930,19 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.llFilter.setVisibility(Util.canFilter(context) ? View.VISIBLE : View.GONE);
 
         // Live
+        bindLiveControl(holder);
+        TooltipCompat.setTooltipText(holder.btnClearAccess, context.getString(R.string.clear_access_history));
         holder.ivLive.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 live = !live;
-                TypedValue tv = new TypedValue();
-                view.getContext().getTheme().resolveAttribute(live ? R.attr.iconPause : R.attr.iconPlay, tv, true);
-                holder.ivLive.setImageResource(tv.resourceId);
+                for (ViewHolder bound : new ArrayList<>(boundHolders)) bindLiveControl(bound);
                 if (live)
                     AdapterRule.this.notifyDataSetChanged();
             }
         });
 
         // Show logging/filtering is disabled
-        holder.tvLogging.setText(log_app && filter ? R.string.title_logging_enabled : R.string.title_logging_disabled);
         holder.btnLogging.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -985,6 +994,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             if (currentPosition != RecyclerView.NO_POSITION) notifyItemChanged(currentPosition);
         });
         View details = holder.itemView.findViewById(R.id.appOptions);
+        ((DomainListView) holder.lvAccess).setMaximumRows(CompactDomainLists.maximumRows(prefs));
         details.setVisibility(optionsExpanded.contains(rule.packageName) ? View.VISIBLE : View.GONE);
         View optionsButton = holder.itemView.findViewById(R.id.appOptionsButton);
         TooltipCompat.setTooltipText(optionsButton, context.getString(R.string.options_label));
@@ -1192,6 +1202,17 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.boundRule = null;
         holder.boundPackage = null;
         holder.lvAccess.setAdapter(null);
+    }
+
+    private void bindLiveControl(ViewHolder holder) {
+        Context context = holder.itemView.getContext();
+        TypedValue icon = new TypedValue();
+        context.getTheme().resolveAttribute(live ? R.attr.iconPause : R.attr.iconPlay, icon, true);
+        holder.ivLive.setImageResource(icon.resourceId);
+        holder.ivLive.setContentDescription(context.getString(live ? R.string.pause_live_updates : R.string.resume_live_updates));
+        TooltipCompat.setTooltipText(holder.ivLive, holder.ivLive.getContentDescription());
+        holder.tvLogging.setText(live ? R.string.live_updates_running_logging
+                : R.string.live_updates_paused_logging);
     }
 
     private void updateRule(Context context, Rule rule, boolean root, List<Rule> listAll) {

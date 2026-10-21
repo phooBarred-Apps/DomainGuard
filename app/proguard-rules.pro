@@ -43,7 +43,7 @@
     void dnsResolved(heartguard.heartguard.main.ResourceRecord);
     boolean isDomainBlocked(java.lang.String);
     boolean isDnsBlocked(java.lang.String, int, boolean);
-    long nextAppPauseExpiry();
+    long nextTemporaryExpiry();
     int getUidQ(int, int, java.lang.String, int, java.lang.String, int);
     heartguard.heartguard.main.Allowed isAddressAllowed(heartguard.heartguard.main.Packet);
     void accountUsage(heartguard.heartguard.main.Usage);

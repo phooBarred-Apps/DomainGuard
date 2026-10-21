@@ -94,6 +94,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     private AlertDialog dialogVpn = null;
     private AlertDialog dialogDoze = null;
     private AlertDialog dialogLegend = null;
+    private AlertDialog dialogHelp = null;
     private AlertDialog dialogAbout = null;
 
 
@@ -501,6 +502,10 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             dialogLegend.dismiss();
             dialogLegend = null;
         }
+        if (dialogHelp != null) {
+            dialogHelp.dismiss();
+            dialogHelp = null;
+        }
         if (dialogAbout != null) {
             dialogAbout.dismiss();
             dialogAbout = null;
@@ -608,6 +613,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
 
         } else if (Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS.equals(name)
                 || Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH.equals(name)
+                || CompactDomainLists.ENABLED.equals(name) || CompactDomainLists.ROWS.equals(name)
                 || "domain_timestamp_format".equals(name)) {
             if (adapter != null) { adapter.notifyDataSetChanged(); adapter.refreshTraffic(); }
         } else if ("theme".equals(name) || "dark_theme".equals(name))
@@ -817,7 +823,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
                 startActivity(new Intent(this, ActivitySettings.class).putExtra("open_display_settings", true));
                 return true;
             case R.id.menu_help_tutorials:
-                CompactUi.help(this, R.string.help_tutorials, getString(R.string.help_tutorials_body));
+                showHelpTutorials();
                 return true;
             case R.id.menu_global_lists:
                 GlobalListsDialog.choose(this);
@@ -860,10 +866,6 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             //case R.id.menu_invite:
             //    startActivityForResult(getIntentInvite(this), REQUEST_INVITE);
             //    return true;
-
-            case R.id.menu_legend:
-                menu_legend();
-                return true;
 
             // HeartGuard change - removed menu items
             //case R.id.menu_support:
@@ -1201,6 +1203,20 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
                     Log.e(TAG, ex + "\n" + ex.getStackTrace());
                 }
         }
+    }
+
+    private void showHelpTutorials() {
+        if (dialogHelp != null) return;
+        View view = getLayoutInflater().inflate(R.layout.help_tutorials, null, false);
+        view.findViewById(R.id.helpOpenLegend).setOnClickListener(button -> menu_legend());
+        dialogHelp = new AlertDialog.Builder(this)
+                .setCustomTitle(CompactUi.header(this, R.string.help_tutorials, 0, 0, null))
+                .setView(view)
+                .setPositiveButton(R.string.list_done, null)
+                .setOnDismissListener(dialog -> dialogHelp = null)
+                .create();
+        dialogHelp.show();
+        DialogSurface.apply(dialogHelp);
     }
 
     private void menu_legend() {

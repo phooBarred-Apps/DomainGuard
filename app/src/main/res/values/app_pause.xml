@@ -17,4 +17,5 @@
     <string name="app_pause_pending">%1$s pause starts at %2$s</string>
     <string name="app_pause_shared">Android shares this app’s network identity with: %1$s. The pause applies to these apps together.</string>
     <string name="app_pause_legend">Temporarily pause DomainGuard for an app</string>
+    <string name="app_resume_legend">Resume protection for a paused app now</string>
 </resources>

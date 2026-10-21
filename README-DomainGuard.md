@@ -4,6 +4,25 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 DomainGuard continues the HeartGuard-MW fork. Latest changes: October 21, 2026.
 
+Version `2.5` adds:
+
+- **Temporary Allow and Block:** enable Temporary in either domain dialog, choose seconds, minutes, hours or days (up to seven days), and optionally apply it globally. The toggle and global scope start off. Allows honor the normal rule delay; blocks begin immediately. The duration starts on activation, and expiry removes only that temporary rule. Existing block priorities and permanent rules remain in force. Global lists show the remaining duration.
+- **Compact domain lists:** Display settings lets you cap each expanded list at 2–10 rows, with an inner scrollbar for longer lists. Tap the example app to open a full-screen Preview with a Back arrow; previewing does not save changes or add traffic data.
+- **Resume control:** an actively paused app shows a green Play/Resume button in place of the red Pause button.
+- **Clearer controls:** Live updates pauses only the displayed traffic updates for all apps. Logging and filtering continue unchanged. The access-history trash icon sits beside the app protection Pause and gear controls.
+- **Help and Legend:** Help & tutorials now opens the existing Legend in a separate dialog. Back or Done returns to Help. The Legend explains Resume and live-update controls.
+
+Temporary raw-rule examples:
+
+```text
+temporary seconds:300 allow package:com.android.chrome host:example.com
+temporary seconds:3600 block package:com.android.chrome host:example.com
+temporary seconds:300 allow host:example.com
+temporary seconds:3600 blockdomain example.com
+```
+
+Saved activation times survive restarts and backup/restore; timers do not restart. Automatic expiry is enforced in packet decisions, cached IP decisions and existing VPN sessions, independently of delayed Android alarms. Removing a temporary block early uses the normal removal delay. The existing Rules screen can remove an app-specific temporary rule; global entries can also be removed through Global lists.
+
 Version `2.4` (DomainGuard) adds:
 
 - **DomainGuard branding** with the same Android package and signing certificate, so existing settings remain in place. Earlier HeartGuard-MW versions and their original release notes remain in Update history.

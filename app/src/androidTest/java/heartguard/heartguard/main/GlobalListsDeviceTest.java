@@ -76,17 +76,26 @@ public class GlobalListsDeviceTest {
         }
     }
 
-    // Test: The legend displays both global rule badges and their allowed/blocked labels.
-    // Why: Users must be able to distinguish the new globe icons from app-specific rules.
+    // Test: Help opens the unchanged Legend, which explains global badges and returns to Help on Done or Back.
+    // Why: Moving the Legend entry must preserve its existing contents and keep its parent dialog reachable.
     @Test public void legendExplainsBothGlobalBadges() throws Exception {
         device.wait(Until.findObject(By.desc("More options")), 5000).click();
-        findText(context.getString(R.string.menu_legend)).click();
+        assertFalse(device.hasObject(By.text(context.getString(R.string.menu_legend))));
+        findText(context.getString(R.string.help_tutorials)).click();
+        findText(context.getString(R.string.help_open_legend));
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "help-legend-introduction.png"));
+        findText(context.getString(R.string.help_open_legend)).click();
         new androidx.test.uiautomator.UiScrollable(new androidx.test.uiautomator.UiSelector().scrollable(true))
                 .scrollIntoView(new androidx.test.uiautomator.UiSelector()
                         .description(context.getString(R.string.domain_globally_blocked)));
         assertTrue(device.hasObject(By.desc(context.getString(R.string.domain_globally_allowed))));
         assertTrue(device.hasObject(By.desc(context.getString(R.string.domain_globally_blocked))));
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "global-badges-legend.png"));
+        device.pressBack();
+        findText(context.getString(R.string.help_open_legend)).click();
+        findText(context.getString(R.string.menu_legend));
+        findText(context.getString(R.string.list_done)).click();
+        findText(context.getString(R.string.help_open_legend));
         device.pressBack();
     }
 

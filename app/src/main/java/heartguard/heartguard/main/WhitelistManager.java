@@ -131,7 +131,7 @@ class RuleAndPackage extends MyRule {
         for (int uid : uids_to_reload) {
             actions.add("uid " + uid);
         }
-        if (m_blocked)
+        if (m_blocked || temporarySeconds > 0)
             actions.add("reload");
         return actions;
     }
@@ -146,7 +146,7 @@ class RuleAndPackage extends MyRule {
         for (int uid : uids_to_reload) {
             actions.add("uid " + uid);
         }
-        if (m_blocked)
+        if (m_blocked || temporarySeconds > 0)
             actions.add("reload");
         return actions;
     }
@@ -476,11 +476,14 @@ public class WhitelistManager {
 
     private ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
 
-    private static WhitelistManager global_wm = null;
+    private static volatile WhitelistManager global_wm = null;
 
     public static WhitelistManager getInstance(Context context) {
         if (global_wm == null) {
-            global_wm = new WhitelistManager(context);
+            synchronized (WhitelistManager.class) {
+                if (global_wm == null)
+                    global_wm = new WhitelistManager(context.getApplicationContext());
+            }
         }
         return global_wm;
     }

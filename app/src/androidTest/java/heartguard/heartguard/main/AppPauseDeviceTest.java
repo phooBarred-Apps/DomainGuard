@@ -138,6 +138,21 @@ public class AppPauseDeviceTest {
         assertTrue(AppPause.read(context, PKG).isEmpty());
     }
 
+    // Test: An active pause exposes a Play/Resume control that immediately restores the app's protection.
+    // Why: The active state must not keep presenting a red Pause action or queue another pause.
+    @Test public void pausedAppShowsPlayAndResumesImmediately() throws Exception {
+        add(AppPauseRule.text(PKG, 120));
+        launch();
+        find("appOptionsButton").click();
+        assertEquals(context.getString(R.string.app_pause_resume), find("appPauseButton").getContentDescription());
+        shot("green-play");
+        find("appPauseButton").click();
+        await(() -> !rules.isUidPaused(uid), 5000);
+        assertTrue(AppPause.read(context, PKG).isEmpty());
+        await(() -> device.hasObject(By.desc(context.getString(R.string.app_pause_title))), 5000);
+        assertFalse(device.hasObject(By.res(context.getPackageName(), "app_pause_amount")));
+    }
+
     // Test: A 35-minute delay keeps the app filtered and exposes the pending start time and cancellation.
     // Why: The requested preview must show the actual waiting UI, not an already-active bypass.
     @Test public void previewThirtyFiveMinuteDelay() throws Exception {
@@ -167,7 +182,8 @@ public class AppPauseDeviceTest {
     @Test public void legendExplainsPause() throws Exception {
         launch();
         device.wait(Until.findObject(By.desc("More options")), 5000).click();
-        text(context.getString(R.string.menu_legend)).click();
+        text(context.getString(R.string.help_tutorials)).click();
+        text(context.getString(R.string.help_open_legend)).click();
         new androidx.test.uiautomator.UiScrollable(new androidx.test.uiautomator.UiSelector().scrollable(true))
                 .scrollIntoView(new androidx.test.uiautomator.UiSelector()
                         .text(context.getString(R.string.app_pause_legend)));

@@ -513,7 +513,7 @@ void dns_resolved(const struct arguments *args,
                   const char *qname, const char *aname, const char *resource, int ttl);
 
 jboolean is_domain_blocked(const struct arguments *args, const char *name, int uid, jboolean svcb);
-jlong next_app_pause_expiry(const struct arguments *args);
+jlong next_temporary_expiry(const struct arguments *args);
 
 jint get_uid_q(const struct arguments *args,
                jint version,

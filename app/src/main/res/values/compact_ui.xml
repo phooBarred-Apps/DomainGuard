@@ -29,7 +29,9 @@
     <string name="domain_delay">Takes effect in %1$s</string>
     <string name="help_title">Help</string>
     <string name="help_tutorials">Help &amp; tutorials</string>
-    <string name="help_tutorials_body">Search: hold the magnifying glass to switch between apps and domains. Domain searches show matching apps expanded.\n\nDomains: tap a domain to allow or block it. Apply globally controls whether the rule covers all apps. Allowing a parent domain includes its subdomains.\n\nGlobal lists: manage shared allow and block rules from the menu. App-specific blocks override global allows.\n\nFilters and sorting: changes apply to this session. Set as default saves your choices for future sessions. Reset search and filters keeps your sort and saved defaults.\n\nRule delay: changes that loosen restrictions wait for the configured delay. Blocks take effect immediately.\n\nLegend explains the icons. Display settings controls the list tools and timestamps.</string>
+    <string name="help_legend_intro">Not sure what an icon means?</string>
+    <string name="help_open_legend">Open Legend</string>
+    <string name="help_tutorials_body">Search: hold the magnifying glass to switch between apps and domains. Domain searches show matching apps expanded.\n\nDomains: tap a domain to allow or block it. Apply globally controls whether the rule covers all apps. Allowing a parent domain includes its subdomains.\n\nGlobal lists: manage shared allow and block rules from the menu. App-specific blocks override global allows.\n\nFilters and sorting: changes apply to this session. Set as default saves your choices for future sessions. Reset search and filters keeps your sort and saved defaults.\n\nRule delay: changes that loosen restrictions wait for the configured delay. Blocks take effect immediately.\n\nDisplay settings controls the list tools and timestamps.</string>
     <string name="domain_details">Domain details</string>
     <string name="backup_automatic">Automatic backup</string>
     <string name="backup_automatic_subtitle">After rules or settings change</string>
