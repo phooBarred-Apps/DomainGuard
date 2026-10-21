@@ -10,13 +10,37 @@ import java.util.List;
 
 /** The settings UI reads and queues the same delay rules as the rule editor. */
 final class RuleDelay {
+    enum Unit {
+        SECONDS(1, R.plurals.rule_delay_unit_seconds),
+        MINUTES(60, R.plurals.rule_delay_unit_minutes),
+        HOURS(3600, R.plurals.rule_delay_unit_hours),
+        DAYS(86400, R.plurals.rule_delay_unit_days);
+
+        final int seconds;
+        final int label;
+
+        Unit(int seconds, int label) { this.seconds = seconds; this.label = label; }
+    }
+
+    static Unit displayUnit(int seconds) {
+        Unit[] units = Unit.values();
+        for (int i = units.length - 1; seconds > 0 && i >= 0; i--)
+            if (seconds % units[i].seconds == 0) return units[i];
+        return Unit.SECONDS;
+    }
+
     static int parseSeconds(String input) {
+        return parseSeconds(input, Unit.SECONDS);
+    }
+
+    static int parseSeconds(String input, Unit unit) {
         String value = input.trim();
         if (!value.matches("[0-9]+")) throw new IllegalArgumentException();
         try {
-            int seconds = Integer.parseInt(value);
-            if (seconds > RulesManager.MAX_DELAY) throw new IllegalArgumentException();
-            return seconds;
+            int amount = Integer.parseInt(value);
+            // Check before multiplying so large values cannot overflow into a shorter delay.
+            if (amount > RulesManager.MAX_DELAY / unit.seconds) throw new IllegalArgumentException();
+            return amount * unit.seconds;
         } catch (NumberFormatException invalid) {
             throw new IllegalArgumentException();
         }
@@ -25,8 +49,9 @@ final class RuleDelay {
     static String duration(Context context, int seconds) {
         if (seconds == 0) return context.getString(R.string.rule_delay_none);
         List<String> parts = new ArrayList<>();
-        int[] amounts = {seconds / 3600, seconds / 60 % 60, seconds % 60};
-        int[] plurals = {R.plurals.rule_delay_hours, R.plurals.rule_delay_minutes, R.plurals.rule_delay_seconds};
+        int[] amounts = {seconds / 86400, seconds / 3600 % 24, seconds / 60 % 60, seconds % 60};
+        int[] plurals = {R.plurals.rule_delay_days, R.plurals.rule_delay_hours,
+                R.plurals.rule_delay_minutes, R.plurals.rule_delay_seconds};
         for (int i = 0; i < amounts.length; i++)
             if (amounts[i] > 0)
                 parts.add(context.getResources().getQuantityString(plurals[i], amounts[i], amounts[i]));

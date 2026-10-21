@@ -714,6 +714,9 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         else if ("notify_access".equals(name))
             ServiceSinkhole.reload("changed " + name, this, false);
 
+        else if (AccessNotification.HIDE_GLOBAL_BLOCKS.equals(name))
+            AccessNotification.hideExistingGlobalBlocks(this);
+
         //else if (Rule.PREFERENCE_STRING_USE_HOSTS.equals(name))
         //    ServiceSinkhole.reload("changed " + name, this, false);
 

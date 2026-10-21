@@ -4,7 +4,22 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 Modifications for HeartGuard-MW were made on October 20, 2026.
 
-Version `2.317-mw.6` adds:
+Version `2.317-mw.7` adds:
+
+- **Rule delay units** lets you enter seconds, minutes, hours or days, with
+  singular/plural labels and an exact conversion to the existing delay rules.
+- **Copy domains** copies all matching domains from the cross-app search once
+  each, one per line, including results outside the visible area.
+- **Backup explanation** wraps in full instead of truncating the third paragraph.
+- **Hide global block notifications** is an optional setting under Settings >
+  Options. It hides access notifications for active global blacklist matches,
+  including subdomains, while retaining blocking and access history.
+- **Per-app domain controls** put Sort and the optional search button beside Hide
+  allowed domains. Settings > Options > Always show domain search per app keeps
+  the field visible by default. Turn it off to reveal the field with the search
+  icon; tapping again clears and closes that app's search for the current session.
+
+Version `2.317-mw.6` added:
 
 - **Search domains across apps** searches recorded attempts independently of app
   filters and shows each app/domain's latest recorded outcome. URLs are accepted.

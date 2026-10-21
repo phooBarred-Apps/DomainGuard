@@ -52,6 +52,7 @@ import android.view.SubMenu;
 import android.view.TouchDelegate;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
@@ -64,6 +65,7 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.widget.TooltipCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
@@ -103,6 +105,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     // Display overrides last for this screen session, including list refreshes.
     private final Map<String, Boolean> hideAllowedDomains = new HashMap<>();
     private final Map<String, String> domainQueries = new HashMap<>();
+    private final Set<String> domainSearchExpanded = new HashSet<>();
     private final Set<String> expanded = new HashSet<>();
     private final Set<ViewHolder> boundHolders = new HashSet<>();
     final AppListOptions options = new AppListOptions();
@@ -186,7 +189,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         public CheckBox cbHideAllowedDomains;
         public RecyclerView lvAccess;
         public EditText domainSearch;
-        public Button domainSortButton;
+        public ImageButton domainSearchButton;
+        public ImageButton domainSortButton;
         public TextView domainStatus;
         private TextWatcher domainWatcher;
         private String boundPackage;
@@ -258,6 +262,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             lvAccess.setNestedScrollingEnabled(false);
             ((SimpleItemAnimator) lvAccess.getItemAnimator()).setSupportsChangeAnimations(false);
             domainSearch = itemView.findViewById(R.id.domainSearch);
+            domainSearchButton = itemView.findViewById(R.id.domainSearchButton);
             domainSortButton = itemView.findViewById(R.id.domainSortButton);
             domainStatus = itemView.findViewById(R.id.domainStatus);
             btnClearAccess = itemView.findViewById(R.id.btnClearAccess);
@@ -423,6 +428,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         for (String name : domainQueries.keySet()) queries.putString(name, domainQueries.get(name));
         state.putBundle("hidden", hidden);
         state.putBundle("domainQueries", queries);
+        state.putStringArrayList("domainSearchExpanded", new ArrayList<>(domainSearchExpanded));
         return state;
     }
 
@@ -435,6 +441,23 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         Bundle hidden = state.getBundle("hidden"), queries = state.getBundle("domainQueries");
         if (hidden != null) for (String name : hidden.keySet()) hideAllowedDomains.put(name, hidden.getBoolean(name));
         if (queries != null) for (String name : queries.keySet()) domainQueries.put(name, queries.getString(name, ""));
+        ArrayList<String> searches = state.getStringArrayList("domainSearchExpanded");
+        if (searches != null) domainSearchExpanded.addAll(searches);
+    }
+
+    private void setDomainSearchVisible(ViewHolder holder, boolean visible) {
+        holder.domainSearch.setVisibility(visible ? View.VISIBLE : View.GONE);
+        String description = holder.itemView.getContext().getString(visible
+                ? R.string.list_hide_domain_search : R.string.list_show_domain_search);
+        holder.domainSearchButton.setContentDescription(description);
+        TooltipCompat.setTooltipText(holder.domainSearchButton, description);
+    }
+
+    private void setDomainSortDescription(ViewHolder holder, String sort) {
+        Context context = holder.itemView.getContext();
+        String description = context.getString(R.string.list_sort_domains) + ": " + context.getString(ListSort.label(sort));
+        holder.domainSortButton.setContentDescription(description);
+        TooltipCompat.setTooltipText(holder.domainSortButton, description);
     }
 
     private void loadDomains(ViewHolder holder, Rule rule) {
@@ -871,8 +894,29 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         });
 
         if (holder.domainWatcher != null) holder.domainSearch.removeTextChangedListener(holder.domainWatcher);
+        if (!rule.packageName.equals(holder.boundPackage)) holder.domainSearch.clearFocus();
         String query = domainQueries.containsKey(rule.packageName) ? domainQueries.get(rule.packageName) : "";
         if (!query.equals(holder.domainSearch.getText().toString())) holder.domainSearch.setText(query);
+        boolean alwaysShowSearch = prefs.getBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH, true);
+        holder.domainSearchButton.setVisibility(alwaysShowSearch ? View.GONE : View.VISIBLE);
+        // Never conceal an active filter, including one restored after rotation.
+        setDomainSearchVisible(holder, alwaysShowSearch || domainSearchExpanded.contains(rule.packageName) || !query.isEmpty());
+        holder.domainSearchButton.setOnClickListener(view -> {
+            boolean show = holder.domainSearch.getVisibility() != View.VISIBLE;
+            InputMethodManager keyboard = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (show) {
+                domainSearchExpanded.add(rule.packageName);
+                setDomainSearchVisible(holder, true);
+                holder.domainSearch.requestFocus();
+                if (keyboard != null) keyboard.showSoftInput(holder.domainSearch, InputMethodManager.SHOW_IMPLICIT);
+            } else {
+                domainSearchExpanded.remove(rule.packageName);
+                holder.domainSearch.setText("");
+                holder.domainSearch.clearFocus();
+                if (keyboard != null) keyboard.hideSoftInputFromWindow(holder.domainSearch.getWindowToken(), 0);
+                setDomainSearchVisible(holder, false);
+            }
+        });
         holder.domainWatcher = new TextWatcher() {
             public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
             public void onTextChanged(CharSequence text, int start, int before, int count) {
@@ -882,12 +926,12 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             public void afterTextChanged(Editable text) { }
         };
         holder.domainSearch.addTextChangedListener(holder.domainWatcher);
-        holder.domainSortButton.setText(context.getString(R.string.list_sort_domains) + ": " + context.getString(ListSort.label(domainSort)));
+        setDomainSortDescription(holder, domainSort);
         holder.domainSortButton.setOnClickListener(view -> SortDialog.show(context, R.string.list_sort_domains,
                 ListSort.DOMAINS, domainSort, ListSort.DOMAIN_DEFAULT, selected -> {
                     domainSort = selected;
                     for (ViewHolder bound : boundHolders)
-                        bound.domainSortButton.setText(context.getString(R.string.list_sort_domains) + ": " + context.getString(ListSort.label(selected)));
+                        setDomainSortDescription(bound, selected);
                     refreshDomains();
                 }));
         if (!rule.packageName.equals(holder.boundPackage)) {

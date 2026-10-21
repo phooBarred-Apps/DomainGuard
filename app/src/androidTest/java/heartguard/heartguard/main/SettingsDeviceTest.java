@@ -12,6 +12,8 @@ import android.os.SystemClock;
 import androidx.preference.PreferenceManager;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
+import androidx.test.runner.lifecycle.Stage;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
@@ -69,7 +71,8 @@ public class SettingsDeviceTest {
         openDelay();
         UiObject2 input = find("rule_delay_input");
         for (String[] pair : new String[][]{{"60", "1 minute"}, {"90", "1 minute 30 seconds"},
-                {"3600", "1 hour"}, {"3661", "1 hour 1 minute 1 second"}, {"604800", "168 hours"}, {"0", "No delay"}}) {
+                {"3600", "1 hour"}, {"3661", "1 hour 1 minute 1 second"}, {"86401", "1 day 1 second"},
+                {"604800", "7 days"}, {"0", "No delay"}}) {
             input.setText(pair[0]);
             device.waitForIdle();
             assertEquals(pair[1], find("rule_delay_preview").getText());
@@ -81,14 +84,55 @@ public class SettingsDeviceTest {
         assertEquals(0, RuleDelay.read(context).seconds);
     }
 
+    // Test: Unit choices pluralize with the number, survive recreation, and reject more than seven days.
+    // Why: A stale label or lost unit could make the displayed duration disagree with what Save queues.
+    @Test public void unitLabelsAndDraftSurviveRecreation() {
+        openDelay();
+        find("rule_delay_input").setText("1");
+        find("rule_delay_unit").click();
+        for (String label : new String[]{"second", "minute", "hour", "day"})
+            assertNotNull(device.wait(Until.findObject(By.text(label)), 5000));
+        device.findObject(By.text("day")).click();
+        assertEquals("1 day", find("rule_delay_preview").getText());
+        find("rule_delay_input").setText("2");
+        assertEquals("2 days", find("rule_delay_preview").getText());
+        find("rule_delay_unit").click();
+        for (String label : new String[]{"seconds", "minutes", "hours", "days"})
+            assertNotNull(device.wait(Until.findObject(By.text(label)), 5000));
+        device.findObject(By.text("hours")).click();
+        assertEquals("2 hours", find("rule_delay_preview").getText());
+        Activity previous = activity;
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> activity.recreate());
+        await(() -> {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+                for (Activity open : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))
+                    if (open instanceof ActivitySettings) activity = open;
+            });
+            return activity != previous;
+        });
+        assertEquals("2", find("rule_delay_input").getText());
+        assertEquals("2 hours", find("rule_delay_preview").getText());
+        find("rule_delay_unit").click();
+        device.wait(Until.findObject(By.text("days")), 5000).click();
+        find("rule_delay_input").setText("8");
+        assertEquals(context.getString(R.string.rule_delay_invalid), find("rule_delay_preview").getText());
+        device.findObject(By.res("android", "button1")).click();
+        assertNotNull(find("rule_delay_input"));
+        assertEquals(0, RuleDelay.read(context).seconds);
+    }
+
     // Test: A delay reduction stays pending and cancelling it preserves the active delay.
     // Why: The settings shortcut must obey the existing rule engine's waiting period.
     @Test public void savingUsesRulesAndPendingReductionCanBeCancelled() {
         openDelay();
-        find("rule_delay_input").setText("60");
+        find("rule_delay_input").setText("1");
+        find("rule_delay_unit").click();
+        device.wait(Until.findObject(By.text("minute")), 5000).click();
         device.findObject(By.res("android", "button1")).click();
         await(() -> RuleDelay.read(context).seconds == 60);
         device.wait(Until.findObject(By.text(context.getString(R.string.rule_delay_title))), 5000).click();
+        assertEquals("1", find("rule_delay_input").getText());
+        assertNotNull(device.findObject(By.text("minute")));
         find("rule_delay_input").setText("0");
         assertTrue(find("rule_delay_preview").getText().contains("after 1 minute"));
         device.findObject(By.res("android", "button1")).click();
@@ -97,6 +141,7 @@ public class SettingsDeviceTest {
         assertEquals("delay 0", RuleDelay.read(context).pending.get(0).rule);
         device.wait(Until.findObject(By.text(context.getString(R.string.rule_delay_title))), 5000).click();
         assertFalse(find("rule_delay_input").isEnabled());
+        assertFalse(find("rule_delay_unit").isEnabled());
         assertTrue(find("rule_delay_current").getText().contains("Pending: No delay"));
         find("rule_delay_cancel_pending").click();
         await(() -> RuleDelay.read(context).pending.isEmpty());

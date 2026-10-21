@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -458,21 +459,48 @@
                 android:textAppearance="@style/TextSmall"
                 android:textStyle="italic" />
 
-            <CheckBox
-                android:id="@+id/cbHideAllowedDomains"
+            <LinearLayout
+                android:id="@+id/domainControls"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:text="@string/hide_allowed_domains"
-                android:textAppearance="@style/TextSmall" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <CheckBox
+                    android:id="@+id/cbHideAllowedDomains"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:minHeight="48dp"
+                    android:text="@string/hide_allowed_domains"
+                    android:textAppearance="@style/TextSmall" />
+
+                <ImageButton
+                    android:id="@+id/domainSearchButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/list_show_domain_search"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_search_white_24dp"
+                    app:tint="?android:attr/textColorSecondary"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/domainSortButton"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/list_sort_domains"
+                    android:padding="12dp"
+                    android:src="@drawable/ic_sort_white_24dp"
+                    app:tint="?android:attr/textColorSecondary" />
+            </LinearLayout>
 
             <EditText android:id="@+id/domainSearch"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:minHeight="48dp" android:singleLine="true" android:inputType="textUri"
                 android:importantForAutofill="no" android:hint="@string/list_search_domains" />
-            <Button android:id="@+id/domainSortButton"
-                android:layout_width="match_parent" android:layout_height="wrap_content"
-                android:textAllCaps="false" android:text="@string/list_sort_domains" />
             <TextView android:id="@+id/domainStatus"
                 android:layout_width="match_parent" android:layout_height="wrap_content"
                 android:visibility="gone" android:textAppearance="@style/TextSmall" />

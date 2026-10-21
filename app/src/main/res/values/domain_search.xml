@@ -7,6 +7,11 @@
     <string name="domain_search_empty">No recorded attempts match this search.</string>
     <string name="domain_search_error">Could not load domain attempts. Change the search or reopen this screen to retry.</string>
     <string name="domain_search_count">Matches: %1$d</string>
+    <string name="domain_search_copy">Copy domains</string>
+    <plurals name="domain_search_copied">
+        <item quantity="one">Copied %d domain</item>
+        <item quantity="other">Copied %d domains</item>
+    </plurals>
     <string name="domain_search_allowed">Last attempt: Allowed</string>
     <string name="domain_search_blocked">Last attempt: Blocked</string>
     <string name="domain_search_unknown">Awaiting next attempt</string>

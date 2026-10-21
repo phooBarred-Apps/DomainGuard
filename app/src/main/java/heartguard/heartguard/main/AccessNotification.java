@@ -1,19 +1,23 @@
 package heartguard.heartguard.main;
 
 import android.app.PendingIntent;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.preference.PreferenceManager;
 
 /** A notification and its immutable action refer to one app and one destination. */
 final class AccessNotification {
     static final int ID = 1;
     static final String ALLOW = BuildConfig.APPLICATION_ID + ".ALLOW_DOMAIN";
+    static final String HIDE_GLOBAL_BLOCKS = "hide_global_block_notifications";
     private static final String PREFIX = "domain-access:";
 
     static void show(Context context, int uid, String destination, String address) {
@@ -26,6 +30,10 @@ final class AccessNotification {
         String[] packages = context.getPackageManager().getPackagesForUid(uid);
         // Android attributes shared-UID traffic to several apps; require review for that case.
         String packageName = packages != null && packages.length == 1 ? packages[0] : "";
+        if (shouldHideGlobalBlock(context, host)) {
+            NotificationManagerCompat.from(context).cancel(tag(uid, packageName, host), ID);
+            return;
+        }
         String text = context.getString(R.string.notification_domain_blocked, host);
         NotificationCompat.Builder builder = builder(context, uid, packageName, host, text);
         if (!packageName.isEmpty()) {
@@ -58,6 +66,10 @@ final class AccessNotification {
             if (!host.equals(DomainInput.normalize(host)) || !identity(uid, packageName, host).equals(intent.getData())) return;
         } catch (PackageManager.NameNotFoundException | IllegalArgumentException invalid) { return; }
 
+        if (shouldHideGlobalBlock(context, host)) {
+            NotificationManagerCompat.from(context).cancel(tag(uid, packageName, host), ID);
+            return;
+        }
         boolean explicitBlock = WhitelistManager.getInstance(context).getExplicitBlock(context, address, uid) != null;
         for (String blocked : RulesManager.getInstance(context).getBlockedDomains())
             explicitBlock |= Util.isAddressInsideDomain(host, blocked);
@@ -71,6 +83,25 @@ final class AccessNotification {
         }
         NotificationManagerCompat.from(context).notify(tag(uid, packageName, host), ID,
                 builder(context, uid, packageName, host, message).build());
+    }
+
+    private static boolean shouldHideGlobalBlock(Context context, String host) {
+        if (!PreferenceManager.getDefaultSharedPreferences(context).getBoolean(HIDE_GLOBAL_BLOCKS, false)) return false;
+        for (String blocked : RulesManager.getInstance(context).getBlockedDomains())
+            if (Util.isAddressInsideDomain(host, blocked)) return true;
+        return false;
+    }
+
+    static void hideExistingGlobalBlocks(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        for (StatusBarNotification notification : manager.getActiveNotifications()) {
+            String tag = notification.getTag();
+            if (notification.getId() != ID || tag == null || !tag.startsWith(PREFIX)) continue;
+            // Limit the split so an IPv6 destination remains intact.
+            String[] identity = tag.substring(PREFIX.length()).split(":", 3);
+            if (identity.length == 3 && shouldHideGlobalBlock(context, identity[2])) manager.cancel(tag, ID);
+        }
     }
 
     private static NotificationCompat.Builder builder(Context context, int uid, String packageName, String host, String text) {

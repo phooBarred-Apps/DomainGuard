@@ -583,7 +583,8 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             boolean hint = prefs.getBoolean("hint_system", true);
             llSystem.setVisibility(!system && hint ? View.VISIBLE : View.GONE);
 
-        } else if (Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS.equals(name)) {
+        } else if (Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS.equals(name)
+                || Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH.equals(name)) {
             if (adapter != null) adapter.notifyDataSetChanged();
         } else if ("theme".equals(name) || "dark_theme".equals(name))
             recreate();

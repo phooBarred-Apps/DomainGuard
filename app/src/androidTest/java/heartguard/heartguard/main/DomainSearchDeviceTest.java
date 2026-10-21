@@ -1,6 +1,8 @@
 package heartguard.heartguard.main;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
@@ -28,6 +30,7 @@ import org.junit.runner.RunWith;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.BooleanSupplier;
 import static org.junit.Assert.*;
 
@@ -131,6 +134,41 @@ public class DomainSearchDeviceTest {
         onMain(() -> assertEquals(domain, ((SearchView) activity.findViewById(R.id.domain_search)).getQuery().toString()));
     }
 
+    // Test: Copy includes off-screen matches once per domain, ignores case, and follows the current search.
+    // Why: Apps share domains; copying visible rows alone would omit results or repeat the same host.
+    @Test public void copiesDistinctDomainsFromAllMatchingRows() {
+        List<String> domains = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            String domain = String.format(Locale.ROOT, "domain-%02d", i) + SUFFIX;
+            domains.add(domain);
+            insert(99193, domain, 443, 100, 1);
+            insert(99194, domain.toUpperCase(Locale.ROOT), 443, 100, 0);
+        }
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
+                new Intent(context, ActivityDomainSearch.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData previous = clipboard.getPrimaryClip();
+        try {
+            assertFalse(device.wait(Until.findObject(By.res(context.getPackageName(), "domain_search_copy")), 5000).isEnabled());
+            query(SUFFIX);
+            await(() -> rowTexts().size() == 40);
+            device.findObject(By.res(context.getPackageName(), "domain_search_copy")).click();
+            awaitClipboard(clipboard, android.text.TextUtils.join("\n", domains));
+            device.takeScreenshot(new File(context.getExternalFilesDir(null), "domain-search-copy.png"));
+            query("domain-01" + SUFFIX);
+            await(() -> rowTexts().size() == 2);
+            device.findObject(By.res(context.getPackageName(), "domain_search_copy")).click();
+            awaitClipboard(clipboard, domains.get(1));
+            query("no-match" + SUFFIX);
+            findText(context.getString(R.string.domain_search_empty));
+            assertFalse(device.findObject(By.res(context.getPackageName(), "domain_search_copy")).isEnabled());
+            query("");
+            assertFalse(device.findObject(By.res(context.getPackageName(), "domain_search_copy")).isEnabled());
+        } finally {
+            clipboard.setPrimaryClip(previous == null ? ClipData.newPlainText("", "") : previous);
+        }
+    }
+
     // Test: SQL treats wildcard punctuation literally and matches uppercase recorded domains.
     // Why: A broad wildcard search could return unrelated apps or expose a false match.
     @Test public void databaseSearchUsesLiteralCharacters() {
@@ -147,6 +185,13 @@ public class DomainSearchDeviceTest {
 
     private void query(String query) {
         onMain(() -> ((SearchView) activity.findViewById(R.id.domain_search)).setQuery(query, false));
+    }
+
+    private void awaitClipboard(ClipboardManager clipboard, String expected) {
+        await(() -> {
+            ClipData clip = clipboard.getPrimaryClip();
+            return clip != null && expected.contentEquals(clip.getItemAt(0).getText());
+        });
     }
 
     private List<String> rowTexts() {

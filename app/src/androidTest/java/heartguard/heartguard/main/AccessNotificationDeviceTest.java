@@ -1,19 +1,24 @@
 package heartguard.heartguard.main;
 
+import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.os.Build;
 import android.os.SystemClock;
 import android.service.notification.StatusBarNotification;
+import androidx.preference.PreferenceManager;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
 import androidx.test.uiautomator.UiDevice;
 import androidx.test.uiautomator.UiObject2;
+import androidx.test.uiautomator.UiScrollable;
+import androidx.test.uiautomator.UiSelector;
 import androidx.test.uiautomator.Until;
 import org.junit.After;
 import org.junit.Before;
@@ -22,6 +27,7 @@ import org.junit.runner.RunWith;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.BooleanSupplier;
 import static org.junit.Assert.*;
 
@@ -29,12 +35,17 @@ import static org.junit.Assert.*;
 public class AccessNotificationDeviceTest {
     private static final String FIRST = "first.mw-notification-test.invalid";
     private static final String SECOND = "second.mw-notification-test.invalid";
+    private static final String SUBDOMAIN = "cdn." + FIRST;
+    private static final String LOOKALIKE = "not" + FIRST;
     private Context context;
     private DatabaseHelper db;
     private RulesManager rules;
     private NotificationManager notifications;
     private int uid;
     private String pkg;
+    private SharedPreferences prefs;
+    private Boolean previousHide;
+    private Activity settings;
     private final List<String> owned = new ArrayList<>();
 
     @Before public void setup() {
@@ -45,6 +56,10 @@ public class AccessNotificationDeviceTest {
         notifications = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         uid = android.os.Process.myUid();
         pkg = context.getPackageName();
+        prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        previousHide = prefs.contains(AccessNotification.HIDE_GLOBAL_BLOCKS)
+                ? prefs.getBoolean(AccessNotification.HIDE_GLOBAL_BLOCKS, false) : null;
+        prefs.edit().remove(AccessNotification.HIDE_GLOBAL_BLOCKS).commit();
         assertEquals(0, RuleDelay.read(context).seconds);
         assertFalse(exists(allow(FIRST)));
         assertFalse(exists(allow(SECOND)));
@@ -54,8 +69,13 @@ public class AccessNotificationDeviceTest {
 
     @After public void cleanup() {
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressHome();
+        if (settings != null) InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> settings.finish());
+        if (previousHide == null) prefs.edit().remove(AccessNotification.HIDE_GLOBAL_BLOCKS).commit();
+        else prefs.edit().putBoolean(AccessNotification.HIDE_GLOBAL_BLOCKS, previousHide).commit();
         notifications.cancel(AccessNotification.tag(uid, pkg, FIRST), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(uid, pkg, SECOND), AccessNotification.ID);
+        notifications.cancel(AccessNotification.tag(uid, pkg, SUBDOMAIN), AccessNotification.ID);
+        notifications.cancel(AccessNotification.tag(uid, pkg, LOOKALIKE), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(99195, "", FIRST), AccessNotification.ID);
         List<Long> ids = new ArrayList<>();
         try (Cursor cursor = db.getAllRules()) {
@@ -128,7 +148,7 @@ public class AccessNotificationDeviceTest {
         await(() -> WhitelistManager.getInstance(context).getExplicitBlock(context, FIRST, uid) != null);
         AccessNotification.show(context, uid, FIRST, FIRST);
         notification(FIRST).actions[0].actionIntent.send();
-        await(() -> notification(FIRST).actions == null || notification(FIRST).actions.length == 0);
+        await(() -> hasNoActions(FIRST));
         assertFalse(exists(allow(FIRST)));
         assertTrue(exists(block));
         String globalBlock = "blockdomain " + SECOND;
@@ -137,7 +157,7 @@ public class AccessNotificationDeviceTest {
         await(() -> rules.getBlockedDomains().contains(SECOND));
         AccessNotification.show(context, uid, SECOND, SECOND);
         notification(SECOND).actions[0].actionIntent.send();
-        await(() -> notification(SECOND).actions == null || notification(SECOND).actions.length == 0);
+        await(() -> hasNoActions(SECOND));
         assertFalse(exists(allow(SECOND)));
         assertTrue(exists(globalBlock));
         AccessNotification.show(context, 99195, FIRST, FIRST);
@@ -145,6 +165,61 @@ public class AccessNotificationDeviceTest {
         Notification unknown = find(AccessNotification.tag(99195, "", FIRST));
         assertNotNull(unknown);
         assertTrue(unknown.actions == null || unknown.actions.length == 0);
+    }
+
+    private boolean hasNoActions(String host) {
+        // Inspect one snapshot: the receiver can replace the notification between reads.
+        Notification notification = notification(host);
+        return notification.actions == null || notification.actions.length == 0;
+    }
+
+    // Test: The optional setting removes existing global-block alerts, suppresses new ones, and can be turned off.
+    // Why: Global matches include subdomains, but app-only blocks and similar-looking domains must still notify.
+    @Test public void hidingGlobalBlocksIsOptionalAndKeepsOtherNotifications() throws Exception {
+        String global = "blockdomain " + FIRST;
+        String local = "block package:" + pkg + " host:" + SECOND;
+        owned.add(global); owned.add(local);
+        rules.queueRuleText(context, global);
+        rules.queueRuleText(context, local);
+        await(() -> rules.getBlockedDomains().contains(FIRST)
+                && WhitelistManager.getInstance(context).getExplicitBlock(context, SECOND, uid) != null);
+        assertFalse(prefs.getBoolean(AccessNotification.HIDE_GLOBAL_BLOCKS, false));
+        for (String host : new String[]{FIRST, SUBDOMAIN, SECOND, LOOKALIKE}) {
+            AccessNotification.show(context, uid, host, host);
+            notification(host);
+        }
+
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        settings = InstrumentationRegistry.getInstrumentation().startActivitySync(
+                new Intent(context, ActivitySettings.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        device.wait(Until.findObject(By.text(context.getString(R.string.setting_options))), 5000).click();
+        String title = context.getString(R.string.notification_hide_global_blocks);
+        new UiScrollable(new UiSelector().scrollable(true)).scrollIntoView(new UiSelector().text(title));
+        device.wait(Until.findObject(By.text(title)), 5000).click();
+        await(() -> prefs.getBoolean(AccessNotification.HIDE_GLOBAL_BLOCKS, false)
+                && find(AccessNotification.tag(uid, pkg, FIRST)) == null
+                && find(AccessNotification.tag(uid, pkg, SUBDOMAIN)) == null);
+        notification(SECOND);
+        notification(LOOKALIKE);
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "hide-global-block-notifications.png"));
+
+        notifications.cancel(AccessNotification.tag(uid, pkg, SECOND), AccessNotification.ID);
+        await(() -> find(AccessNotification.tag(uid, pkg, SECOND)) == null);
+        AccessNotification.show(context, uid, FIRST.toUpperCase(Locale.ROOT) + ".", FIRST);
+        AccessNotification.show(context, uid, SUBDOMAIN, SUBDOMAIN);
+        AccessNotification.show(context, uid, SECOND, SECOND);
+        notification(SECOND);
+        assertNull(find(AccessNotification.tag(uid, pkg, FIRST)));
+        assertNull(find(AccessNotification.tag(uid, pkg, SUBDOMAIN)));
+
+        device.wait(Until.findObject(By.text(title)), 5000).click();
+        await(() -> !prefs.getBoolean(AccessNotification.HIDE_GLOBAL_BLOCKS, true));
+        for (String host : new String[]{FIRST, SUBDOMAIN}) {
+            AccessNotification.show(context, uid, host, host);
+            notification(host);
+        }
+        assertTrue(exists(global));
+        assertTrue(exists(local));
     }
 
     private String allow(String host) { return "allow package:" + pkg + " host:" + host; }

@@ -1,5 +1,7 @@
 package heartguard.heartguard.main;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.database.Cursor;
 import android.os.Bundle;
 import android.os.Handler;
@@ -13,6 +15,7 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SearchView;
 import java.util.ArrayList;
@@ -23,6 +26,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -37,6 +41,7 @@ public class ActivityDomainSearch extends AppCompatActivity {
     });
     private SearchView search;
     private TextView status;
+    private View copyDomains;
     private ArrayAdapter<Result> adapter;
     private int generation;
 
@@ -47,6 +52,8 @@ public class ActivityDomainSearch extends AppCompatActivity {
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         search = findViewById(R.id.domain_search);
         status = findViewById(R.id.domain_search_status);
+        copyDomains = findViewById(R.id.domain_search_copy);
+        copyDomains.setOnClickListener(view -> copyDomains());
         adapter = new ArrayAdapter<Result>(this, R.layout.domain_search_row, new ArrayList<>()) {
             @Override public boolean isEnabled(int position) { return false; }
             @Override public boolean areAllItemsEnabled() { return false; }
@@ -77,6 +84,7 @@ public class ActivityDomainSearch extends AppCompatActivity {
             public boolean onQueryTextChange(String query) {
                 adapter.clear();
                 adapter.notifyDataSetChanged();
+                copyDomains.setEnabled(false);
                 status.setText(new DomainSearchQuery(query).text.isEmpty()
                         ? R.string.domain_search_start : R.string.domain_search_loading);
                 schedule();
@@ -136,6 +144,7 @@ public class ActivityDomainSearch extends AppCompatActivity {
                     adapter.clear();
                     adapter.addAll(results);
                     adapter.notifyDataSetChanged();
+                    copyDomains.setEnabled(!results.isEmpty());
                     status.setText(results.isEmpty() ? getString(R.string.domain_search_empty)
                             : getString(R.string.domain_search_count, results.size()));
                 });
@@ -146,6 +155,16 @@ public class ActivityDomainSearch extends AppCompatActivity {
                 });
             }
         });
+    }
+
+    private void copyDomains() {
+        Set<String> domains = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (int i = 0; i < adapter.getCount(); i++) domains.add(adapter.getItem(i).domain);
+        if (domains.isEmpty()) return;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.domain_search_copy), TextUtils.join("\n", domains)));
+        Toast.makeText(this, getResources().getQuantityString(R.plurals.domain_search_copied,
+                domains.size(), domains.size()), Toast.LENGTH_SHORT).show();
     }
 
     private List<Result> read(DomainSearchQuery query) {

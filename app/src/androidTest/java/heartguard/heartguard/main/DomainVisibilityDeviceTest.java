@@ -7,12 +7,17 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.View;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.uiautomator.By;
+import androidx.test.uiautomator.UiDevice;
+import androidx.test.uiautomator.Until;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -30,6 +35,7 @@ public class DomainVisibilityDeviceTest {
     private DatabaseHelper db;
     private SharedPreferences prefs;
     private boolean hadPreference, oldPreference;
+    private boolean hadSearchPreference, oldSearchPreference;
     private Activity activity;
     private RecyclerView list;
     private AdapterRule adapter;
@@ -42,6 +48,8 @@ public class DomainVisibilityDeviceTest {
         prefs = PreferenceManager.getDefaultSharedPreferences(context);
         hadPreference = prefs.contains(KEY);
         oldPreference = prefs.getBoolean(KEY, false);
+        hadSearchPreference = prefs.contains(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH);
+        oldSearchPreference = prefs.getBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH, true);
         for (int uid : new int[]{FIRST_UID, SECOND_UID}) {
             try (Cursor cursor = db.getAccess(uid)) {
                 assertEquals("Synthetic test UID already has traffic", 0, cursor.getCount());
@@ -50,13 +58,18 @@ public class DomainVisibilityDeviceTest {
     }
 
     @After public void cleanup() {
-        if (activity != null) onMain(() -> activity.finish());
+        if (activity != null) onMain(() -> {
+            if (adapter != null) adapter.dispose();
+            activity.finish();
+        });
         db.getWritableDatabase().delete("access",
                 "uid IN (?, ?) AND daddr LIKE ?", new String[]{
                         Integer.toString(FIRST_UID), Integer.toString(SECOND_UID), "%.mw-visibility-test.invalid"});
         onMain(() -> {
             SharedPreferences.Editor edit = prefs.edit();
             if (hadPreference) edit.putBoolean(KEY, oldPreference); else edit.remove(KEY);
+            if (hadSearchPreference) edit.putBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH, oldSearchPreference);
+            else edit.remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH);
             edit.commit();
         });
     }
@@ -127,7 +140,98 @@ public class DomainVisibilityDeviceTest {
         assertFalse(prefs.getBoolean(KEY, true));
     }
 
+    // Test: Collapsible searches stay with their app through refresh/recreation; closing clears the filter and Sort still works.
+    // Why: Recycled app rows must not inherit another app's hidden search, and the icon conversion must preserve sort behavior.
+    @Test public void compactControlsKeepSearchPerAppAndSortAccessible() {
+        for (int uid : new int[]{FIRST_UID, SECOND_UID}) {
+            insert(uid, "allowed", 100, 1, 0, 0);
+            insert(uid, "blocked", 200, 0, 1, 0);
+        }
+        onMain(() -> prefs.edit().putBoolean(KEY, false)
+                .putBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH, false).commit());
+        apps = new ArrayList<>(Rule.getRules(true, context).subList(0, 2));
+        apps.get(0).uid = FIRST_UID;
+        apps.get(1).uid = SECOND_UID;
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
+                new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        onMain(() -> {
+            list = new RecyclerView(activity);
+            list.setLayoutManager(new LinearLayoutManager(activity));
+            list.setItemAnimator(null);
+            activity.setContentView(list);
+            newSession();
+        });
+        assertRow(0, false, 2);
+        onMain(() -> {
+            AdapterRule.ViewHolder first = holder(0);
+            assertEquals(View.GONE, first.domainSearch.getVisibility());
+            assertEquals(View.VISIBLE, first.domainSearchButton.getVisibility());
+            assertEquals(first.cbHideAllowedDomains.getParent(), first.domainSearchButton.getParent());
+            assertEquals(first.domainSearchButton.getParent(), first.domainSortButton.getParent());
+            first.domainSearchButton.performClick();
+            assertEquals(View.VISIBLE, first.domainSearch.getVisibility());
+            first.domainSearch.setText("allowed");
+        });
+        assertRow(0, false, 1);
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.pressBack(); // Dismiss the keyboard before moving to another app.
+        assertRow(1, false, 2);
+        onMain(() -> {
+            assertEquals(View.GONE, holder(1).domainSearch.getVisibility());
+            assertEquals("", holder(1).domainSearch.getText().toString());
+            adapter.set(new ArrayList<>(apps));
+        });
+        assertRow(0, false, 1);
+        onMain(() -> {
+            assertEquals("allowed", holder(0).domainSearch.getText().toString());
+            Bundle saved = adapter.saveViewState();
+            adapter.dispose();
+            adapter = new AdapterRule(activity, list);
+            adapter.restoreViewState(saved);
+            list.setAdapter(adapter);
+            adapter.set(new ArrayList<>(apps));
+        });
+        assertRow(0, false, 1);
+        onMain(() -> {
+            assertEquals(View.VISIBLE, holder(0).domainSearch.getVisibility());
+            assertEquals("allowed", holder(0).domainSearch.getText().toString());
+            holder(0).domainSearchButton.performClick();
+            assertEquals(View.GONE, holder(0).domainSearch.getVisibility());
+            assertEquals("", holder(0).domainSearch.getText().toString());
+        });
+        assertRow(0, false, 2);
+        String defaultSort = prefs.getString(ListSort.DOMAIN_DEFAULT, null);
+        onMain(() -> holder(0).domainSortButton.performClick());
+        assertNotNull(device.wait(Until.findObject(By.res("android", "button3")), 5000));
+        assertTrue(context.getString(R.string.list_set_default).equalsIgnoreCase(
+                device.findObject(By.res("android", "button3")).getText()));
+        device.findObject(By.text(context.getString(R.string.list_sort_name))).click();
+        device.findObject(By.res("android", "button1")).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        device.waitForIdle();
+        assertEquals(defaultSort, prefs.getString(ListSort.DOMAIN_DEFAULT, null));
+        onMain(() -> assertTrue(holder(0).domainSortButton.getContentDescription().toString()
+                .contains(context.getString(R.string.list_sort_name))));
+        device.takeScreenshot(new java.io.File(context.getExternalFilesDir(null), "compact-domain-controls.png"));
+        onMain(() -> {
+            prefs.edit().remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH).commit();
+            adapter.notifyDataSetChanged();
+        });
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        assertRow(0, false, 2);
+        onMain(() -> {
+            assertEquals(View.VISIBLE, holder(0).domainSearch.getVisibility());
+            assertEquals(View.GONE, holder(0).domainSearchButton.getVisibility());
+        });
+        assertRow(1, false, 2);
+        onMain(() -> {
+            assertEquals(View.VISIBLE, holder(1).domainSearch.getVisibility());
+            assertEquals(View.GONE, holder(1).domainSearchButton.getVisibility());
+        });
+    }
+
     private void newSession() {
+        if (adapter != null) adapter.dispose();
         adapter = new AdapterRule(activity, list);
         list.setAdapter(adapter);
         android.os.Bundle state = new android.os.Bundle();
