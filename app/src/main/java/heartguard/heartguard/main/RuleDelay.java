@@ -63,35 +63,50 @@ final class RuleDelay {
     }
 
     static State read(Context context) {
+        return read(context, null);
+    }
+
+    static State read(Context context, String packageName) {
         State state = new State();
+        state.packageName = packageName;
         try (Cursor cursor = DatabaseHelper.getInstance(context).getAllRulesSorted()) {
             int textCol = cursor.getColumnIndexOrThrow("ruletext");
             int activeCol = cursor.getColumnIndexOrThrow("enacted");
             int timeCol = cursor.getColumnIndexOrThrow("enact_time");
             while (cursor.moveToNext()) {
                 String text = cursor.getString(textCol);
-                // Package-specific delays remain independent of this global setting.
-                if (text.matches("delay [0-9]+")) {
-                    int seconds = parseSeconds(text.substring(6));
-                    if (cursor.getInt(activeCol) > 0)
-                        state.seconds = Math.max(state.seconds, seconds);
-                    else
-                        state.pending.add(new Pending(text, seconds, false, cursor.getLong(timeCol)));
-                } else if (cursor.getInt(activeCol) == 0 && text.matches("- delay [0-9]+")) {
-                    state.pending.add(new Pending(text, parseSeconds(text.substring(8)), true, cursor.getLong(timeCol)));
-                }
+                boolean removal = text.startsWith("- ");
+                String positive = removal ? text.substring(2) : text;
+                if (!positive.matches("delay (package:\\S+ )?[0-9]+")) continue;
+                DelayRule delay = new DelayRule(positive);
+                boolean active = cursor.getInt(activeCol) > 0;
+                if (!removal && active && delay.getPackageName() == null)
+                    state.generalSeconds = Math.max(state.generalSeconds, delay.getDelay());
+                if (!java.util.Objects.equals(packageName, delay.getPackageName())) continue;
+                if (!removal && active) {
+                    state.overridden = true;
+                    state.seconds = Math.max(state.seconds, delay.getDelay());
+                    state.activeRules.add(text);
+                } else if (!active)
+                    state.pending.add(new Pending(text, delay.getDelay(), removal, cursor.getLong(timeCol)));
             }
         }
+        if (!state.overridden) state.seconds = state.generalSeconds;
         return state;
     }
 
     static final class State {
         int seconds;
+        int generalSeconds;
+        String packageName;
+        boolean overridden;
+        final List<String> activeRules = new ArrayList<>();
         final List<Pending> pending = new ArrayList<>();
 
         String summary(Context context) {
             List<String> lines = new ArrayList<>();
-            lines.add(context.getString(R.string.rule_delay_current, duration(context, seconds)));
+            if (packageName == null || !pending.isEmpty())
+                lines.add(context.getString(R.string.rule_delay_current, duration(context, seconds)));
             for (Pending change : pending)
                 lines.add(context.getString(change.removal ? R.string.rule_delay_pending_removal : R.string.rule_delay_pending,
                         duration(context, change.seconds),

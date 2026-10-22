@@ -70,6 +70,7 @@ public class RulesManager {
     private List<String> m_blockedDomains;
     private volatile boolean m_hasAppSpecificBlocks;
     private volatile Map<Integer, Long> m_pausedUids = java.util.Collections.emptyMap();
+    private volatile long m_globalPauseUntil;
     private volatile Map<String, Long> m_temporaryRules = Collections.emptyMap();
     private volatile Map<String, Long> m_blockedDomainExpiries = Collections.emptyMap();
     private Runnable temporaryExpiryTask;
@@ -379,7 +380,7 @@ public class RulesManager {
     public boolean getPreferenceCaptureAllTraffic(Context context) {
         // Fully allowed apps must still pass through the VPN for their domain exceptions.
         // Paused apps stay inside the VPN so expiry cannot leave them excluded from filtering.
-        return !m_pausedUids.isEmpty() || m_hasAppSpecificBlocks || hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
+        return isGloballyPaused() || !m_pausedUids.isEmpty() || m_hasAppSpecificBlocks || hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
     }
     public boolean getPreferenceAllowLogging(Context context) { return hasFeatureRule(FeatureRule.FEATURE_NAME_ALLOW_LOGGING);}
 
@@ -651,6 +652,19 @@ public class RulesManager {
 
             Log.w(TAG, String.format("Removing IDs %d and %d due to deletion rule", id, otherid));
             dh.removeRulesById(new Long[]{id, otherid});
+
+            if (otherruletext.equals("feature enabled")) {
+                // A later manual enable must start protected, without an old global pause.
+                List<Long> pauses = new ArrayList<>();
+                try (Cursor all = dh.getAllRules()) {
+                    while (all.moveToNext()) {
+                        String text = all.getString(all.getColumnIndexOrThrow("ruletext"));
+                        if (text.matches("(?:- |abandon )?pause seconds:[0-9]+"))
+                            pauses.add(all.getLong(all.getColumnIndexOrThrow("_id")));
+                    }
+                }
+                dh.removeRulesById(pauses.toArray(new Long[0]));
+            }
 
             if (was_enacted)
             {
@@ -928,6 +942,7 @@ public class RulesManager {
         Map<String, FeatureRule> newFeatureRules = new HashMap<>();
         boolean hasAppSpecificBlocks = false;
         Map<Integer, Long> pausedUids = new HashMap<>();
+        long globalPauseUntil = 0;
         Map<String, Long> temporaryRules = new HashMap<>();
         Map<String, Long> blockedDomainExpiries = new HashMap<>();
 
@@ -938,6 +953,10 @@ public class RulesManager {
             }
             if (rule instanceof AppPauseRule) {
                 AppPauseRule pause = (AppPauseRule) rule;
+                if (pause.packageName == null) {
+                    globalPauseUntil = Math.max(globalPauseUntil, pause.expiresAt);
+                    continue;
+                }
                 try {
                     int uid = context.getPackageManager().getApplicationInfo(pause.packageName, 0).uid;
                     Long previous = pausedUids.get(uid);
@@ -1021,6 +1040,7 @@ public class RulesManager {
         m_featureRules = newFeatureRules;
         m_hasAppSpecificBlocks = hasAppSpecificBlocks;
         m_pausedUids = java.util.Collections.unmodifiableMap(pausedUids);
+        m_globalPauseUntil = globalPauseUntil;
         m_temporaryRules = Collections.unmodifiableMap(temporaryRules);
         m_blockedDomainExpiries = Collections.unmodifiableMap(blockedDomainExpiries);
 
@@ -1127,17 +1147,40 @@ public class RulesManager {
     int getPauseDelay(String packageName) {
         // Even an otherwise allowed app may have domain blocks: bypassing those still waits.
         Integer specific = m_packageDelays.get(packageName);
-        return specific == null ? m_delay : Math.min(m_delay, specific);
+        return specific == null ? m_delay : specific;
+    }
+
+    int getGlobalProtectionDelay() {
+        int delay = m_delay;
+        for (int specific : m_packageDelays.values()) delay = Math.max(delay, specific);
+        return delay;
+    }
+
+    int getSharedUidDelay(Context context, String packageName, boolean allowRule) {
+        int delay = allowRule ? getSpecificDelayForPackage(packageName) : getPauseDelay(packageName);
+        try {
+            int uid = context.getPackageManager().getApplicationInfo(packageName, 0).uid;
+            String[] packages = context.getPackageManager().getPackagesForUid(uid);
+            if (packages != null)
+                for (String peer : packages)
+                    delay = Math.max(delay, allowRule ? getSpecificDelayForPackage(peer) : getPauseDelay(peer));
+        } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
+        return delay;
+    }
+
+    boolean isGloballyPaused() {
+        return m_globalPauseUntil > System.currentTimeMillis();
     }
 
     boolean isUidPaused(int uid) {
         Long until = m_pausedUids.get(uid);
-        return until != null && until > System.currentTimeMillis();
+        return isGloballyPaused() || (until != null && until > System.currentTimeMillis());
     }
 
     long nextTemporaryExpiry() {
         long next = 0;
         long now = System.currentTimeMillis();
+        if (m_globalPauseUntil > now) next = m_globalPauseUntil;
         for (long until : m_pausedUids.values())
             if (until > now && (next == 0 || until < next)) next = until;
         for (long until : m_temporaryRules.values())
@@ -1211,17 +1254,12 @@ public class RulesManager {
     }
 
     public int getSpecificDelayForPackage(String packageName) {
+        Integer override = m_packageDelays.get(packageName);
+        if (override != null) return override;
         // Whitelisted packages have 0 delay
         if (m_allowedPackages.containsKey(packageName)) {
             return 0;
         }
-        if (m_packageDelays.containsKey(packageName)) {
-            int packageDelay = m_packageDelays.get(packageName);
-            if (packageDelay < m_delay) {
-                return packageDelay;
-            }
-        }
-
         return m_delay;
     }
 
@@ -1565,7 +1603,7 @@ class DelayRule extends MyRule {
         if (m_packageName == null) {
             current_delay = main_delay;
         } else {
-            current_delay = RulesManager.getInstance(context).getSpecificDelayForPackage(m_packageName);
+            current_delay = RulesManager.getInstance(context).getPauseDelay(m_packageName);
         }
         if (m_delay > current_delay) {
             return 0;
@@ -1579,8 +1617,8 @@ class DelayRule extends MyRule {
             // Removing the main delay = turning to delay 0
             return main_delay;
         } else {
-            // Removing a package delay = reverting to normal delay, so this is free
-            return 0;
+            // Returning to the default can shorten a longer app override.
+            return Math.max(0, RulesManager.getInstance(context).getPauseDelay(m_packageName) - main_delay);
         }
     }
 
@@ -1645,13 +1683,7 @@ class AllowedPackageRule extends MyRule {
     }
 
     public int getDelayToAdd(Context context, int main_delay) {
-        // The RulesManager may have a shortened delay for this package
-        RulesManager rm = RulesManager.getInstance(context);
-        int specific_delay = rm.getSpecificDelayForPackage(m_packagename);
-        if (specific_delay < main_delay) {
-            return specific_delay;
-        }
-        return main_delay;
+        return RulesManager.getInstance(context).getSharedUidDelay(context, m_packagename, true);
     }
     public int getDelayToRemove(Context context, int main_delay) {
         if (m_sticky) {
@@ -1707,6 +1739,16 @@ class AllowedUidRule extends MyRule {
 
     public int getUid() {
         return m_uid;
+    }
+
+    @Override
+    public int getDelayToAdd(Context context, int main_delay) {
+        String[] packages = context.getPackageManager().getPackagesForUid(m_uid);
+        if (packages == null || packages.length == 0) return main_delay;
+        int delay = 0;
+        for (String packageName : packages)
+            delay = Math.max(delay, RulesManager.getInstance(context).getPauseDelay(packageName));
+        return delay;
     }
 
     @Override
@@ -1798,7 +1840,7 @@ class FeatureRule extends MyRule {
 
     public int getDelayToRemove(Context context, int main_delay) {
         if ((m_featuretype == FeatureType.feature_restrictive) || (m_featuretype == FeatureType.feature_both)) {
-            return main_delay;
+            return RulesManager.getInstance(context).getGlobalProtectionDelay();
         } else if (m_featuretype == FeatureType.feature_permissive) {
             return 0;
         } else {
@@ -2138,7 +2180,7 @@ class BlockedDomainRule extends MyRule {
         // Removing 'try' rules is free unless we have feature 'no_try'
         if (m_try && (!RulesManager.getInstance(context).hasFeatureRule(FeatureRule.FEATURE_NAME_NO_TRY)))
             return 0;
-        return main_delay;
+        return RulesManager.getInstance(context).getGlobalProtectionDelay();
     }
 
     public String getDomainName() {

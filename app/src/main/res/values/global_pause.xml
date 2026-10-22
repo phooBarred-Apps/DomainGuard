@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_delay_summary">Rule delay: %1$s</string>
+    <string name="app_delay_help">Use the general delay, or choose a shorter or longer delay for this app. Increasing a delay takes effect immediately. Reducing it waits for the difference: changing 6 hours to 4 hours waits 2 hours. Returning to a shorter general delay follows the same rule. Changes that affect every app use the longest applicable delay.</string>
+    <string name="global_off_title">Turn off DomainGuard?</string>
+    <string name="global_off_action">Turn off</string>
+    <string name="global_auto_resume">Resume automatically</string>
+    <string name="global_off_description">Protection stays off until you enable it.</string>
+    <string name="global_pause_pending">DomainGuard pauses in %1$s</string>
+    <string name="global_pause_active">DomainGuard paused · %1$s left</string>
+    <string name="global_pause_cancel">Cancel</string>
+    <string name="global_pause_resume">Resume</string>
+    <string name="global_pause_cancel_title">Cancel pending pause?</string>
+    <string name="global_pause_resume_title">Resume DomainGuard?</string>
+    <string name="global_pause_cancel_body">DomainGuard will stay on.\n\nCancel the %1$s pause scheduled to start at %2$s.</string>
+    <string name="global_pause_resume_body">Your existing rules will apply again immediately.\n\nThe pause was due to end at %1$s.</string>
+    <string name="global_pause_changed">The pause changed. Please review its current state.</string>
+    <string name="confirm_yes">Yes</string>
+    <string name="delay_notice_now">Takes effect immediately</string>
+    <string name="delay_notice_explanation">The wait starts when you tap %1$s. Your current rules stay active during the wait.</string>
+    <string name="delay_notice_pause_explanation">The wait starts when you tap Pause. DomainGuard keeps protecting you during the wait. Your %1$s pause starts afterward.</string>
+    <string name="delay_notice_immediate_explanation">This change takes effect when you confirm.</string>
+    <string name="delay_notice_expand">Show delay explanation</string>
+    <string name="delay_notice_collapse">Hide delay explanation</string>
+    <string name="app_allow_title">Allow %1$s?</string>
+    <string name="app_block_title">Block %1$s?</string>
+    <string name="app_delay_default">Use general delay — %1$s</string>
+    <string name="global_pause_legend">DomainGuard pause: countdown and Cancel while pending; countdown and Resume while paused. Both actions ask for confirmation.</string>
+    <plurals name="pause_short_days"><item quantity="one">%d day</item><item quantity="other">%d days</item></plurals>
+    <plurals name="pause_short_hours"><item quantity="one">%d hr</item><item quantity="other">%d hr</item></plurals>
+    <plurals name="pause_short_minutes"><item quantity="one">%d min</item><item quantity="other">%d min</item></plurals>
+    <plurals name="pause_short_seconds"><item quantity="one">%d sec</item><item quantity="other">%d sec</item></plurals>
+</resources>

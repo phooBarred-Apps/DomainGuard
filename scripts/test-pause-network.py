@@ -49,9 +49,9 @@ def main():
                     '-e', 'pauseNetworkPort', str(port), '-e', 'class',
                     'heartguard.heartguard.main.AppPauseNetworkDeviceTest',
                     'heartguard.heartguard.main.mw.test/androidx.test.runner.AndroidJUnitRunner',
-                ], capture_output=True, text=True, timeout=180)
+                ], capture_output=True, text=True, timeout=240)
                 print(result.stdout)
-                if result.returncode or 'OK (2 tests)' not in result.stdout:
+                if result.returncode or 'OK (3 tests)' not in result.stdout:
                     raise SystemExit(result.stderr or 'Native pause test failed.')
             finally:
                 tcp.shutdown()

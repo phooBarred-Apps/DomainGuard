@@ -79,7 +79,7 @@ final class AppPauseDialog {
             }
             try {
                 int seconds = seconds(input, unit);
-                int delay = RulesManager.getInstance(context).getPauseDelay(packageName);
+                int delay = RulesManager.getInstance(context).getSharedUidDelay(context, packageName, false);
                 preview.setText(active ? context.getString(R.string.app_pause_active)
                         : context.getString(R.string.app_pause_duration, RuleDelay.duration(context, seconds))
                         + (!occupied && delay > 0 ? "\n" + context.getString(R.string.app_pause_delay, RuleDelay.duration(context, delay)) : ""));

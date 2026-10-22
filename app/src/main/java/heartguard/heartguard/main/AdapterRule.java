@@ -711,24 +711,9 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.cbWifi.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(final CompoundButton compoundButton, boolean isChecked) {
-                //rule.wifi_blocked = isChecked;
-                //updateRule(context, rule, true, listAll);
+                if (isChecked == rule.wifi_blocked) return;
                 compoundButton.setChecked(rule.wifi_blocked);
-
-                String enable_disable;
-                if (isChecked) {
-                    enable_disable = "unallow";
-                } else {
-                    enable_disable = "allow";
-                }
-
-                String message = context.getString(R.string.change_allow_package, enable_disable, rule.name);
-                Util.areYouSure(context, message, new Util.DoubtListener() {
-                    @Override
-                    public void onSure() {
-                        RulesManager.getInstance(compoundButton.getContext()).setPackageAllowed(compoundButton.getContext(), rule.packageName);
-                    }
-                });
+                AppAccessDialog.show(context, rule, !isChecked);
             }
         });
 
@@ -797,6 +782,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.tvUid.setText(Integer.toString(rule.uid));
         holder.tvPackage.setText(rule.packageName);
         holder.tvVersion.setText(rule.version);
+        TextView appDelay = holder.itemView.findViewById(R.id.appDelayButton);
+        appDelay.setText(context.getString(R.string.app_delay_summary,
+                RuleDelay.duration(context, RulesManager.getInstance(context).getPauseDelay(rule.packageName))));
+        appDelay.setOnClickListener(view -> RuleDelayDialog.forApp(rule.packageName, rule.name)
+                .show(((androidx.fragment.app.FragmentActivity) context).getSupportFragmentManager(), "app-rule-delay"));
 
         // Show application state
         holder.tvInternet.setVisibility(rule.internet ? View.GONE : View.VISIBLE);

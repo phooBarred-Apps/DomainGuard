@@ -60,19 +60,14 @@ class RuleAndPackage extends MyRule {
     public int getDelayToAdd(Context context, int main_delay) {
         if (m_blocked)
             return 0;
-        // The RulesManager may have a shortened delay for this package
-        if (m_packagename != null) {
-            RulesManager rm = RulesManager.getInstance(context);
-            int specific_delay = rm.getSpecificDelayForPackage(m_packagename);
-            if (specific_delay < main_delay) {
-                return specific_delay;
-            }
-        }
-        return main_delay;
+        RulesManager rm = RulesManager.getInstance(context);
+        return m_packagename == null ? rm.getGlobalProtectionDelay() : rm.getSharedUidDelay(context, m_packagename, true);
     }
     public int getDelayToRemove(Context context, int main_delay) {
-        if (m_blocked)
-            return main_delay;
+        if (m_blocked) {
+            RulesManager rm = RulesManager.getInstance(context);
+            return m_packagename == null ? rm.getGlobalProtectionDelay() : rm.getSharedUidDelay(context, m_packagename, false);
+        }
         if (m_sticky) {
             return main_delay;
         } else {

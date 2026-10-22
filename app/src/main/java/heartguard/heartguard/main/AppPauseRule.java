@@ -14,7 +14,7 @@ final class AppPauseRule extends MyRule {
 
     AppPauseRule(String text) throws RuleParseNoMatchException {
         super(text, MAJOR_CATEGORY_ALLOW);
-        Matcher match = Pattern.compile("pause package:(\\S+) seconds:([0-9]+)").matcher(text);
+        Matcher match = Pattern.compile("pause(?: package:(\\S+))? seconds:([0-9]+)").matcher(text);
         if (!match.matches()) throw new RuleParseNoMatchException();
         packageName = match.group(1);
         try {
@@ -26,13 +26,14 @@ final class AppPauseRule extends MyRule {
     }
 
     static String text(String packageName, int seconds) {
-        if (packageName == null || !packageName.matches("\\S+") || seconds < 1 || seconds > RulesManager.MAX_DELAY)
+        if ((packageName != null && !packageName.matches("\\S+")) || seconds < 1 || seconds > RulesManager.MAX_DELAY)
             throw new IllegalArgumentException();
-        return "pause package:" + packageName + " seconds:" + seconds;
+        return "pause" + (packageName == null ? "" : " package:" + packageName) + " seconds:" + seconds;
     }
 
     @Override public int getDelayToAdd(Context context, int mainDelay) {
-        return RulesManager.getInstance(context).getPauseDelay(packageName);
+        RulesManager rules = RulesManager.getInstance(context);
+        return packageName == null ? rules.getGlobalProtectionDelay() : rules.getSharedUidDelay(context, packageName, false);
     }
 
     @Override public int getDelayToRemove(Context context, int mainDelay) { return 0; }

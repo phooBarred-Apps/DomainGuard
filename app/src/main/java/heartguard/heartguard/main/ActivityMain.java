@@ -89,6 +89,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     private boolean restoreSearchFocus;
     private boolean searchExpanded;
     private boolean resumed;
+    private GlobalPauseBar globalPauseBar;
     private String domainQuery = "";
     private AlertDialog dialogFirst = null;
     private AlertDialog dialogVpn = null;
@@ -216,6 +217,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         // Disabled warning
         TextView tvDisabled = findViewById(R.id.tvDisabled);
         tvDisabled.setVisibility(enabled ? View.GONE : View.VISIBLE);
+        globalPauseBar = new GlobalPauseBar(this);
 
         // Application list
         RecyclerView rvApplication = findViewById(R.id.rvApplication);
@@ -383,6 +385,10 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         final boolean enabled = RulesManager.getInstance(ActivityMain.this).getPreferenceEnabled(ActivityMain.this);
 
         if (prepare == null) {
+            if (enabled) {
+                GlobalPauseDialog.show(this);
+                return;
+            }
             String enable_disable;
             if (enabled == false) {
                 enable_disable = "enable";
@@ -443,6 +449,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
 
         super.onResume();
         resumed = true;
+        if (globalPauseBar != null) globalPauseBar.start();
         if (adapter != null) adapter.refreshTraffic();
     }
 
@@ -451,6 +458,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         Log.i(TAG, "Pause");
         super.onPause();
         resumed = false;
+        if (globalPauseBar != null) globalPauseBar.stop();
 
         if (Build.VERSION.SDK_INT < MIN_SDK || Util.hasXposed(this))
             return;
@@ -657,6 +665,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
                     updateApplicationList(null);
             // HeartGuard change - rules changes can also include main UI changes
             updateMainUi();
+            if (globalPauseBar != null) globalPauseBar.refresh();
         }
     };
 

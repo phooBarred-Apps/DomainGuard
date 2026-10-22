@@ -27,16 +27,22 @@ public class AppPauseNetworkDeviceTest {
     // Test: Real TCP and UDP sessions stop carrying data when the app pause expires.
     // Why: Packet-policy unit checks cannot detect a native session retaining a stale allow decision.
     @Test public void nativeConnectionsStopAtPauseExpiry() throws Exception {
-        verifyExpiry(false);
+        verifyExpiry(false, false);
     }
 
     // Test: Temporary IP allows stop existing TCP/UDP sessions and reject new ones on expiry.
     // Why: An expired allow must not survive in native connections or in the cached IP decision table.
     @Test public void nativeConnectionsStopAtTemporaryAllowExpiry() throws Exception {
-        verifyExpiry(true);
+        verifyExpiry(true, false);
     }
 
-    private void verifyExpiry(boolean temporaryAllow) throws Exception {
+    // Test: Global pause expiry stops real TCP/UDP sessions even while background cleanup is held.
+    // Why: A global bypass must restore protection for existing connections, not only new requests.
+    @Test public void nativeConnectionsStopAtGlobalPauseExpiry() throws Exception {
+        verifyExpiry(false, true);
+    }
+
+    private void verifyExpiry(boolean temporaryAllow, boolean global) throws Exception {
         String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
         assumeTrue(port.matches("[0-9]{1,5}"));
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
@@ -59,7 +65,7 @@ public class AppPauseNetworkDeviceTest {
             assertFalse("TCP blocked before pause", probe(port, false).contains("probe"));
             assertFalse("UDP blocked before pause", probe(port, true).contains("probe"));
             String timed = temporaryAllow ? TemporaryRuleText.text("allow package:com.android.shell ip:10.0.2.2", 15)
-                    : AppPauseRule.text("com.android.shell", 15);
+                    : AppPauseRule.text(global ? null : "com.android.shell", 15);
             add(context, rules, owned, timed);
             long deadline;
             try (Cursor cursor = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(timed)) {

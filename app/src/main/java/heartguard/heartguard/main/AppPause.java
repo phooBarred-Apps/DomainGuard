@@ -31,7 +31,7 @@ final class AppPause {
                 MyRule parsed = MyRule.getRuleFromText(context, text);
                 if (!(parsed instanceof AppPauseRule)) continue;
                 AppPauseRule rule = (AppPauseRule) parsed;
-                if (!rule.packageName.equals(packageName)) continue;
+                if (!java.util.Objects.equals(rule.packageName, packageName)) continue;
                 boolean active = cursor.getInt(cursor.getColumnIndexOrThrow("enacted")) != 0;
                 long time = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"));
                 if (active) time += rule.seconds * 1000L;

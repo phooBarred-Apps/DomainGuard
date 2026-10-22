@@ -2,7 +2,19 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-DomainGuard continues the HeartGuard-MW fork. Latest changes: October 21, 2026.
+DomainGuard continues the HeartGuard-MW fork. Latest changes: October 22, 2026.
+
+Version `2.7` adds:
+
+- **Pause all apps:** turning the main switch off offers Resume automatically. Enable it and choose seconds, minutes, hours or days, up to seven days; leave it off for an indefinite turn-off. The applicable rule delay is shown before confirmation.
+- **Compact pause status:** a subtle countdown strip appears only while a global pause is pending or active. Cancel and Resume open Yes/Cancel confirmations with the exact start/end time, including month, day and seconds.
+- **Visible delay notices:** the turn-off/pause and allow-app dialogs use the same expandable timing strip. Current rules remain active during the wait.
+- **App delay overrides:** Info & controls > Rule delay can inherit the general delay or use a longer or shorter value. Increases are immediate; reductions wait the difference, including a return to a shorter general delay. A change from six hours to four hours waits two hours.
+- **Protected bypasses:** global pauses, global allows and turning protection off honor the longest applicable app delay. Apps sharing a network UID use the stronger delay when paused together. Existing rules survive a pause, and existing TCP/UDP sessions are checked again at expiry. A permanent turn-off clears the old global pause before the next manual enable.
+
+Global pause raw-rule example: `pause seconds:300`. An app override uses `delay package:com.android.chrome 14400`; removing that override returns to the general delay after any required reduction wait.
+
+See [Changes since HeartGuard](CHANGES-SINCE-HEARTGUARD.md) for the organized list of changes that remain in the current app.
 
 Version `2.6` adds:
 
