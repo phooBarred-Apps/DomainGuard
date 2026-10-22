@@ -52,7 +52,7 @@ public class ActivityDomainListPreview extends AppCompatActivity {
         app.findViewById(R.id.appDomainsButton).setOnClickListener(view -> AppPanelTabs.select(app, false));
         View.OnClickListener sampleOnly = view -> Toast.makeText(this, R.string.compact_domains_preview_note, Toast.LENGTH_SHORT).show();
         for (int id : new int[]{R.id.appPauseButton, R.id.ibSettings, R.id.ibLaunch, R.id.btnLogging,
-                R.id.ivLive, R.id.btnClearAccess, R.id.cbNotify, R.id.domainSortButton})
+                R.id.ivLive, R.id.btnClearAccess, R.id.cbNotify, R.id.domainSortButton, R.id.domainCopyButton})
             app.findViewById(id).setOnClickListener(sampleOnly);
         DomainListView domains = app.findViewById(R.id.lvAccess);
         domains.setLayoutManager(new LinearLayoutManager(this));

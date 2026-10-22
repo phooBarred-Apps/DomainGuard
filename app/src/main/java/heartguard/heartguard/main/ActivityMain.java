@@ -1086,6 +1086,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
 
     private void resetListFilters() {
         adapter.options.reset();
+        adapter.options.loadFilterDefaults(PreferenceManager.getDefaultSharedPreferences(this));
         domainQuery = "";
         searchDomains = false;
         adapter.setDomainSearch(false, "");
@@ -1128,7 +1129,9 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         findViewById(R.id.listSummaryRow).setVisibility(filtered ? View.VISIBLE : View.GONE);
         findViewById(R.id.copyMatchingDomains).setVisibility(searchDomains ? View.VISIBLE : View.GONE);
         findViewById(R.id.copyMatchingDomains).setEnabled(adapter.matchingDomainCount() > 0);
-        findViewById(R.id.emptyApplications).setVisibility(adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
+        TextView emptyApplications = findViewById(R.id.emptyApplications);
+        emptyApplications.setText(searchDomains ? R.string.list_no_domains_across_apps : R.string.list_no_apps);
+        emptyApplications.setVisibility(adapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
     }
 
     private void checkDoze() {

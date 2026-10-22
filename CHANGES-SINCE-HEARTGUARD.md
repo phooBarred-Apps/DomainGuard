@@ -43,9 +43,9 @@ Current in DomainGuard 2.8. This combines the HeartGuard-MW and DomainGuard work
 ### Searching
 
 - **Two main search modes** — Holding the main magnifying glass switches between searching app names/package names and searching recorded domains across apps, one mode at a time.
-- **Domain results in the app list** — Cross-app domain searches keep the normal layout, display matching apps expanded, and retain separate queries when switching modes.
+- **Domain results in the app list** — Cross-app domain searches keep the normal layout, display matching apps expanded, and retain separate queries when switching modes. Empty results explain that no matching domains were logged in any apps.
 - **Search inside an app** — Each app has its own domain search, hidden behind a magnifying glass by default, with a setting to keep it visible. No local matches leaves a clear message without removing an app that matches the main search.
-- **Copy matching domains** — Cross-app search can copy every distinct matching domain once, including results outside the visible part of the list.
+- **Copy filtered domains** — Copy works across matching apps or from one app's own button. It respects both searches, Hide allowed and each list's displayed row limit, and copies each domain once, including rows you can scroll to.
 
 ### Filters and ordering
 
@@ -53,14 +53,14 @@ Current in DomainGuard 2.8. This combines the HeartGuard-MW and DomainGuard work
 - **Raw-rule filters** — All rules and Global rules each offer Block, Allow and Other toggles; the list changes immediately without changing the underlying rules.
 - **Useful sort choices** — Apps and domains can use relevant name, activity and access ordering, with direction controls and app-ID sorting where applicable.
 - **Saved defaults** — Sort and Filter have separate Set as default actions, while ordinary changes remain limited to the current session.
-- **Focused count and reset** — The app count and reset control appear only when a search or filter is active, and reset keeps saved defaults and the chosen sort.
+- **Focused count and reset** — The app count and reset control appear only when a search or filter is active. Reset clears the search and restores saved filter defaults while keeping the chosen sort.
 
 ## 4. App layout and everyday use
 
 ### Expanded apps
 
 - **Domains and Info & controls tabs** — App information and controls are directly accessible without scrolling through the entire domain list, with an option to open that panel by default.
-- **Compact domain lists** — An optional height limit of two to ten rows gives longer lists their own scrollbar, with a full-screen sample preview and Back arrow.
+- **Compact domain lists** — A switch in Display settings enables a height limit of two to ten rows, with a scrollbar for longer lists. Tap the setting's name to choose the height or open a full-screen sample preview with a Back arrow; saving height does not change the switch.
 - **Separate scrolling areas** — Narrow side strips scroll the whole app screen, while a subtle theme-aware background identifies the inner domain list.
 - **Hide allowed domains** — A global display preference supplies the default, and each expanded app can override it for the current session with one icon.
 

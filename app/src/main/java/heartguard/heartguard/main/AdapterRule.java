@@ -191,6 +191,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         public EditText domainSearch;
         public ImageButton domainSearchButton;
         public ImageButton domainSortButton;
+        public ImageButton domainCopyButton;
         public TextView domainStatus;
         private TextWatcher domainWatcher;
         private String boundPackage;
@@ -264,6 +265,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             domainSearch = itemView.findViewById(R.id.domainSearch);
             domainSearchButton = itemView.findViewById(R.id.domainSearchButton);
             domainSortButton = itemView.findViewById(R.id.domainSortButton);
+            domainCopyButton = itemView.findViewById(R.id.domainCopyButton);
             domainStatus = itemView.findViewById(R.id.domainStatus);
             btnClearAccess = itemView.findViewById(R.id.btnClearAccess);
             cbNotify = itemView.findViewById(R.id.cbNotify);
@@ -378,12 +380,38 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     int matchingDomainCount() { return matchingDomains().size(); }
 
     void copyMatchingDomains() {
-        Context context = inflater.getContext();
-        java.util.SortedSet<String> domains = matchingDomains();
-        if (domains.isEmpty()) return;
-        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
-        clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.domains_label), android.text.TextUtils.join("\n", domains)));
-        android.widget.Toast.makeText(context, context.getString(R.string.domains_copied, domains.size()), android.widget.Toast.LENGTH_SHORT).show();
+        copyDisplayedDomains(new ArrayList<>(listFiltered));
+    }
+
+    private void copyDisplayedDomains(List<Rule> apps) {
+        Context context = inflater.getContext().getApplicationContext();
+        // Capture the current filters at the tap, rather than an older asynchronous search result.
+        Map<String, String> queries = new HashMap<>(domainQueries);
+        Map<String, Boolean> hidden = new HashMap<>(hideAllowedDomains);
+        boolean defaultHide = PreferenceManager.getDefaultSharedPreferences(context)
+                .getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
+        String mainQuery = searchingDomains ? globalDomainQuery : "";
+        String sort = domainSort;
+        AsyncTask.THREAD_POOL_EXECUTOR.execute(() -> {
+            java.util.SortedSet<String> domains = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            DatabaseHelper database = DatabaseHelper.getInstance(context);
+            for (Rule app : apps) {
+                boolean hide = hidden.containsKey(app.packageName) ? hidden.get(app.packageName) : defaultHide;
+                // Use the same searches, Hide allowed setting, sort and row limit as the app's list.
+                try (Cursor cursor = database.getAccess(app.uid, hide, queries.get(app.packageName), sort, mainQuery)) {
+                    int address = cursor.getColumnIndexOrThrow("daddr");
+                    while (cursor.moveToNext()) domains.add(cursor.getString(address));
+                }
+            }
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                if (domains.isEmpty()) return;
+                ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.domains_label),
+                        android.text.TextUtils.join("\n", domains)));
+                android.widget.Toast.makeText(context, context.getString(R.string.domains_copied, domains.size()),
+                        android.widget.Toast.LENGTH_SHORT).show();
+            });
+        });
     }
 
     void setViewChangedListener(Runnable listener) { viewChanged = listener; }
@@ -1060,6 +1088,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         };
         holder.domainSearch.addTextChangedListener(holder.domainWatcher);
         setDomainSortDescription(holder, domainSort);
+        TooltipCompat.setTooltipText(holder.domainCopyButton, context.getString(R.string.domain_search_copy));
+        holder.domainCopyButton.setOnClickListener(view -> copyDisplayedDomains(java.util.Collections.singletonList(rule)));
         holder.domainSortButton.setOnClickListener(view -> SortDialog.show(context, R.string.list_sort_domains,
                 ListSort.DOMAINS, domainSort, ListSort.DOMAIN_DEFAULT, selected -> {
                     domainSort = selected;

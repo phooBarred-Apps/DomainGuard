@@ -4,6 +4,13 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 DomainGuard continues the HeartGuard-MW fork. Latest changes: October 22, 2026.
 
+Version `2.81` adds:
+
+- **Restore saved filters:** the circular arrow clears the search and restores saved filter defaults. A saved User apps choice stays selected; sorting is preserved.
+- **Copy the filtered domains:** cross-app Copy uses both the main search and each app's own domain search, plus Hide allowed and the displayed row limit. Duplicate domains are copied once. Each app also has a Copy domains icon beside its domain tools.
+- **Clear empty results:** a cross-app domain search with no results says "No matching domains logged in any apps."
+- **Compact-list switch in settings:** enable or disable Compact domain lists directly in Display settings. Tap the setting's name to choose its height or open the full-screen example. Saving a height does not change the switch.
+
 Version `2.8` adds:
 
 - **Raw Rules filters:** tap the toolbar title to select All rules or Global rules. Each header has a separate caret opening Block, Allow and Other toggles, all on initially. Choices apply immediately and stay separate for each scope during the session. Temporary rules and pending removals follow their underlying rule type. The plain globe marks Global other rules.

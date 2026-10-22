@@ -40,6 +40,7 @@
                 <heartguard.heartguard.main.CompactImageButton android:id="@+id/cbHideAllowedDomains" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_hide_allowed" android:contentDescription="@string/hide_allowed_domains" />
                 <heartguard.heartguard.main.CompactImageButton android:id="@+id/domainSearchButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/list_show_domain_search" android:padding="12dp" android:src="@drawable/ic_search_white_24dp" app:tint="?android:attr/textColorSecondary" android:visibility="gone" />
                 <heartguard.heartguard.main.CompactImageButton android:id="@+id/domainSortButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/list_sort_domains" android:padding="12dp" android:src="@drawable/ic_sort_white_24dp" app:tint="?android:attr/textColorSecondary" />
+                <heartguard.heartguard.main.CompactImageButton android:id="@+id/domainCopyButton" android:layout_width="48dp" android:layout_height="48dp" android:contentDescription="@string/domain_search_copy" android:padding="12dp" android:src="@drawable/baseline_file_copy_24" app:tint="?android:attr/textColorSecondary" />
             </LinearLayout>
         </heartguard.heartguard.main.AppPanelTabs>
         <LinearLayout android:id="@+id/llFilter" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">

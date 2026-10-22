@@ -2,6 +2,8 @@ package heartguard.heartguard.main;
 
 import android.app.Activity;
 import android.content.ContentValues;
+import android.content.ClipboardManager;
+import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Rect;
@@ -39,6 +41,7 @@ public class DomainOptionsDeviceTest {
     private Boolean oldCompact;
     private Integer oldRows;
     private Boolean oldDetails;
+    private Boolean oldHideAllowed;
 
     @Before public void setup() {
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
@@ -49,10 +52,16 @@ public class DomainOptionsDeviceTest {
         oldRows = preferences.contains(CompactDomainLists.ROWS) ? preferences.getInt(CompactDomainLists.ROWS, 5) : null;
         oldDetails = preferences.contains(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS)
                 ? preferences.getBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS, false) : null;
+        oldHideAllowed = preferences.contains(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS)
+                ? preferences.getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false) : null;
         preferences.edit().remove(CompactDomainLists.ENABLED).remove(CompactDomainLists.ROWS)
-                .remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS).commit();
+                .remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS)
+                .remove(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS).commit();
         try (android.database.Cursor rows = DatabaseHelper.getInstance(context).getAccess(UID)) {
             assertEquals("Synthetic UID must be unused", 0, rows.getCount());
+        }
+        try (android.database.Cursor rows = DatabaseHelper.getInstance(context).getAccess(UID + 1)) {
+            assertEquals("Second synthetic UID must be unused", 0, rows.getCount());
         }
     }
 
@@ -61,14 +70,81 @@ public class DomainOptionsDeviceTest {
             if (adapter != null) adapter.dispose();
             activity.finish();
         });
-        DatabaseHelper.getInstance(context).getWritableDatabase().delete("access", "uid = ? AND daddr LIKE ?",
-                new String[]{Integer.toString(UID), "%.options-test.invalid"});
+        DatabaseHelper.getInstance(context).getWritableDatabase().delete("access", "uid IN (?, ?) AND daddr LIKE ?",
+                new String[]{Integer.toString(UID), Integer.toString(UID + 1), "%.options-test.invalid"});
         android.content.SharedPreferences.Editor edit = preferences.edit();
         if (oldCompact == null) edit.remove(CompactDomainLists.ENABLED); else edit.putBoolean(CompactDomainLists.ENABLED, oldCompact);
         if (oldRows == null) edit.remove(CompactDomainLists.ROWS); else edit.putInt(CompactDomainLists.ROWS, oldRows);
         if (oldDetails == null) edit.remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS);
         else edit.putBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS, oldDetails);
+        if (oldHideAllowed == null) edit.remove(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS);
+        else edit.putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, oldHideAllowed);
         edit.commit();
+    }
+
+    // Test: Main Copy intersects both searches, while the app's Copy button copies only that app, without duplicates.
+    // Why: A tap immediately after editing must not copy domains hidden by the current local query.
+    @Test public void copyUsesCurrentFiltersAndPerAppScope() {
+        launch(3);
+        insertDomain(UID, "domain-1.options-test.invalid", 80);
+        insertDomain(UID + 1, "domain-9.options-test.invalid", 443);
+        insertDomain(UID + 1, "domain-1.options-test.invalid", 443);
+        onMain(() -> adapter.setDomainSearch(true, "options-test.invalid"));
+        await(() -> adapter.getItemCount() == 2 && holder() != null && adapter.matchingDomainCount() == 4);
+        onMain(() -> {
+            holder().domainSearch.setText("domain-1");
+            // Deliberately copy before the asynchronous search refresh completes.
+            adapter.copyMatchingDomains();
+        });
+        await(() -> clipboardText().equals("domain-1.options-test.invalid\ndomain-9.options-test.invalid"));
+        onMain(() -> holder().domainCopyButton.performClick());
+        await(() -> clipboardText().equals("domain-1.options-test.invalid"));
+        onMain(() -> holder().domainSearch.setText("not-present"));
+        await(() -> holder() != null && holder().lvAccess.getAdapter().getItemCount() == 0);
+        onMain(() -> adapter.copyMatchingDomains());
+        await(() -> clipboardText().equals("domain-1.options-test.invalid\ndomain-9.options-test.invalid"));
+        onMain(() -> {
+            holder().domainSearch.setText("domain-0");
+            holder().domainCopyButton.performClick();
+        });
+        await(() -> clipboardText().equals("domain-0.options-test.invalid"));
+        ContentValues allowed = new ContentValues(); allowed.put("allowed", 1); allowed.put("block", 0);
+        DatabaseHelper.getInstance(context).getWritableDatabase().update("access", allowed,
+                "uid = ? AND daddr = ?", new String[]{Integer.toString(UID), "domain-0.options-test.invalid"});
+        onMain(() -> {
+            holder().cbHideAllowedDomains.performClick();
+            adapter.copyMatchingDomains();
+        });
+        await(() -> clipboardText().equals("domain-1.options-test.invalid\ndomain-9.options-test.invalid"));
+    }
+
+    // Test: Copy includes the current 250-row result set, not older rows outside the displayed limit.
+    // Why: The main search index can contain more domains than an app's list displays.
+    @Test public void copyRespectsDisplayedRowLimit() {
+        launch(250);
+        for (int i = 250; i < 255; i++) insertDomain(UID, "domain-" + i + ".options-test.invalid", 443);
+        onMain(() -> adapter.setDomainSearch(true, "options-test.invalid"));
+        await(() -> adapter.matchingDomainCount() == 255);
+        onMain(() -> adapter.copyMatchingDomains());
+        await(() -> clipboardText().split("\n").length == 250);
+        onMain(() -> {
+            assertTrue(clipboardText().contains("domain-0.options-test.invalid"));
+            assertFalse(clipboardText().contains("domain-254.options-test.invalid"));
+        });
+    }
+
+    private void insertDomain(int uid, String address, int port) {
+        ContentValues row = new ContentValues();
+        row.put("uid", uid); row.put("version", 4); row.put("protocol", 6);
+        row.put("daddr", address); row.put("dport", port); row.put("time", 1L);
+        row.put("allowed", 0); row.put("block", 1); row.put("pending_allow", 0);
+        DatabaseHelper.getInstance(context).getWritableDatabase().insertOrThrow("access", null, row);
+    }
+
+    private String clipboardText() {
+        ClipboardManager clipboard = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = clipboard.getPrimaryClip();
+        return clip == null ? "" : clip.getItemAt(0).coerceToText(activity).toString();
     }
 
     // Test: Details follow the default; an app can override it through refresh/rotation, while a new session resets.
@@ -263,16 +339,22 @@ public class DomainOptionsDeviceTest {
         });
     }
 
-    // Test: Preview opens full screen with its title and Back arrow, returns to the draft and saves only on Save.
-    // Why: Trying a fake app must not mutate real preferences or trap users away from the height control.
+    // Test: Appearance toggles compact mode directly; its title opens height settings and a full-screen preview.
+    // Why: Changing or previewing height must not toggle compact mode or save a canceled draft.
     @Test public void fullScreenPreviewReturnsToUnsavedHeightChoice() {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(new Intent(context, ActivitySettings.class)
                 .putExtra("open_display_settings", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        device.wait(Until.findObject(By.text(context.getString(R.string.compact_domains_title))), 5000).click();
-        device.wait(Until.findObject(By.res(context.getPackageName(), "compact_domains_enabled")), 5000).click();
+        device.wait(Until.findObject(By.res(context.getPackageName(), "compact_domains_toggle")), 5000).click();
+        await(() -> preferences.getBoolean(CompactDomainLists.ENABLED, false));
+        assertFalse(device.hasObject(By.res(context.getPackageName(), "compact_domains_rows")));
+        device.findObject(By.res(context.getPackageName(), "compact_domains_toggle")).click();
+        await(() -> !preferences.getBoolean(CompactDomainLists.ENABLED, false));
+        device.findObject(By.text(context.getString(R.string.compact_domains_title))).click();
         onMain(() -> {
             CompactDomainListDialog dialog = (CompactDomainListDialog) ((androidx.appcompat.app.AppCompatActivity) activity)
                     .getSupportFragmentManager().findFragmentByTag(CompactDomainLists.ENABLED);
+            assertNull("The toggle belongs in Appearance, not this dialog",
+                    dialog.requireDialog().findViewById(R.id.compact_domains_toggle));
             ((android.widget.SeekBar) dialog.requireDialog().findViewById(R.id.compact_domains_rows)).setProgress(4);
         });
         device.findObject(By.res(context.getPackageName(), "compact_domains_preview")).click();
@@ -284,14 +366,21 @@ public class DomainOptionsDeviceTest {
         assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.compact_domains_height, 6))), 5000));
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "compact-height-settings.png"));
         device.findObject(By.res("android", "button2")).click();
-        assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "compact_domains_enabled")), 5000));
+        assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "compact_domains_rows")), 5000));
         device.waitForIdle();
         assertFalse(preferences.getBoolean(CompactDomainLists.ENABLED, false));
         device.findObject(By.text(context.getString(R.string.compact_domains_title))).click();
-        device.wait(Until.findObject(By.res(context.getPackageName(), "compact_domains_enabled")), 5000).click();
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.compact_domains_height, 5))), 5000));
+        onMain(() -> {
+            CompactDomainListDialog dialog = (CompactDomainListDialog) ((androidx.appcompat.app.AppCompatActivity) activity)
+                    .getSupportFragmentManager().findFragmentByTag(CompactDomainLists.ENABLED);
+            ((android.widget.SeekBar) dialog.requireDialog().findViewById(R.id.compact_domains_rows)).setProgress(4);
+        });
         device.findObject(By.res("android", "button1")).click();
+        await(() -> CompactDomainLists.rows(preferences) == 6);
+        assertFalse("Saving height must not change the switch", preferences.getBoolean(CompactDomainLists.ENABLED, false));
+        device.findObject(By.res(context.getPackageName(), "compact_domains_toggle")).click();
         await(() -> preferences.getBoolean(CompactDomainLists.ENABLED, false));
-        assertEquals(5, CompactDomainLists.rows(preferences));
     }
 
     private void launch(int count) {
@@ -309,6 +398,8 @@ public class DomainOptionsDeviceTest {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
                 new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         onMain(() -> {
+            ((ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE))
+                    .setPrimaryClip(ClipData.newPlainText("Test", "clipboard-before-copy"));
             list = new RecyclerView(activity);
             list.setLayoutManager(new LinearLayoutManager(activity));
             activity.setContentView(list);

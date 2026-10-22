@@ -193,7 +193,7 @@ public class AppFilterDeviceTest {
         device.findObject(By.res("android", "button2")).click();
     }
 
-    // Test: Cancel discards edits, Apply is temporary, and only Set as default affects future launches.
+    // Test: Cancel discards edits, Apply is temporary, and Reset restores explicitly saved defaults.
     // Why: Filter defaults must be explicit and must not accidentally save search text or temporary sort.
     @Test public void filterDefaultsRequireExplicitSaveAndSurviveFreshLaunch() throws Exception {
         find("menu_search").click();
@@ -229,20 +229,24 @@ public class AppFilterDeviceTest {
         onMain(() -> {
             assertFilters(adapter().options, true);
             assertEquals("", adapter().options.query);
+            adapter().setQuery("temporary search");
+            adapter().options.sort = ListSort.UID;
         });
         find("resetListFilters").click();
         device.setOrientationLeft();
         device.waitForIdle();
         find("menu_filter");
         onMain(() -> {
-            assertFilters(adapter().options, false);
+            assertFilters(adapter().options, true);
+            assertEquals("", adapter().options.query);
+            assertEquals(ListSort.UID, adapter().options.sort);
             assertFilters(new AdapterRule(currentActivity(), new FrameLayout(currentActivity())).options, true);
         });
         device.setOrientationNatural();
         device.waitForIdle();
         find("menu_filter").click();
         closeFilter("button3");
-        onMain(() -> assertFilters(new AdapterRule(currentActivity(), new FrameLayout(currentActivity())).options, false));
+        onMain(() -> assertFilters(new AdapterRule(currentActivity(), new FrameLayout(currentActivity())).options, true));
     }
 
     private void closeFilter(String button) {
@@ -250,6 +254,24 @@ public class AppFilterDeviceTest {
         else device.findObject(By.res("android", button)).click();
         assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+
+    // Test: Filter > User apps > Set as default > circular arrow keeps User apps selected and displayed.
+    // Why: Reset used to replace the saved filter choice with the factory All apps choice.
+    @Test public void resetArrowRestoresSavedUserApps() throws Exception {
+        find("menu_filter").click();
+        choose("filter_type", R.array.list_type_choices, 1);
+        closeFilter("button3");
+        onMain(() -> assertEquals(1, adapter().options.type));
+        find("resetListFilters").click();
+        onMain(() -> {
+            assertEquals(1, adapter().options.type);
+            assertEquals(1, prefs.getInt("app_filter_default_type", 0));
+        });
+        find("menu_filter").click();
+        assertNotNull(device.wait(Until.findObject(By.text(
+                context.getResources().getStringArray(R.array.list_type_choices)[1])), 5000));
+        closeFilter("button2");
     }
 
     private void chooseFilters() throws Exception {

@@ -14,7 +14,7 @@
     <string name="sort_oldest_short">↑ Oldest</string>
     <string name="sort_lowest">↑ Lowest</string>
     <string name="sort_highest_short">↓ Highest</string>
-    <string name="reset_search_filters">Reset search and filters</string>
+    <string name="reset_search_filters">Clear search and restore saved filter defaults</string>
     <string name="reset_short">Reset</string>
     <string name="domains_label">Domains</string>
     <string name="options_label">Options</string>

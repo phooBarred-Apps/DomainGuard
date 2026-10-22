@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.81",
+    "name": "DomainGuard 2.81",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-22",
+    "body": "DomainGuard 2.81\n\n- The circular-arrow Reset button clears searches and restores your saved filter defaults. A saved User apps choice remains selected, and your sort order stays unchanged.\n- Copy domains across apps respects the main domain search, each app's own domain search, Hide allowed, and the rows included in each displayed list. Duplicate domains are copied once. Each app now has its own Copy domains icon beside its domain tools.\n- Empty cross-app domain searches say: No matching domains logged in any apps.\n- Compact domain lists has an on/off switch directly in Display settings. Tap its name to choose the maximum height and try the full-screen example. The height dialog has no switch, and saving the height does not enable or disable compact mode.\n\nInstall DomainGuard.apk to update in place. The Android package and signing key are unchanged. All earlier HeartGuard-MW and DomainGuard update history is retained. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.8",
     "name": "DomainGuard 2.8",
     "draft": false,
