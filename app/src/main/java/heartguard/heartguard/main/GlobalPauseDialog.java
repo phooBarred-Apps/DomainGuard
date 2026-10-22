@@ -23,7 +23,12 @@ final class GlobalPauseDialog {
             view.findViewById(R.id.global_off_description).setVisibility(pause ? View.GONE : View.VISIBLE);
             view.findViewById(R.id.global_pause_duration).setVisibility(pause ? View.VISIBLE : View.GONE);
             int seconds = 300;
-            try { if (input[0] != null) seconds = input[0].seconds(); } catch (IllegalArgumentException ignored) { }
+            android.widget.TextView preview = view.findViewById(R.id.global_pause_preview);
+            try {
+                if (input[0] != null) seconds = input[0].seconds();
+                if (seconds < 1) throw new IllegalArgumentException();
+                preview.setText(RuleDelay.duration(context, seconds));
+            } catch (IllegalArgumentException invalid) { preview.setText(R.string.app_pause_invalid); }
             int delay = RulesManager.getInstance(context).getGlobalProtectionDelay();
             String detail = pause ? context.getString(R.string.delay_notice_pause_explanation, RuleDelay.duration(context, seconds, true))
                     : context.getString(R.string.delay_notice_explanation, context.getString(R.string.global_off_action));

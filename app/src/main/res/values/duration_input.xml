@@ -1,0 +1,5 @@
+<resources>
+    <string name="duration_pair">%1$s and %2$s</string>
+    <string name="duration_last">%1$s, and %2$s</string>
+    <string name="duration_new_value">New duration</string>
+</resources>

@@ -9,7 +9,7 @@
     <string name="rule_delay_pending_removal">Pending removal of %1$s delay — takes effect %2$s</string>
     <string name="rule_delay_reduction">This reduction takes effect after %1$s.</string>
     <string name="rule_delay_explanation">Default waiting time for rule changes. Some changes, such as increasing the delay or blocking access, take effect immediately.\n\nEnter 0 to turn the delay off. Maximum: 7 days. Reducing or turning off the delay still requires the existing waiting period.</string>
-    <string name="rule_delay_invalid">Enter a whole number of 0 or more, up to a total of 7 days.</string>
+    <string name="rule_delay_invalid">Enter 0 or more, up to 7 days. Use at most 3 digits before the decimal and 2 after it.</string>
     <string name="rule_delay_cancel_pending">Cancel pending delay changes</string>
     <string name="rule_delay_save">Save</string>
     <plurals name="rule_delay_unit_days">

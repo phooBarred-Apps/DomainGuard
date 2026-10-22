@@ -13,10 +13,10 @@ public class RuleDelayTest {
         assertEquals(604800, RuleDelay.parseSeconds("604800"));
     }
 
-    // Test: Reject negative, fractional, nonnumeric and overflowing durations.
+    // Test: Reject negative, overly precise, nonnumeric and overflowing durations.
     // Why: Invalid input must never queue a rule or silently become a shorter delay.
     @Test public void rejectsInvalidOrUnsupportedDurations() {
-        for (String value : new String[]{"", " ", "-1", "+1", "1.5", "1 minute", "604801", "2147483648"}) {
+        for (String value : new String[]{"", " ", "-1", "+1", "1.234", "1 minute", "604801", "2147483648"}) {
             try {
                 RuleDelay.parseSeconds(value);
                 fail("Accepted: " + value);
@@ -36,7 +36,7 @@ public class RuleDelayTest {
             int maximum = 604800 / unit.seconds;
             assertEquals(0, RuleDelay.parseSeconds("0", unit));
             assertEquals(604800, RuleDelay.parseSeconds(Integer.toString(maximum), unit));
-            for (String invalid : new String[]{Integer.toString(maximum + 1), "2147483647", "1.5", "-1", ""}) {
+            for (String invalid : new String[]{Integer.toString(maximum + 1), "2147483647", "1.234", "-1", ""}) {
                 try {
                     RuleDelay.parseSeconds(invalid, unit);
                     fail("Accepted " + invalid + " " + unit);
@@ -45,6 +45,22 @@ public class RuleDelayTest {
                 }
             }
         }
+    }
+
+    // Test: Decimal units round once to the nearest second, with exact halves rounded up.
+    // Why: The readable preview and queued duration must agree at boundaries and unit conversions.
+    @Test public void decimalsRoundHalfUpAfterUnitConversion() {
+        assertEquals(0, RuleDelay.parseSeconds(".49"));
+        assertEquals(1, RuleDelay.parseSeconds(".5"));
+        assertEquals(99, RuleDelay.parseSeconds("99.49"));
+        assertEquals(100, RuleDelay.parseSeconds("99.5"));
+        assertEquals(60, RuleDelay.parseSeconds("59.5"));
+        assertEquals(61, RuleDelay.parseSeconds("1.01", RuleDelay.Unit.MINUTES));
+        assertEquals(90, RuleDelay.parseSeconds("1.5", RuleDelay.Unit.MINUTES));
+        assertEquals(356868, RuleDelay.parseSeconds("99.13", RuleDelay.Unit.HOURS));
+        assertEquals(60, RuleDelay.parseSeconds("1.00", RuleDelay.Unit.MINUTES));
+        try { RuleDelay.parseSeconds("604800.01"); fail("Exceeded seven days"); }
+        catch (IllegalArgumentException expected) { }
     }
 
     // Test: Existing delays select a convenient unit only when it preserves every second.

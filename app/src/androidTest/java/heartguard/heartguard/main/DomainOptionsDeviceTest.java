@@ -110,6 +110,47 @@ public class DomainOptionsDeviceTest {
         onMain(() -> assertTrue(holder().itemView.findViewById(R.id.appDomainsButton).isSelected()));
     }
 
+    // Test: A local search or Hide allowed can empty one app's domains without removing its main-search result.
+    // Why: Removing that app also removes its search field, leaving no way to correct the local query.
+    @Test public void localSearchKeepsMainSearchResultWhenNoDomainsMatch() {
+        launch(2);
+        onMain(() -> adapter.setDomainSearch(true, "options-test.invalid"));
+        await(() -> adapter.getItemCount() == 1 && adapter.matchingDomainCount() == 2 && holder() != null);
+        onMain(() -> {
+            if (holder().domainSearch.getVisibility() != View.VISIBLE) holder().domainSearchButton.performClick();
+            holder().domainSearch.setText("domain-1");
+        });
+        await(() -> holder() != null && holder().lvAccess.getAdapter().getItemCount() == 1 && adapter.matchingDomainCount() == 1);
+        onMain(() -> holder().domainSearch.setText("not-present"));
+        await(() -> adapter.getItemCount() == 1 && holder() != null
+                && holder().lvAccess.getAdapter().getItemCount() == 0
+                && adapter.matchingDomainCount() == 0
+                && holder().domainStatus.getText().toString().contains("not-present"));
+        onMain(() -> {
+            assertEquals(View.VISIBLE, holder().domainSearch.getVisibility());
+            assertTrue(holder().domainSearchButton.isSelected());
+            adapter.refreshTraffic();
+            adapter.set(new ArrayList<>(apps));
+        });
+        await(() -> holder() != null && "not-present".equals(holder().domainSearch.getText().toString())
+                && holder().lvAccess.getAdapter().getItemCount() == 0);
+        onMain(() -> holder().domainSearch.setText(""));
+        await(() -> adapter.getItemCount() == 1 && adapter.matchingDomainCount() == 2
+                && holder().lvAccess.getAdapter().getItemCount() == 2);
+        ContentValues allowed = new ContentValues(); allowed.put("allowed", 1); allowed.put("block", 0);
+        DatabaseHelper.getInstance(context).getWritableDatabase().update("access", allowed, "uid = ?", new String[]{Integer.toString(UID)});
+        onMain(() -> {
+            if (!holder().cbHideAllowedDomains.isSelected()) holder().cbHideAllowedDomains.performClick();
+            else adapter.refreshTraffic();
+        });
+        await(() -> adapter.getItemCount() == 1 && holder() != null && adapter.matchingDomainCount() == 0
+                && holder().lvAccess.getAdapter().getItemCount() == 0);
+        onMain(() -> holder().cbHideAllowedDomains.performClick());
+        await(() -> adapter.matchingDomainCount() == 2 && holder().lvAccess.getAdapter().getItemCount() == 2);
+        onMain(() -> adapter.setDomainSearch(true, "missing-main-query"));
+        await(() -> adapter.getItemCount() == 0);
+    }
+
     // Test: Dragging either outside gutter moves the app screen, without changing the inner domain offset.
     // Why: Several expanded apps must not trap every vertical gesture inside their compact domain lists.
     @Test public void bothSideGuttersScrollTheOuterAppList() {

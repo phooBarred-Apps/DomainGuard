@@ -41,6 +41,8 @@
     <string name="list_app_count">%1$d of %2$d apps</string>
     <string name="list_no_apps">No matching apps. Change your search or reset filters.</string>
     <string name="list_no_domains">No matching domains. Check the search and Hide allowed domains.</string>
+    <string name="list_no_domains_query">No matching domains for “%1$s”. Check the search and Hide allowed domains.</string>
+    <string name="list_no_domains_query_main">No matching domains for “%1$s”. Check both searches and Hide allowed domains.</string>
     <string name="list_domain_limit">Showing the first 250 matching entries</string>
     <string name="list_search_active">Search: %1$s</string>
     <string name="list_filter_internet_only">Internet permission only</string>

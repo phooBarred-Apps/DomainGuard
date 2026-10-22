@@ -473,11 +473,12 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                         List<Rule> apps = appsByUid.get(uid);
                         if (apps == null) continue;
                         for (Rule app : apps) {
+                            // Main-search membership is independent of this app's display filters.
+                            if (!matches.containsKey(app.packageName)) matches.put(app.packageName, new HashSet<>());
                             if (Boolean.TRUE.equals(hidden.get(app.packageName)) && (cursor.getInt(3) > 0 || cursor.getInt(5) == 0)) continue;
                             String host = cursor.getString(1);
                             String local = queries.get(app.packageName);
                             if (local != null && !host.toLowerCase(java.util.Locale.ROOT).contains(local.trim().toLowerCase(java.util.Locale.ROOT))) continue;
-                            if (!matches.containsKey(app.packageName)) matches.put(app.packageName, new HashSet<>());
                             matches.get(app.packageName).add(host);
                         }
                     }
@@ -544,7 +545,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     }
 
     private void setDomainSearchVisible(ViewHolder holder, boolean visible) {
+        Context context = holder.itemView.getContext();
         holder.domainSearch.setVisibility(visible ? View.VISIBLE : View.GONE);
+        holder.domainSearchButton.setSelected(visible);
+        holder.domainSearchButton.setImageTintList(android.content.res.ColorStateList.valueOf(
+                CompactUi.color(context, visible ? R.attr.colorActionPositive : android.R.attr.textColorSecondary)));
         String description = holder.itemView.getContext().getString(visible
                 ? R.string.list_hide_domain_search : R.string.list_show_domain_search);
         holder.domainSearchButton.setContentDescription(description);
@@ -585,7 +590,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                 AdapterAccess access = (AdapterAccess) holder.lvAccess.getAdapter();
                 if (access == null) return;
                 access.submit(entries);
-                holder.domainStatus.setText(entries.isEmpty() ? R.string.list_no_domains : R.string.list_domain_limit);
+                String emptyQuery = query.trim().isEmpty() ? mainQuery : query.trim();
+                if (entries.isEmpty() && !emptyQuery.isEmpty())
+                    holder.domainStatus.setText(context.getString(!query.trim().isEmpty() && !mainQuery.isEmpty()
+                            ? R.string.list_no_domains_query_main : R.string.list_no_domains_query, emptyQuery));
+                else holder.domainStatus.setText(entries.isEmpty() ? R.string.list_no_domains : R.string.list_domain_limit);
                 holder.domainStatus.setVisibility(entries.isEmpty() || entries.size() == 250 ? View.VISIBLE : View.GONE);
             }
         }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
@@ -1223,6 +1232,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         TypedValue icon = new TypedValue();
         context.getTheme().resolveAttribute(live ? R.attr.iconPause : R.attr.iconPlay, icon, true);
         holder.ivLive.setImageResource(icon.resourceId);
+        holder.ivLive.setSelected(live);
         holder.ivLive.setContentDescription(context.getString(live ? R.string.pause_live_updates : R.string.resume_live_updates));
         TooltipCompat.setTooltipText(holder.ivLive, holder.ivLive.getContentDescription());
         holder.tvLogging.setText(live ? R.string.live_updates_running_logging

@@ -1,59 +1,20 @@
 package heartguard.heartguard.main;
 
 import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.StateListDrawable;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.ListView;
 import android.widget.SpinnerAdapter;
-import androidx.appcompat.content.res.AppCompatResources;
-import androidx.appcompat.widget.AppCompatSpinner;
 import androidx.appcompat.widget.ListPopupWindow;
-import androidx.core.graphics.ColorUtils;
-import androidx.core.graphics.drawable.DrawableCompat;
 
 /** Keep the unit menu below its field instead of covering the selected value. */
-public class AppPauseUnitSpinner extends AppCompatSpinner {
+public class AppPauseUnitSpinner extends InlineSpinner {
     private ListPopupWindow popup;
-    private final Drawable arrow;
 
     public AppPauseUnitSpinner(Context context, AttributeSet attributes) {
         super(context, attributes);
-        setBackground(selectionBackground());
-        setPaddingRelative(0, 0, CompactUi.dp(context, 32), 0);
-        arrow = AppCompatResources.getDrawable(context, R.drawable.ic_dropdown_compact).mutate();
-        DrawableCompat.setTint(arrow, CompactUi.color(context, android.R.attr.textColorSecondary));
-    }
-
-    Drawable selectionBackground() {
-        GradientDrawable highlight = new GradientDrawable();
-        highlight.setColor(ColorUtils.setAlphaComponent(CompactUi.color(getContext(), android.R.attr.textColorPrimary), 24));
-        highlight.setCornerRadius(CompactUi.dp(getContext(), 4));
-        StateListDrawable background = new StateListDrawable();
-        background.addState(new int[]{android.R.attr.state_activated}, highlight);
-        background.addState(new int[]{}, new ColorDrawable(Color.TRANSPARENT));
-        return background;
-    }
-
-    @Override protected void dispatchDraw(Canvas canvas) {
-        super.dispatchDraw(canvas);
-        int size = CompactUi.dp(getContext(), 24);
-        int inset = CompactUi.dp(getContext(), 4);
-        int left = getLayoutDirection() == LAYOUT_DIRECTION_RTL ? inset : getWidth() - size - inset;
-        int top = (getHeight() - size) / 2;
-        arrow.setBounds(left, top, left + size, top + size);
-        arrow.setAlpha(isEnabled() ? 255 : 100);
-        int saved = canvas.save();
-        if (isActivated()) canvas.rotate(180, left + size / 2f, top + size / 2f);
-        arrow.draw(canvas);
-        canvas.restoreToCount(saved);
     }
 
     private void showOpenState(boolean open) {

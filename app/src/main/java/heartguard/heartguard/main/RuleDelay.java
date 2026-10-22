@@ -7,6 +7,8 @@ import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /** The settings UI reads and queues the same delay rules as the rule editor. */
 final class RuleDelay {
@@ -34,13 +36,17 @@ final class RuleDelay {
     }
 
     static int parseSeconds(String input, Unit unit) {
+        return exactSeconds(input, unit).setScale(0, RoundingMode.HALF_UP).intValueExact();
+    }
+
+    static BigDecimal exactSeconds(String input, Unit unit) {
         String value = input.trim();
-        if (!value.matches("[0-9]+")) throw new IllegalArgumentException();
+        if (!value.matches("(?:[0-9]+(?:\\.[0-9]{0,2})?|\\.[0-9]{1,2})")) throw new IllegalArgumentException();
         try {
-            int amount = Integer.parseInt(value);
-            // Check before multiplying so large values cannot overflow into a shorter delay.
-            if (amount > RulesManager.MAX_DELAY / unit.seconds) throw new IllegalArgumentException();
-            return amount * unit.seconds;
+            BigDecimal seconds = new BigDecimal(value).multiply(BigDecimal.valueOf(unit.seconds));
+            // Enforce the limit before rounding; never round an out-of-range duration into validity.
+            if (seconds.compareTo(BigDecimal.valueOf(RulesManager.MAX_DELAY)) > 0) throw new IllegalArgumentException();
+            return seconds;
         } catch (NumberFormatException invalid) {
             throw new IllegalArgumentException();
         }
@@ -59,7 +65,10 @@ final class RuleDelay {
         for (int i = 0; i < amounts.length; i++)
             if (amounts[i] > 0)
                 parts.add(context.getResources().getQuantityString(plurals[i], singularUnits ? 1 : amounts[i], amounts[i]));
-        return TextUtils.join(" ", parts);
+        if (parts.size() == 1) return parts.get(0);
+        String beginning = TextUtils.join(", ", parts.subList(0, parts.size() - 1));
+        return context.getString(parts.size() == 2 ? R.string.duration_pair : R.string.duration_last,
+                beginning, parts.get(parts.size() - 1));
     }
 
     static State read(Context context) {

@@ -6,11 +6,14 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
+import android.database.MatrixCursor;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
@@ -34,6 +37,9 @@ import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Random;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 // Activity to display all current/pending rules in a window
 // Much implementation copied from ActivityForwarding (because why not)
@@ -45,6 +51,17 @@ public class ActivityRulesList extends AppCompatActivity {
 
     private ListView lvRulesList;
     private AdapterRulesList adapter;
+    private String findQuery = "";
+    private String searchableRules = "";
+    private final List<Integer> ruleStarts = new ArrayList<>();
+    private final List<Long> ruleIds = new ArrayList<>();
+    private int match = -1;
+    private int matchRow = -1;
+    private boolean searchExpanded;
+    private final RawRuleFilter ruleFilter = new RawRuleFilter();
+    private TextView filterTitle;
+    private Drawable filterCaret;
+    private RawRuleFilterPopup filterPopup;
 
     private DatabaseHelper.RuleChangedListener listener = new DatabaseHelper.RuleChangedListener() {
         @Override
@@ -52,8 +69,7 @@ public class ActivityRulesList extends AppCompatActivity {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    if (adapter != null)
-                        adapter.changeCursor(DatabaseHelper.getInstance(ActivityRulesList.this).getAllRulesSorted());
+                    if (adapter != null) refreshRules();
                 }
             });
         }
@@ -69,8 +85,21 @@ public class ActivityRulesList extends AppCompatActivity {
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
         lvRulesList = findViewById(R.id.lvRulesList);
-        adapter = new AdapterRulesList(this, DatabaseHelper.getInstance(this).getAllRulesSorted());
+        adapter = new AdapterRulesList(this, null);
         lvRulesList.setAdapter(adapter);
+        lvRulesList.setEmptyView(findViewById(R.id.rawRulesEmpty));
+        if (savedInstanceState != null) {
+            findQuery = savedInstanceState.getString("findQuery", "");
+            searchExpanded = savedInstanceState.getBoolean("searchExpanded");
+            ruleFilter.globalOnly = savedInstanceState.getBoolean("ruleFilterGlobal");
+            ruleFilter.allTypes = savedInstanceState.getInt("ruleFilterAllTypes", RawRuleFilter.ALL) & RawRuleFilter.ALL;
+            ruleFilter.globalTypes = savedInstanceState.getInt("ruleFilterGlobalTypes", RawRuleFilter.ALL) & RawRuleFilter.ALL;
+        }
+        setupFilterTitle();
+        refreshRules();
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        findViewById(R.id.rawPrevious).setOnClickListener(view -> findMatch(true, false));
+        findViewById(R.id.rawNext).setOnClickListener(view -> findMatch(false, false));
         lvRulesList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -146,12 +175,13 @@ public class ActivityRulesList extends AppCompatActivity {
         super.onResume();
         DatabaseHelper.getInstance(this).addRuleChangedListener(listener);
         if (adapter != null) {
-            adapter.changeCursor(DatabaseHelper.getInstance(this).getAllRulesSorted());
+            refreshRules();
         }
     }
 
     @Override
     protected void onPause() {
+        if (filterPopup != null) filterPopup.dismiss();
         super.onPause();
         DatabaseHelper.getInstance(this).removeRuleChangedListener(listener);
     }
@@ -169,12 +199,167 @@ public class ActivityRulesList extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.rulelistmenu, menu);
+        androidx.appcompat.widget.SearchView search = new androidx.appcompat.widget.SearchView(this);
+        search.setQueryHint(getString(R.string.raw_find));
+        MenuItem item = menu.add(0, R.id.raw_search, 0, R.string.raw_find);
+        item.setIcon(R.drawable.ic_search_white_24dp);
+        item.setActionView(search);
+        item.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS | MenuItem.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW);
+        item.setOnActionExpandListener(new MenuItem.OnActionExpandListener() {
+            public boolean onMenuItemActionExpand(MenuItem ignored) {
+                if (filterPopup != null) filterPopup.dismiss();
+                searchExpanded = true;
+                findViewById(R.id.rawSearchNavigation).setVisibility(View.VISIBLE);
+                return true;
+            }
+            public boolean onMenuItemActionCollapse(MenuItem ignored) {
+                searchExpanded = false;
+                findQuery = "";
+                showMatch(-1, false);
+                findViewById(R.id.rawSearchNavigation).setVisibility(View.GONE);
+                return true;
+            }
+        });
+        search.setOnQueryTextListener(new androidx.appcompat.widget.SearchView.OnQueryTextListener() {
+            public boolean onQueryTextSubmit(String text) { findMatch(false, false); return true; }
+            public boolean onQueryTextChange(String text) { findQuery = text; findMatch(false, true); return true; }
+        });
+        if (searchExpanded) {
+            String restoredQuery = findQuery;
+            item.expandActionView();
+            search.setQuery(restoredQuery, false);
+            search.clearFocus();
+        }
         return true;
+    }
+
+    @Override protected void onSaveInstanceState(@NonNull Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString("findQuery", findQuery);
+        state.putBoolean("searchExpanded", searchExpanded);
+        state.putBoolean("ruleFilterGlobal", ruleFilter.globalOnly);
+        state.putInt("ruleFilterAllTypes", ruleFilter.allTypes);
+        state.putInt("ruleFilterGlobalTypes", ruleFilter.globalTypes);
+    }
+
+    private void setupFilterTitle() {
+        Context toolbarContext = getSupportActionBar().getThemedContext();
+        filterTitle = new androidx.appcompat.widget.AppCompatTextView(toolbarContext);
+        filterTitle.setId(R.id.rawFilterTitle);
+        filterTitle.setTextAppearance(toolbarContext, androidx.appcompat.R.style.TextAppearance_AppCompat_Widget_ActionBar_Title);
+        filterTitle.setSingleLine(true);
+        filterTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        filterTitle.setGravity(Gravity.CENTER_VERTICAL);
+        filterTitle.setCompoundDrawablePadding(CompactUi.dp(this, 6));
+        filterTitle.setPaddingRelative(0, 0, CompactUi.dp(this, 8), 0);
+        CompactUi.frameless(filterTitle);
+        filterCaret = androidx.appcompat.content.res.AppCompatResources.getDrawable(toolbarContext, R.drawable.ic_rule_filter_caret).mutate();
+        androidx.core.graphics.drawable.DrawableCompat.setTint(filterCaret, filterTitle.getCurrentTextColor());
+        int size = CompactUi.dp(this, 24);
+        filterCaret.setBounds(0, 0, size, size);
+        filterTitle.setCompoundDrawablesRelative(null, null, filterCaret, null);
+        filterTitle.setOnClickListener(view -> {
+            if (filterPopup != null) { filterPopup.dismiss(); return; }
+            filterPopup = new RawRuleFilterPopup(this, ruleFilter, this::refreshRules, () -> {
+                filterPopup = null;
+                filterCaret.setLevel(0);
+            });
+            filterCaret.setLevel(10000);
+            filterPopup.show(filterTitle);
+        });
+        getSupportActionBar().setDisplayShowTitleEnabled(false);
+        getSupportActionBar().setCustomView(filterTitle, new androidx.appcompat.app.ActionBar.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START | Gravity.CENTER_VERTICAL));
+        getSupportActionBar().setDisplayShowCustomEnabled(true);
+    }
+
+    private Cursor filteredRules() {
+        try (Cursor all = DatabaseHelper.getInstance(this).getAllRulesSorted()) {
+            MatrixCursor filtered = new MatrixCursor(all.getColumnNames());
+            int textColumn = all.getColumnIndexOrThrow("ruletext");
+            while (all.moveToNext()) {
+                if (!ruleFilter.matches(all.getString(textColumn))) continue;
+                Object[] row = new Object[all.getColumnCount()];
+                for (int column = 0; column < row.length; column++) {
+                    switch (all.getType(column)) {
+                        case Cursor.FIELD_TYPE_INTEGER: row[column] = all.getLong(column); break;
+                        case Cursor.FIELD_TYPE_FLOAT: row[column] = all.getDouble(column); break;
+                        case Cursor.FIELD_TYPE_BLOB: row[column] = all.getBlob(column); break;
+                        case Cursor.FIELD_TYPE_STRING: row[column] = all.getString(column); break;
+                        default: row[column] = null;
+                    }
+                }
+                filtered.addRow(row);
+            }
+            return filtered;
+        }
+    }
+
+    private void refreshRules() {
+        int first = lvRulesList.getFirstVisiblePosition();
+        long firstId = first < ruleIds.size() ? ruleIds.get(first) : -1;
+        int firstTop = lvRulesList.getChildCount() > 0 ? lvRulesList.getChildAt(0).getTop() : lvRulesList.getPaddingTop();
+        long previousId = matchRow < 0 ? -1 : ruleIds.get(matchRow);
+        int previousOffset = matchRow < 0 ? 0 : match - ruleStarts.get(matchRow);
+        // Clear the old highlight before the new cursor notifies the ListView.
+        matchRow = -1;
+        adapter.changeCursor(filteredRules());
+        int title = RawRuleFilterPopup.title(ruleFilter);
+        filterTitle.setText(title);
+        filterTitle.setContentDescription(getString(R.string.raw_filter_description, getString(title)));
+        ((TextView) findViewById(R.id.rawRulesEmpty)).setText(!ruleFilter.globalOnly && ruleFilter.types() == RawRuleFilter.ALL
+                ? R.string.raw_rules_empty : R.string.raw_filter_empty);
+        Cursor cursor = adapter.getCursor();
+        ruleStarts.clear();
+        ruleIds.clear();
+        StringBuilder text = new StringBuilder();
+        int from = 0;
+        if (cursor != null) {
+            int originalPosition = cursor.getPosition();
+            cursor.moveToPosition(-1);
+            while (cursor.moveToNext()) {
+                long id = cursor.getLong(cursor.getColumnIndexOrThrow("_id"));
+                if (id == previousId) from = text.length() + previousOffset;
+                ruleIds.add(id);
+                ruleStarts.add(text.length());
+                // Search only what is displayed: partner secrets stay excluded.
+                text.append(getDisplayTextFromRuleCursor(cursor)).append('\n');
+            }
+            cursor.moveToPosition(originalPosition);
+        }
+        searchableRules = text.toString();
+        showMatch(RuleTextSearch.find(searchableRules, findQuery, from, false), !findQuery.isEmpty());
+        if (findQuery.isEmpty()) {
+            int position = ruleIds.indexOf(firstId);
+            lvRulesList.setSelectionFromTop(Math.max(0, position), position < 0 ? lvRulesList.getPaddingTop() : firstTop);
+        }
+    }
+
+    private void findMatch(boolean backwards, boolean restart) {
+        int from = restart || match < 0 ? 0 : match + (backwards ? -1 : 1);
+        showMatch(RuleTextSearch.find(searchableRules, findQuery, from, backwards), true);
+    }
+
+    private void showMatch(int offset, boolean reveal) {
+        match = offset;
+        matchRow = -1;
+        TextView status = findViewById(R.id.rawSearchStatus);
+        if (match < 0) status.setText(findQuery.isEmpty() ? "" : getString(R.string.raw_no_match));
+        else {
+            int index = Collections.binarySearch(ruleStarts, match);
+            matchRow = index >= 0 ? index : -index - 2;
+            status.setText(getString(R.string.raw_rule_found, matchRow + 1));
+        }
+        adapter.notifyDataSetChanged();
+        if (reveal && matchRow >= 0) lvRulesList.setSelectionFromTop(matchRow, lvRulesList.getPaddingTop());
     }
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         switch(item.getItemId()) {
+            case android.R.id.home:
+                finish();
+                return true;
             case R.id.menu_rules_list_add:
                 launchAddRulePage(ActivityRulesList.this);
                 return true;
@@ -401,7 +586,14 @@ public class ActivityRulesList extends AppCompatActivity {
         @Override
         public void bindView(View view, Context context, Cursor cursor) {
             TextView tvRuleText = view.findViewById(R.id.tvRuleText);
-            tvRuleText.setText(ActivityRulesList.getDisplayTextFromRuleCursor(cursor));
+            String text = ActivityRulesList.getDisplayTextFromRuleCursor(cursor);
+            if (cursor.getPosition() == matchRow) {
+                android.text.SpannableString highlighted = new android.text.SpannableString(text);
+                int start = match - ruleStarts.get(matchRow);
+                highlighted.setSpan(new android.text.style.BackgroundColorSpan(0x6680cbc4),
+                        start, Math.min(text.length(), start + findQuery.length()), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                tvRuleText.setText(highlighted);
+            } else tvRuleText.setText(text);
         }
     }
 

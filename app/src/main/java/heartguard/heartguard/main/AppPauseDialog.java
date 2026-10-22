@@ -1,14 +1,8 @@
 package heartguard.heartguard.main;
 
 import android.content.Context;
-import android.text.Editable;
-import android.text.TextWatcher;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -28,23 +22,6 @@ final class AppPauseDialog {
         ((TextView) view.findViewById(R.id.app_pause_name)).setText(appName);
         try { ((android.widget.ImageView) view.findViewById(R.id.app_pause_icon)).setImageDrawable(context.getPackageManager().getApplicationIcon(packageName)); }
         catch (android.content.pm.PackageManager.NameNotFoundException missing) { view.findViewById(R.id.app_pause_icon).setVisibility(View.GONE); }
-        input.setText("5");
-        ArrayAdapter<RuleDelay.Unit> units = new ArrayAdapter<RuleDelay.Unit>(context,
-                android.R.layout.simple_spinner_item, RuleDelay.Unit.values()) {
-            private View label(View view, int position) {
-                int quantity = input.getText().toString().trim().matches("0*1") ? 1 : 2;
-                ((TextView) view).setText(context.getResources().getQuantityString(getItem(position).label, quantity));
-                ((TextView) view).setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-                view.setMinimumHeight(CompactUi.dp(context, 48));
-                view.setPadding(CompactUi.dp(context, 8), 0, CompactUi.dp(context, 8), 0);
-                return view;
-            }
-            @Override public View getView(int position, View view, ViewGroup parent) { return label(super.getView(position, view, parent), position); }
-            @Override public View getDropDownView(int position, View view, ViewGroup parent) { return label(super.getDropDownView(position, view, parent), position); }
-        };
-        units.setDropDownViewResource(android.R.layout.simple_spinner_item);
-        unit.setAdapter(units);
-        unit.setSelection(RuleDelay.Unit.MINUTES.ordinal());
         String[] related = null;
         try { related = context.getPackageManager().getPackagesForUid(context.getPackageManager().getApplicationInfo(packageName, 0).uid); }
         catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
@@ -55,6 +32,7 @@ final class AppPauseDialog {
         }
         AlertDialog dialog = new AlertDialog.Builder(context).setTitle(R.string.app_pause_title).setView(view)
                 .setPositiveButton(R.string.app_pause_action, null).setNegativeButton(android.R.string.cancel, null).create();
+        DurationInput[] duration = new DurationInput[1];
         Runnable refresh = () -> {
             List<AppPause.Entry> entries = AppPause.read(context, packageName);
             boolean occupied = !entries.isEmpty();
@@ -71,31 +49,16 @@ final class AppPauseDialog {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setVisibility(occupied ? View.GONE : View.VISIBLE);
             dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setText(occupied ? R.string.list_done : android.R.string.cancel);
             DialogSurface.applyButtonStyles(dialog);
-            if (occupied) {
-                RuleDelay.Unit displayUnit = RuleDelay.displayUnit(entries.get(0).rule.seconds);
-                String amount = Integer.toString(entries.get(0).rule.seconds / displayUnit.seconds);
-                if (!amount.equals(input.getText().toString())) input.setText(amount);
-                if (unit.getSelectedItemPosition() != displayUnit.ordinal()) unit.setSelection(displayUnit.ordinal());
-            }
+            if (occupied) duration[0].setSeconds(entries.get(0).rule.seconds);
             try {
-                int seconds = seconds(input, unit);
+                int seconds = occupied ? entries.get(0).rule.seconds : seconds(input, unit);
                 int delay = RulesManager.getInstance(context).getSharedUidDelay(context, packageName, false);
                 preview.setText(active ? context.getString(R.string.app_pause_active)
                         : context.getString(R.string.app_pause_duration, RuleDelay.duration(context, seconds))
                         + (!occupied && delay > 0 ? "\n" + context.getString(R.string.app_pause_delay, RuleDelay.duration(context, delay)) : ""));
             } catch (IllegalArgumentException invalid) { preview.setText(R.string.app_pause_invalid); }
         };
-        unit.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(AdapterView<?> parent, View selected, int position, long id) { if (dialog.isShowing()) refresh.run(); }
-            public void onNothingSelected(AdapterView<?> parent) { }
-        });
-        input.addTextChangedListener(new TextWatcher() {
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                units.notifyDataSetChanged(); input.setError(null); if (dialog.isShowing()) refresh.run();
-            }
-            public void afterTextChanged(Editable text) { }
-        });
+        duration[0] = new DurationInput(input, unit, 300, () -> { if (dialog.isShowing()) refresh.run(); });
         DatabaseHelper.RuleChangedListener listener = () -> view.post(() -> { if (dialog.isShowing()) refresh.run(); });
         dialog.setOnDismissListener(ignored -> DatabaseHelper.getInstance(context).removeRuleChangedListener(listener));
         dialog.show(); DialogSurface.apply(dialog);

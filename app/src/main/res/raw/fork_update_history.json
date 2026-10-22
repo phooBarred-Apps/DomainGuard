@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.8",
+    "name": "DomainGuard 2.8",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-22",
+    "body": "DomainGuard 2.8\n\n- Raw Rules filters: select All rules or Global rules from the toolbar title. Each header has its own caret for Block, Allow and Other toggles, all on by default. Headers align left, carets right; Global other rules uses a plain globe. Filters only change what is displayed.\n- The Rules list now includes Find, previous/next matches and a draggable right-edge scrollbar. Search respects the selected filters and never reveals partner secrets. Copy all and export still include all rules.\n- Compact duration fields accept up to three digits before the decimal and two after it, with an adjacent fixed-width unit picker. Delays, pauses and temporary rules automatically round to the nearest second; .5 rounds up. Readable times show days, hours, minutes and seconds as needed. The seven-day limit and normal rule delays remain in force.\n- Icon press feedback is 36dp; selected toggles use a borderless 32dp background while keeping their existing touch targets. Per-app search and Hide allowed show their selected state. Domain rows have balanced padding.\n- Apps matching the main domain search remain visible when a search within that app has no matches, with a message naming the local query.\n\nInstall DomainGuard.apk to update in place. The Android package and signing key are unchanged. All earlier HeartGuard-MW and DomainGuard history is retained. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.7",
     "name": "DomainGuard 2.7",
     "draft": false,

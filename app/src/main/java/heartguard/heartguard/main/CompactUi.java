@@ -20,9 +20,13 @@ final class CompactUi {
     }
 
     static void frameless(View view) {
-        TypedValue background = new TypedValue();
-        view.getContext().getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, background, true);
-        view.setBackgroundResource(background.resourceId);
+        if (view instanceof ImageButton)
+            view.setBackground(new CompactImageButton.Feedback(view.getContext()));
+        else {
+            TypedValue background = new TypedValue();
+            view.getContext().getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, background, true);
+            view.setBackgroundResource(background.resourceId);
+        }
         view.setElevation(0);
         view.setStateListAnimator(null);
         view.setMinimumHeight(dp(view.getContext(), 48));

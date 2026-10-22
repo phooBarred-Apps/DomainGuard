@@ -70,6 +70,9 @@ public class ActivityDomainListPreview extends AppCompatActivity {
         searchButton.setOnClickListener(view -> {
             boolean open = search.getVisibility() != View.VISIBLE;
             search.setVisibility(open ? View.VISIBLE : View.GONE);
+            searchButton.setSelected(open);
+            ((android.widget.ImageButton) searchButton).setImageTintList(android.content.res.ColorStateList.valueOf(
+                    CompactUi.color(this, open ? R.attr.colorActionPositive : android.R.attr.textColorSecondary)));
             if (!open) search.setText("");
         });
         View hideAllowed = app.findViewById(R.id.cbHideAllowedDomains);

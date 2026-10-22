@@ -17,8 +17,8 @@
         </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:padding="8dp" android:id="@+id/listSummaryRow" android:visibility="gone">
             <TextView android:id="@+id/listSummary" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textAppearance="@style/TextSmall" />
-            <ImageButton android:id="@+id/copyMatchingDomains" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/baseline_file_copy_24" android:background="?attr/selectableItemBackgroundBorderless" android:contentDescription="@string/domain_search_copy" android:visibility="gone" />
-            <ImageButton android:id="@+id/resetListFilters" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_reset_compact" android:background="?attr/selectableItemBackgroundBorderless" android:contentDescription="@string/reset_search_filters" />
+            <heartguard.heartguard.main.CompactImageButton android:id="@+id/copyMatchingDomains" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/baseline_file_copy_24" android:contentDescription="@string/domain_search_copy" android:visibility="gone" />
+            <heartguard.heartguard.main.CompactImageButton android:id="@+id/resetListFilters" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_reset_compact" android:contentDescription="@string/reset_search_filters" />
         </LinearLayout>
         <TextView android:id="@+id/emptyApplications" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="16dp" android:gravity="center" android:text="@string/list_no_apps" android:visibility="gone" />
         <androidx.swiperefreshlayout.widget.SwipeRefreshLayout android:id="@+id/swipeRefresh" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">

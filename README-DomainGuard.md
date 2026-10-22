@@ -4,6 +4,16 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 DomainGuard continues the HeartGuard-MW fork. Latest changes: October 22, 2026.
 
+Version `2.8` adds:
+
+- **Raw Rules filters:** tap the toolbar title to select All rules or Global rules. Each header has a separate caret opening Block, Allow and Other toggles, all on initially. Choices apply immediately and stay separate for each scope during the session. Temporary rules and pending removals follow their underlying rule type. The plain globe marks Global other rules.
+- **Find and scroll raw rules:** the Rules list now has the raw editor's Find, previous/next match controls and draggable scrollbar. Find searches displayed rules without hiding them or revealing partner secrets. Copy all and export continue to include every rule.
+- **Compact duration inputs:** rule delays, global/app pauses and temporary domain rules share a fixed-width decimal field and an adjacent unit picker. Enter up to three digits before the decimal and two after it; values round automatically to the nearest second, with halves rounded up. Readable durations run from days down to seconds. Existing rule delays and the seven-day limit still apply.
+- **Smaller icon feedback:** icon buttons retain their touch targets, with 36dp press feedback and a borderless 32dp selected state. Per-app search and Hide allowed show when they are on. Domain rows have balanced left/right padding.
+- **Independent domain searches:** an app matching the main domain search stays visible when its own search has no results, with a message naming the local search.
+
+These filters only change the display. They do not edit rules, affect protection, or change delays.
+
 Version `2.7` adds:
 
 - **Pause all apps:** turning the main switch off offers Resume automatically. Enable it and choose seconds, minutes, hours or days, up to seven days; leave it off for an indefinite turn-off. The applicable rule delay is shown before confirmation.

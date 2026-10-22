@@ -1,0 +1,24 @@
+<resources>
+    <string name="raw_filter_all">All rules</string>
+    <string name="raw_filter_global">Global rules</string>
+    <string name="raw_filter_blocks">All blocks</string>
+    <string name="raw_filter_allows">All allows</string>
+    <string name="raw_filter_other">Other rules</string>
+    <string name="raw_filter_global_blocks">Global blocks</string>
+    <string name="raw_filter_global_allows">Global allows</string>
+    <string name="raw_filter_global_other">Global other rules</string>
+    <string name="raw_filter_mixed">Filtered rules</string>
+    <string name="raw_filter_global_mixed">Filtered global rules</string>
+    <string name="raw_filter_description">%1$s. Filter rules</string>
+    <string name="raw_filter_types_description">%1$s: choose rule types</string>
+    <string name="raw_filter_empty">No rules match these filters.</string>
+    <string name="raw_rules_empty">No rules yet.</string>
+    <item type="id" name="rawFilterTitle" />
+    <item type="id" name="rawFilterAll" />
+    <item type="id" name="rawFilterGlobal" />
+    <item type="id" name="rawFilterAllMenu" />
+    <item type="id" name="rawFilterGlobalMenu" />
+    <item type="id" name="rawFilterBlock" />
+    <item type="id" name="rawFilterAllow" />
+    <item type="id" name="rawFilterOther" />
+</resources>

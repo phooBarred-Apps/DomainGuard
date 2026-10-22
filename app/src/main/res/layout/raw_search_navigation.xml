@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/rawSearchNavigation" android:layout_width="match_parent" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical" android:visibility="gone" android:paddingStart="16dp">
+    <TextView android:id="@+id/rawSearchStatus" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+    <heartguard.heartguard.main.CompactImageButton android:id="@+id/rawPrevious" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_raw_previous" android:contentDescription="@string/raw_previous" />
+    <heartguard.heartguard.main.CompactImageButton android:id="@+id/rawNext" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_raw_next" android:contentDescription="@string/raw_next" />
+</LinearLayout>

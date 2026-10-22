@@ -74,14 +74,19 @@ public class SettingsDeviceTest {
     @Test public void readablePreviewAndValidation() {
         openDelay();
         UiObject2 input = find("rule_delay_input");
-        for (String[] pair : new String[][]{{"60", "1 minute"}, {"90", "1 minute 30 seconds"},
-                {"3600", "1 hour"}, {"3661", "1 hour 1 minute 1 second"}, {"86401", "1 day 1 second"},
-                {"604800", "7 days"}, {"0", "No delay"}}) {
+        for (String[] pair : new String[][]{{"30", "30 seconds"}, {"60", "1 minute"}, {"90", "1 minute and 30 seconds"},
+                {"99.49", "1 minute and 39 seconds"}, {"99.5", "1 minute and 40 seconds"}, {"0", "No delay"}}) {
             input.setText(pair[0]);
             device.waitForIdle();
             assertEquals(pair[1], find("rule_delay_preview").getText());
         }
-        input.setText("604801");
+        input.setText("99.13");
+        find("rule_delay_unit").click();
+        device.wait(Until.findObject(By.text("hours")), 5000).click();
+        assertEquals("4 days, 3 hours, 7 minutes, and 48 seconds", find("rule_delay_preview").getText());
+        find("rule_delay_unit").click();
+        device.wait(Until.findObject(By.text("days")), 5000).click();
+        input.setText("8");
         device.waitForIdle();
         device.findObject(By.res("android", "button1")).click();
         assertNotNull(find("rule_delay_input"));
@@ -159,7 +164,7 @@ public class SettingsDeviceTest {
         await(() -> RuleDelay.read(context).seconds == 90);
         openDelay();
         assertEquals("90", find("rule_delay_input").getText());
-        assertEquals("Current delay: 1 minute 30 seconds", find("rule_delay_current").getText());
+        assertEquals("Current delay: 1 minute and 30 seconds", find("rule_delay_current").getText());
     }
 
     // Test: Former Pro settings and the log open without billing permission or a purchase activity.

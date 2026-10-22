@@ -5,4 +5,5 @@
     <string name="raw_next">Next match</string>
     <string name="raw_no_match">No matches</string>
     <string name="raw_found">Line %1$d</string>
+    <string name="raw_rule_found">Rule %1$d</string>
 </resources>
