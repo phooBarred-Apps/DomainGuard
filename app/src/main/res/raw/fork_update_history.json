@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.6",
+    "name": "DomainGuard 2.6",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-21",
+    "body": "- Domains and Info & controls tabs replace the per-app three-dot button. One panel is shown at a time, so app controls are immediately reachable even with a long domain list. The active tab is underlined, and domain tools wrap on narrow screens or with larger text.\n- Display settings > App list > Open Info & controls by default chooses the starting panel. Each app can override it for the session. Domain searches open Domains so matching results stay visible.\n- Narrow strips beside each domain list scroll the whole app screen. Swiping inside an overflowing compact list scrolls its domains.\n- Domain lists have a subtle background tint: lighter in dark themes and darker in light themes.\n\nInstall DomainGuard.apk to update in place. The Android package and signing key are unchanged. Earlier HeartGuard-MW update history is retained. Corresponding GPLv3 source and SHA-256 checksums accompany the release."
+  },
+  {
     "tag_name": "v2.5",
     "name": "DomainGuard 2.5",
     "draft": false,

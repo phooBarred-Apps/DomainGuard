@@ -4,6 +4,13 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 DomainGuard continues the HeartGuard-MW fork. Latest changes: October 21, 2026.
 
+Version `2.6` adds:
+
+- **Domains / Info & controls tabs:** expanded apps show one panel at a time. App information and controls are immediately reachable without scrolling through the domain list. Tabs remain frameless, with the active tab underlined; domain tools wrap when narrow screens or larger text need more room.
+- **Default panel setting:** enable Display settings > App list > Open Info & controls by default to start there. Each app can override the default during the current session. Domain searches open Domains so matches stay visible.
+- **Easier scrolling:** the domain list has a narrow strip on each side where swiping scrolls the whole app screen. Swiping within a compact domain list still scrolls its domains.
+- **Distinct domain surface:** domain lists are subtly lighter in dark themes and darker in light themes, retaining the surrounding app's theme tint.
+
 Version `2.5` adds:
 
 - **Temporary Allow and Block:** enable Temporary in either domain dialog, choose seconds, minutes, hours or days (up to seven days), and optionally apply it globally. The toggle and global scope start off. Allows honor the normal rule delay; blocks begin immediately. The duration starts on activation, and expiry removes only that temporary rule. Existing block priorities and permanent rules remain in force. Global lists show the remaining duration.

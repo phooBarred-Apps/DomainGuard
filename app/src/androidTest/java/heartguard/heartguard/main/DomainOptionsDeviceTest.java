@@ -38,6 +38,7 @@ public class DomainOptionsDeviceTest {
     private android.content.SharedPreferences preferences;
     private Boolean oldCompact;
     private Integer oldRows;
+    private Boolean oldDetails;
 
     @Before public void setup() {
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
@@ -46,7 +47,10 @@ public class DomainOptionsDeviceTest {
         preferences = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context);
         oldCompact = preferences.contains(CompactDomainLists.ENABLED) ? preferences.getBoolean(CompactDomainLists.ENABLED, false) : null;
         oldRows = preferences.contains(CompactDomainLists.ROWS) ? preferences.getInt(CompactDomainLists.ROWS, 5) : null;
-        preferences.edit().remove(CompactDomainLists.ENABLED).remove(CompactDomainLists.ROWS).commit();
+        oldDetails = preferences.contains(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS)
+                ? preferences.getBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS, false) : null;
+        preferences.edit().remove(CompactDomainLists.ENABLED).remove(CompactDomainLists.ROWS)
+                .remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS).commit();
         try (android.database.Cursor rows = DatabaseHelper.getInstance(context).getAccess(UID)) {
             assertEquals("Synthetic UID must be unused", 0, rows.getCount());
         }
@@ -62,33 +66,110 @@ public class DomainOptionsDeviceTest {
         android.content.SharedPreferences.Editor edit = preferences.edit();
         if (oldCompact == null) edit.remove(CompactDomainLists.ENABLED); else edit.putBoolean(CompactDomainLists.ENABLED, oldCompact);
         if (oldRows == null) edit.remove(CompactDomainLists.ROWS); else edit.putInt(CompactDomainLists.ROWS, oldRows);
+        if (oldDetails == null) edit.remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS);
+        else edit.putBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS, oldDetails);
         edit.commit();
     }
 
-    // Test: Open the app options with a real tap, scroll through long domain lists, and retain the panel after refresh.
-    // Why: A long nested domain list must not clip or discard controls for the enclosing app.
+    // Test: Details follow the default; an app can override it through refresh/rotation, while a new session resets.
+    // Why: Always showing details must not prevent users hiding one app's panel or let recycled rows leak state.
+    @Test public void detailsDefaultAllowsSessionOverrides() {
+        preferences.edit().putBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS, true)
+                .putBoolean(CompactDomainLists.ENABLED, true).commit();
+        launch(50);
+        onMain(() -> {
+            assertEquals(View.VISIBLE, holder().itemView.findViewById(R.id.appOptions).getVisibility());
+            holder().itemView.findViewById(R.id.appDomainsButton).performClick();
+            adapter.set(new ArrayList<>(apps));
+        });
+        await(() -> holder() != null && holder().itemView.findViewById(R.id.appOptions).getVisibility() == View.GONE);
+        onMain(() -> {
+            Bundle saved = adapter.saveViewState();
+            adapter.dispose();
+            adapter = new AdapterRule(activity, list);
+            list.setAdapter(adapter);
+            adapter.restoreViewState(saved);
+            adapter.set(new ArrayList<>(apps));
+        });
+        await(() -> holder() != null && holder().itemView.findViewById(R.id.appOptions).getVisibility() == View.GONE);
+        onMain(() -> {
+            Bundle saved = adapter.saveViewState();
+            saved.remove("optionsExpanded");
+            saved.remove("optionsCollapsed");
+            adapter.dispose();
+            adapter = new AdapterRule(activity, list);
+            list.setAdapter(adapter);
+            adapter.restoreViewState(saved);
+            adapter.set(new ArrayList<>(apps));
+        });
+        await(() -> holder() != null && holder().itemView.findViewById(R.id.appOptions).getVisibility() == View.VISIBLE);
+        onMain(() -> adapter.setDomainSearch(true, "domain-1.options-test.invalid"));
+        await(() -> adapter.getItemCount() == 1 && adapter.matchingDomainCount() == 1 && holder() != null
+                && holder().itemView.findViewById(R.id.appOptions).getVisibility() == View.GONE
+                && holder().lvAccess.getAdapter().getItemCount() == 1);
+        onMain(() -> assertTrue(holder().itemView.findViewById(R.id.appDomainsButton).isSelected()));
+    }
+
+    // Test: Dragging either outside gutter moves the app screen, without changing the inner domain offset.
+    // Why: Several expanded apps must not trap every vertical gesture inside their compact domain lists.
+    @Test public void bothSideGuttersScrollTheOuterAppList() {
+        preferences.edit().putBoolean(CompactDomainLists.ENABLED, true).putInt(CompactDomainLists.ROWS, 5).commit();
+        launch(250);
+        for (boolean left : new boolean[]{true, false}) {
+            onMain(() -> ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(0, 0));
+            device.waitForIdle();
+            int[] top = new int[1];
+            Rect[] bounds = new Rect[1];
+            onMain(() -> {
+                top[0] = holder().itemView.getTop();
+                Rect app = new Rect(), domains = new Rect();
+                holder().itemView.getGlobalVisibleRect(app);
+                holder().lvAccess.getGlobalVisibleRect(domains);
+                assertTrue("Left gutter", domains.left - app.left >= CompactUi.dp(context, 16));
+                assertTrue("Right gutter", app.right - domains.right >= CompactUi.dp(context, 16));
+                bounds[0] = domains;
+            });
+            int x = left ? bounds[0].left - CompactUi.dp(context, 8) : bounds[0].right + CompactUi.dp(context, 8);
+            device.swipe(x, bounds[0].bottom - 20, x, bounds[0].top + 20, 35);
+            await(() -> holder() == null || holder().itemView.getTop() < top[0]);
+            onMain(() -> ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(0, 0));
+            device.waitForIdle();
+            onMain(() -> assertEquals("Outer scrolling must not advance domains", 0,
+                    ((LinearLayoutManager) holder().lvAccess.getLayoutManager()).findFirstVisibleItemPosition()));
+        }
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "domain-side-gutters.png"));
+    }
+
+    // Test: Switch tabs with a real tap, retain the selected tab after refresh, and switch back to all domains.
+    // Why: A long domain list must not push the controls offscreen or lose content when panels switch.
     @Test public void optionsRemainReachableWithLongDomainList() {
         launch(250);
         assertNotNull(device.wait(Until.findObject(By.res(context.getPackageName(), "appOptionsButton")), 5000));
         device.findObject(By.res(context.getPackageName(), "appOptionsButton")).click();
         await(() -> holder().itemView.findViewById(R.id.appOptions).getVisibility() == View.VISIBLE);
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "long-options-top.png"));
-        onMain(() -> ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(1, list.getHeight() * 3 / 4));
-        device.waitForIdle();
-        await(() -> holder() != null);
         onMain(() -> {
             View options = holder().itemView.findViewById(R.id.appOptions);
             Rect bounds = new Rect();
-            assertTrue("Expanded options must occupy visible space before the next app", options.getGlobalVisibleRect(bounds));
+            assertTrue("Selected panel must be immediately visible", options.getGlobalVisibleRect(bounds));
             assertTrue("Options must have measurable height", bounds.height() > 0);
+            assertEquals(View.GONE, holder().llFilter.getVisibility());
+            assertEquals(View.INVISIBLE, holder().itemView.findViewById(R.id.domainControls).getVisibility());
+            assertTrue(holder().itemView.findViewById(R.id.appOptionsButton).isSelected());
+            holder().itemView.findViewById(R.id.appOptionsButton).performClick();
+            assertEquals("Selecting the active tab keeps it open", View.VISIBLE, options.getVisibility());
         });
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "long-options-bottom.png"));
         onMain(() -> adapter.set(new ArrayList<>(apps)));
         await(() -> holder() != null && holder().itemView.findViewById(R.id.appOptions).getVisibility() == View.VISIBLE);
         onMain(() -> ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(0, 0));
         device.waitForIdle();
-        device.findObject(By.res(context.getPackageName(), "appOptionsButton")).click();
+        device.findObject(By.res(context.getPackageName(), "appDomainsButton")).click();
         await(() -> holder().itemView.findViewById(R.id.appOptions).getVisibility() == View.GONE);
+        onMain(() -> {
+            assertEquals(View.VISIBLE, holder().llFilter.getVisibility());
+            assertEquals(250, holder().lvAccess.getAdapter().getItemCount());
+        });
     }
 
     // Test: Capped domain rows scroll independently, expose the app options and shrink for short filtered results.
@@ -109,7 +190,10 @@ public class DomainOptionsDeviceTest {
         Rect bounds = device.findObject(By.res(context.getPackageName(), "lvAccess")).getVisibleBounds();
         device.swipe(bounds.centerX(), bounds.bottom - 12, bounds.centerX(), bounds.top + 12, 35);
         await(() -> ((LinearLayoutManager) holder().lvAccess.getLayoutManager()).findFirstVisibleItemPosition() > 0);
+        await(() -> holder().lvAccess.getScrollState() == RecyclerView.SCROLL_STATE_IDLE);
         onMain(() -> assertEquals("Scrolling domains must not move the app header", originalTop[0], holder().itemView.getTop()));
+        int[] domainOffset = new int[1];
+        onMain(() -> domainOffset[0] = holder().lvAccess.computeVerticalScrollOffset());
         device.findObject(By.res(context.getPackageName(), "appOptionsButton")).click();
         assertNotNull(device.wait(Until.findObject(By.res(context.getPackageName(), "appPauseButton")), 5000));
         onMain(() -> {
@@ -125,6 +209,10 @@ public class DomainOptionsDeviceTest {
             assertTrue(adapter.isLive());
         });
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "compact-options.png"));
+        device.findObject(By.res(context.getPackageName(), "appDomainsButton")).click();
+        device.waitForIdle();
+        onMain(() -> assertEquals("Switching tabs preserves domain position", domainOffset[0],
+                holder().lvAccess.computeVerticalScrollOffset()));
         onMain(() -> holder().domainSearch.setText("domain-249.options-test.invalid"));
         await(() -> holder().lvAccess.getAdapter().getItemCount() == 1);
         device.waitForIdle();
@@ -174,10 +262,9 @@ public class DomainOptionsDeviceTest {
             row.put("allowed", 0); row.put("block", 1); row.put("pending_allow", 0);
             DatabaseHelper.getInstance(context).getWritableDatabase().insertOrThrow("access", null, row);
         }
-        apps = new ArrayList<>(Rule.getRules(true, context).subList(0, 3));
-        apps.get(0).uid = UID;
-        apps.get(1).uid = UID + 1;
-        apps.get(2).uid = UID + 2;
+        List<Rule> available = Rule.getRules(true, context);
+        apps = new ArrayList<>(available.subList(0, Math.min(30, available.size())));
+        for (int i = 0; i < apps.size(); i++) apps.get(i).uid = UID + i;
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
                 new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         onMain(() -> {

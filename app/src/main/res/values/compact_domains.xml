@@ -2,6 +2,9 @@
     <string name="compact_domains_title">Compact domain lists</string>
     <string name="compact_domains_enabled">Limit domain list height</string>
     <string name="compact_domains_summary">Choose the maximum height and try it with an example app.</string>
+    <string name="app_info_controls">Info &amp; controls</string>
+    <string name="list_always_show_app_details">Open Info &amp; controls by default</string>
+    <string name="list_always_show_app_details_summary">Start expanded apps on Info &amp; controls instead of Domains. You can switch tabs for each app. Domain searches open Domains.</string>
     <string name="compact_domains_height">Maximum height: about %1$d rows</string>
     <string name="compact_domains_preview">Preview</string>
     <string name="compact_domains_example">Example app</string>

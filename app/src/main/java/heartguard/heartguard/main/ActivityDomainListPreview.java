@@ -46,9 +46,10 @@ public class ActivityDomainListPreview extends AppCompatActivity {
         ((TextView) app.findViewById(R.id.tvUid)).setText("12345");
         ((TextView) app.findViewById(R.id.tvPackage)).setText("com.example.preview");
         ((TextView) app.findViewById(R.id.tvVersion)).setText("1.0");
-        View options = app.findViewById(R.id.appOptions);
-        app.findViewById(R.id.appOptionsButton).setOnClickListener(view ->
-                options.setVisibility(options.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE));
+        // This screen previews domain height, so start on Domains regardless of the app-list default.
+        AppPanelTabs.select(app, false);
+        app.findViewById(R.id.appOptionsButton).setOnClickListener(view -> AppPanelTabs.select(app, true));
+        app.findViewById(R.id.appDomainsButton).setOnClickListener(view -> AppPanelTabs.select(app, false));
         View.OnClickListener sampleOnly = view -> Toast.makeText(this, R.string.compact_domains_preview_note, Toast.LENGTH_SHORT).show();
         for (int id : new int[]{R.id.appPauseButton, R.id.ibSettings, R.id.ibLaunch, R.id.btnLogging,
                 R.id.ivLive, R.id.btnClearAccess, R.id.cbNotify, R.id.domainSortButton})

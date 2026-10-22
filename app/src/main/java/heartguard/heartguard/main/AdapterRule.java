@@ -352,12 +352,15 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     private Map<String, Set<String>> domainMatches = new HashMap<>();
     private final Set<String> domainAutoExpanded = new HashSet<>();
     private final Set<String> optionsExpanded = new HashSet<>();
+    private final Set<String> optionsCollapsed = new HashSet<>();
 
     void setDomainSearch(boolean enabled, String query) {
         String normalized = new DomainSearchQuery(query).text;
         if (enabled == searchingDomains && normalized.equals(globalDomainQuery)) return;
         searchingDomains = enabled;
         globalDomainQuery = normalized;
+        // New domain searches start on the matching domains, even when Info & controls is the default.
+        if (enabled && !normalized.isEmpty()) optionsExpanded.clear();
         domainAutoExpanded.clear();
         domainMatches.clear();
         refreshTraffic();
@@ -493,13 +496,26 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
 
     private void refreshDomains() {
         for (ViewHolder holder : new ArrayList<>(boundHolders))
-            if (holder.boundRule != null && holder.boundRule.expanded) loadDomains(holder, holder.boundRule);
+            if (holder.boundRule != null && holder.boundRule.expanded) {
+                // A matching app can keep the same row through a search diff, without being rebound.
+                AppPanelTabs.select(holder.itemView, showAppInfo(holder.boundRule.packageName));
+                loadDomains(holder, holder.boundRule);
+            }
+    }
+
+    private boolean showAppInfo(String packageName) {
+        return optionsExpanded.contains(packageName)
+                || (!optionsCollapsed.contains(packageName)
+                && !(searchingDomains && !globalDomainQuery.isEmpty())
+                && PreferenceManager.getDefaultSharedPreferences(inflater.getContext())
+                .getBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS, false));
     }
 
     Bundle saveViewState() {
         Bundle state = options.save();
         state.putString("domainSort", domainSort);
         state.putStringArrayList("optionsExpanded", new ArrayList<>(optionsExpanded));
+        state.putStringArrayList("optionsCollapsed", new ArrayList<>(optionsCollapsed));
         state.putStringArrayList("expanded", new ArrayList<>(expanded));
         Bundle hidden = new Bundle(), queries = new Bundle();
         for (String name : hideAllowedDomains.keySet()) hidden.putBoolean(name, hideAllowedDomains.get(name));
@@ -515,6 +531,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         options.restore(state);
         ArrayList<String> openOptions = state.getStringArrayList("optionsExpanded");
         if (openOptions != null) optionsExpanded.addAll(openOptions);
+        ArrayList<String> closedOptions = state.getStringArrayList("optionsCollapsed");
+        if (closedOptions != null) optionsCollapsed.addAll(closedOptions);
         domainSort = ListSort.valid(state.getString("domainSort"), ListSort.DOMAINS);
         ArrayList<String> packages = state.getStringArrayList("expanded");
         if (packages != null) expanded.addAll(packages);
@@ -633,6 +651,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
 
         // Show if non default rules
         holder.itemView.setBackgroundColor(rule.changed ? colorChanged : Color.TRANSPARENT);
+        ((DomainListView) holder.lvAccess).setSurfaceColor(rule.changed ? colorChanged
+                : CompactUi.color(context, android.R.attr.colorBackground));
 
         // Show expand/collapse indicator
         holder.ivExpander.setImageLevel(rule.expanded ? 1 : 0);
@@ -993,14 +1013,18 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             int currentPosition = holder.getAdapterPosition();
             if (currentPosition != RecyclerView.NO_POSITION) notifyItemChanged(currentPosition);
         });
-        View details = holder.itemView.findViewById(R.id.appOptions);
         ((DomainListView) holder.lvAccess).setMaximumRows(CompactDomainLists.maximumRows(prefs));
-        details.setVisibility(optionsExpanded.contains(rule.packageName) ? View.VISIBLE : View.GONE);
+        AppPanelTabs.select(holder.itemView, showAppInfo(rule.packageName));
         View optionsButton = holder.itemView.findViewById(R.id.appOptionsButton);
-        TooltipCompat.setTooltipText(optionsButton, context.getString(R.string.options_label));
         optionsButton.setOnClickListener(button -> {
-            if (!optionsExpanded.remove(rule.packageName)) optionsExpanded.add(rule.packageName);
-            details.setVisibility(optionsExpanded.contains(rule.packageName) ? View.VISIBLE : View.GONE);
+            optionsCollapsed.remove(rule.packageName);
+            optionsExpanded.add(rule.packageName);
+            AppPanelTabs.select(holder.itemView, true);
+        });
+        holder.itemView.findViewById(R.id.appDomainsButton).setOnClickListener(button -> {
+            optionsExpanded.remove(rule.packageName);
+            optionsCollapsed.add(rule.packageName);
+            AppPanelTabs.select(holder.itemView, false);
         });
 
         if (holder.domainWatcher != null) holder.domainSearch.removeTextChangedListener(holder.domainWatcher);

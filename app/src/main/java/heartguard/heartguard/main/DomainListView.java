@@ -1,11 +1,13 @@
 package heartguard.heartguard.main;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.core.graphics.ColorUtils;
 
 /** Optional height limit; gestures inside an overflowing list belong to its domains. */
 public class DomainListView extends RecyclerView {
@@ -20,6 +22,15 @@ public class DomainListView extends RecyclerView {
         setScrollbarFadingEnabled(false);
         setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
         setVerticalScrollbarPosition(View.SCROLLBAR_POSITION_RIGHT);
+        setSurfaceColor(CompactUi.color(context, android.R.attr.colorBackground));
+    }
+
+    /** Keep the domain surface distinct while retaining the enclosing app's theme/tint. */
+    void setSurfaceColor(int parentColor) {
+        parentColor = ColorUtils.compositeColors(parentColor,
+                CompactUi.color(getContext(), android.R.attr.colorBackground));
+        int tint = ColorUtils.calculateLuminance(parentColor) < 0.5 ? Color.WHITE : Color.BLACK;
+        setBackgroundColor(ColorUtils.blendARGB(parentColor, tint, 0.06f));
     }
 
     void setMaximumRows(int rows) {
