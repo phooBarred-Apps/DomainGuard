@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.82",
+    "name": "DomainGuard 2.82",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-23",
+    "body": "DomainGuard 2.82\n\n- Fixed the disabled parent-domain dropdown for release-assets.githubusercontent.com and similar shared-hosting addresses. The dropdown now offers githubusercontent.com without requiring you to edit the address first.\n- Parent choices still exclude registry endings such as com and co.uk. Selecting a parent continues to include its subdomains and follows the usual rule delay.\n\nInstall DomainGuard.apk to update in place. The Android package and signing key are unchanged. All earlier HeartGuard-MW and DomainGuard update history is retained. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.81",
     "name": "DomainGuard 2.81",
     "draft": false,

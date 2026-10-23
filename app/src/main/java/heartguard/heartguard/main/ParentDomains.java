@@ -10,16 +10,20 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** Parent choices stop at the registrable domain, including private public suffixes. */
+/** Parent choices stop before registry suffixes, while allowing shared-hosting provider domains. */
 final class ParentDomains {
     private final Set<String> exact = new HashSet<>(), wildcard = new HashSet<>(), exceptions = new HashSet<>();
 
     ParentDomains(Reader source) throws IOException {
         BufferedReader reader = new BufferedReader(source);
         String line;
+        boolean privateSection = false;
         while ((line = reader.readLine()) != null) {
             line = line.trim();
-            if (line.isEmpty() || line.startsWith("//")) continue;
+            if (line.equals("// ===BEGIN PRIVATE DOMAINS===")) privateSection = true;
+            if (line.equals("// ===END PRIVATE DOMAINS===")) privateSection = false;
+            // Shared-hosting boundaries matter for cookies, but their parent domains are valid rules.
+            if (privateSection || line.isEmpty() || line.startsWith("//")) continue;
             Set<String> target = line.startsWith("!") ? exceptions : line.startsWith("*.") ? wildcard : exact;
             if (target == exceptions) line = line.substring(1);
             if (target == wildcard) line = line.substring(2);

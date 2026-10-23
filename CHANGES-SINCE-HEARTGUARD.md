@@ -1,13 +1,13 @@
 # Changes since HeartGuard
 
-Current in DomainGuard 2.8. This combines the HeartGuard-MW and DomainGuard work, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
+Current in DomainGuard 2.82. This combines the HeartGuard-MW and DomainGuard work, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
 
 ## 1. Allowing and blocking internet access
 
 ### Creating rules
 
 - **Simpler Allow and Block dialogs** — Tap a domain, choose Allow or Block, and use the globe to apply the rule to all apps instead of just the selected app.
-- **Parent-domain picker** — The dropdown attached to the domain field lists every usable parent, so a long address can become a broader rule without manually deleting subdomains.
+- **Parent-domain picker** — The dropdown attached to the domain field lists usable parents, including shared-hosting domains such as githubusercontent.com, while excluding registry endings such as com and co.uk.
 - **Pasting web addresses** — Domain dialogs and global lists extract the host from an HTTP/HTTPS URL and check its format before saving. IP-address input also has stronger checks where supported; the raw editor still uses rule syntax.
 
 ### Rules for every app

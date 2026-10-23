@@ -2,7 +2,11 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-DomainGuard continues the HeartGuard-MW fork. Latest changes: October 22, 2026.
+DomainGuard continues the HeartGuard-MW fork. Latest changes: October 23, 2026.
+
+Version `2.82` fixes:
+
+- **Parent-domain choices for shared hosting:** the dropdown now offers githubusercontent.com for release-assets.githubusercontent.com, and equivalent parent choices on other shared-hosting domains. Registry endings such as com and co.uk remain excluded.
 
 Version `2.81` adds:
 
