@@ -9,4 +9,4 @@
 - GitHub's native auto-merge and enforced private-repository reviews are unavailable on the current free organization plan. Perform the authorized merge through GitHub; do not present this workflow as a server-enforced protection or submit a self-approval.
 - Report the pull request link and verification result after merging.
 - APK publication requires release authorization. Publish from the merged source revision, preserve the existing Android application ID and signing key, and include the corresponding source archive. Merging a workflow or documentation change does not require a new APK.
-- See the contribution workflow in `README-DomainGuard.md`. Release publishers must never push source changes directly to `main`.
+- Use `scripts/publish-release.py` for APK publication and follow `docs/releases.md`. Maintain this reusable publisher instead of creating a script for each version. It must never push source changes directly to `main`.

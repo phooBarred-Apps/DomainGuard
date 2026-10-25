@@ -20,3 +20,4 @@ crowdin.properties
 *.keystore
 *.p12
 /app/build/
+__pycache__/
