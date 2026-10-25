@@ -230,6 +230,10 @@ commits directly to `main`.
 
 ## Distribution
 
+Use the single publisher, `scripts/publish-release.py`, for new APK releases.
+See [Publishing releases](docs/releases.md) for preparation, verification and
+publication. It builds from merged source and uploads only with `--publish`.
+
 The development repository is private. Public releases are in
 [`phooBarred/DomainGuard-downloads`](https://github.com/phooBarred/DomainGuard-downloads). Each release includes the APK, its checksum,
 and the corresponding GPLv3 source archive (including build scripts).
