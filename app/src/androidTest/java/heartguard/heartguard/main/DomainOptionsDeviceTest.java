@@ -215,6 +215,10 @@ public class DomainOptionsDeviceTest {
                 && holder().lvAccess.getAdapter().getItemCount() == 2);
         ContentValues allowed = new ContentValues(); allowed.put("allowed", 1); allowed.put("block", 0);
         DatabaseHelper.getInstance(context).getWritableDatabase().update("access", allowed, "uid = ?", new String[]{Integer.toString(UID)});
+        Object beforeTrafficChange = field("domainRows");
+        // Raw fixture writes bypass DatabaseHelper's access-change notification.
+        onMain(() -> adapter.refreshTraffic());
+        await(() -> field("domainRows") != beforeTrafficChange);
         onMain(() -> {
             if (!holder().cbHideAllowedDomains.isSelected()) holder().cbHideAllowedDomains.performClick();
             else adapter.refreshTraffic();
@@ -225,6 +229,46 @@ public class DomainOptionsDeviceTest {
         await(() -> adapter.matchingDomainCount() == 2 && holder().lvAccess.getAdapter().getItemCount() == 2);
         onMain(() -> adapter.setDomainSearch(true, "missing-main-query"));
         await(() -> adapter.getItemCount() == 0);
+    }
+
+    // Test: Local filters reuse main-search results; main-query edits reuse stats until traffic changes.
+    // Why: A per-app keystroke must not trigger whole-database scans, but new traffic must still appear.
+    @Test public void searchesReuseSnapshotsUntilTrafficChanges() {
+        launch(3);
+        onMain(() -> adapter.setDomainSearch(true, "options-test.invalid"));
+        await(() -> adapter.matchingDomainCount() == 3 && holder() != null);
+        Object stats = field("stats");
+        onMain(() -> adapter.setDomainSearch(true, "domain-1"));
+        await(() -> adapter.matchingDomainCount() == 1);
+        assertSame("Changing the main query reuses app statistics", stats, field("stats"));
+        Object domains = field("domainRows");
+        onMain(() -> holder().domainSearch.setText("absent"));
+        await(() -> holder().lvAccess.getAdapter().getItemCount() == 0 && adapter.matchingDomainCount() == 0);
+        assertSame("Local search reuses all-app matches", domains, field("domainRows"));
+        assertSame(stats, field("stats"));
+        onMain(() -> {
+            holder().domainSearch.setText("");
+            holder().cbHideAllowedDomains.performClick();
+        });
+        await(() -> holder() != null && holder().lvAccess.getAdapter().getItemCount() == 1);
+        assertSame("Hide allowed also stays local", domains, field("domainRows"));
+        ContentValues row = new ContentValues();
+        row.put("uid", UID); row.put("version", 4); row.put("protocol", 6); row.put("dport", 443);
+        row.put("daddr", "domain-1-new.options-test.invalid"); row.put("time", System.currentTimeMillis());
+        row.put("allowed", 0); row.put("block", 1); row.put("pending_allow", 0);
+        DatabaseHelper.getInstance(context).getWritableDatabase().insertOrThrow("access", null, row);
+        onMain(() -> adapter.refreshTraffic());
+        await(() -> adapter.matchingDomainCount() == 2 && holder().lvAccess.getAdapter().getItemCount() == 2);
+        assertNotSame("Traffic change reloads stats", stats, field("stats"));
+        assertNotSame("Traffic change reloads main-search matches", domains, field("domainRows"));
+    }
+
+    private Object field(String name) {
+        try {
+            java.lang.reflect.Field field = AdapterRule.class.getDeclaredField(name);
+            field.setAccessible(true);
+            return field.get(adapter);
+        } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
     }
 
     // Test: Dragging either outside gutter moves the app screen, without changing the inner domain offset.
