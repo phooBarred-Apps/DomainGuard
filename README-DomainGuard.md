@@ -204,6 +204,30 @@ Run `./scripts/test-release.ps1` to install and launch the actual minified relea
 on the disposable emulator. This checks for startup crashes that debug tests
 cannot detect.
 
+## Contributing
+
+Changes to `main` go through pull requests in
+[`phooBarred-Apps/DomainGuard`](https://github.com/phooBarred-Apps/DomainGuard).
+Use a descriptive working branch and one pull request per related feature or fix.
+The local `mw` remote points to this repository; `origin` is the upstream
+HeartGuard project and is not the destination for DomainGuard changes.
+
+When a push is authorized, push the working branch, open a pull request against
+`main`, review the final diff, and run the checks appropriate to the change.
+Wait for applicable automated checks, then squash-merge the pull request using
+its verified current head. Report the pull request link and the checks performed.
+Stop for failures, conflicts, unexpected changes, or an explicit review/testing
+hold. A push authorization includes the merge after these checks pass.
+
+This is the project's working convention. GitHub's free plan does not enforce
+required reviews or provide native auto-merge for this private repository.
+Merging through the authorized account preserves the pull request record without
+claiming an independent reviewer approved the change.
+
+Release publication is a separate action. Publish only when a release is
+authorized and its source has been merged. Release scripts must not push source
+commits directly to `main`.
+
 ## Distribution
 
 The development repository is private. Public releases are in
