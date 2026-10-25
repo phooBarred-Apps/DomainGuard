@@ -112,7 +112,27 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     private Map<Integer, DatabaseHelper.AccessStats> stats = new HashMap<>();
     private String domainSort;
     private Runnable viewChanged;
-    private int trafficGeneration;
+    private final java.util.concurrent.ScheduledThreadPoolExecutor queryWorker =
+            new java.util.concurrent.ScheduledThreadPoolExecutor(1);
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final LatestTask<TrafficData> trafficTask = new LatestTask<>(queryWorker, mainHandler::post);
+    private boolean disposed;
+    private long statsRevision;
+    // Accessed only by queryWorker; query edits can reuse stats until traffic changes.
+    private long cachedStatsRevision = -1;
+    private long cachedAccessRevision = -1;
+    private Map<Integer, DatabaseHelper.AccessStats> cachedStats;
+    private Map<Integer, Map<String, Boolean>> domainRows = new HashMap<>();
+    private int matchingCount;
+
+    private static final class TrafficData {
+        final Map<Integer, DatabaseHelper.AccessStats> stats;
+        final Map<Integer, Map<String, Boolean>> domains;
+        TrafficData(Map<Integer, DatabaseHelper.AccessStats> stats, Map<Integer, Map<String, Boolean>> domains) {
+            this.stats = stats;
+            this.domains = domains;
+        }
+    }
 
 
     private List<String> messaging = Arrays.asList(
@@ -196,7 +216,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         private TextWatcher domainWatcher;
         private String boundPackage;
         private Rule boundRule;
-        private int accessGeneration;
+        private LatestTask<List<AccessEntry>> domainTask;
 
         public ImageButton btnClearAccess;
         public CheckBox cbNotify;
@@ -332,6 +352,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         int height = TypedValue.complexToDimensionPixelSize(typedValue.data, context.getResources().getDisplayMetrics());
         this.iconSize = Math.round(height * context.getResources().getDisplayMetrics().density + 0.5f);
 
+        queryWorker.setRemoveOnCancelPolicy(true);
         setHasStableIds(true);
     }
 
@@ -343,8 +364,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     }
 
     void dispose() {
-        trafficGeneration++;
-        for (ViewHolder holder : boundHolders) holder.accessGeneration++;
+        disposed = true;
+        trafficTask.cancel();
+        for (ViewHolder holder : boundHolders)
+            if (holder.domainTask != null) holder.domainTask.cancel();
+        queryWorker.shutdown();
         boundHolders.clear();
         viewChanged = null;
     }
@@ -365,7 +389,9 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         if (enabled && !normalized.isEmpty()) optionsExpanded.clear();
         domainAutoExpanded.clear();
         domainMatches.clear();
-        refreshTraffic();
+        matchingCount = 0;
+        domainRows = new HashMap<>();
+        requestTraffic();
     }
 
     private java.util.SortedSet<String> matchingDomains() {
@@ -377,7 +403,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         return result;
     }
 
-    int matchingDomainCount() { return matchingDomains().size(); }
+    int matchingDomainCount() { return matchingCount; }
 
     void copyMatchingDomains() {
         copyDisplayedDomains(new ArrayList<>(listFiltered));
@@ -474,52 +500,76 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                         break;
                     }
         }
+        updateMatchingCount();
+    }
+
+    private void updateMatchingCount() {
+        matchingCount = matchingDomains().size();
         if (viewChanged != null) viewChanged.run();
     }
 
+    // Membership follows the main search. Display choices only narrow this app's domain count.
+    private void updateDomainMatches(Rule app) {
+        Map<String, Boolean> rows = domainRows.get(app.uid);
+        if (!searchingDomains || rows == null) {
+            domainMatches.remove(app.packageName);
+            return;
+        }
+        boolean hide = hideAllowedDomains.containsKey(app.packageName) ? hideAllowedDomains.get(app.packageName)
+                : PreferenceManager.getDefaultSharedPreferences(inflater.getContext())
+                .getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
+        String local = domainQueries.get(app.packageName);
+        String query = local == null ? "" : local.trim().toLowerCase(java.util.Locale.ROOT);
+        Set<String> matches = new HashSet<>();
+        for (Map.Entry<String, Boolean> row : rows.entrySet())
+            if ((!hide || row.getValue()) && row.getKey().toLowerCase(java.util.Locale.ROOT).contains(query))
+                matches.add(row.getKey());
+        domainMatches.put(app.packageName, matches);
+    }
+
     void refreshTraffic() {
-        Context context = inflater.getContext();
-        final int generation = ++trafficGeneration;
+        statsRevision++;
+        requestTraffic();
+    }
+
+    private void requestTraffic() {
+        if (disposed) return;
+        Context context = inflater.getContext().getApplicationContext();
+        final long revision = statsRevision;
         final boolean domainMode = searchingDomains;
         final DomainSearchQuery query = new DomainSearchQuery(globalDomainQuery);
-        final Map<String, Set<String>> matches = new HashMap<>();
-        final Map<String, Boolean> hidden = new HashMap<>();
-        final Map<String, String> queries = new HashMap<>(domainQueries);
-        final Map<Integer, List<Rule>> appsByUid = new HashMap<>();
-        boolean defaultHide = PreferenceManager.getDefaultSharedPreferences(context).getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
-        for (Rule rule : listAll) {
-            hidden.put(rule.packageName, hideAllowedDomains.containsKey(rule.packageName) ? hideAllowedDomains.get(rule.packageName) : defaultHide);
-            if (!appsByUid.containsKey(rule.uid)) appsByUid.put(rule.uid, new ArrayList<>());
-            appsByUid.get(rule.uid).add(rule);
-        }
-        new AsyncTask<Void, Void, Map<Integer, DatabaseHelper.AccessStats>>() {
-            protected Map<Integer, DatabaseHelper.AccessStats> doInBackground(Void... ignored) {
-                DatabaseHelper database = DatabaseHelper.getInstance(context);
-                if (domainMode) try (Cursor cursor = database.searchAccessDomains(query)) {
-                    while (cursor.moveToNext()) {
-                        int uid = cursor.getInt(0);
-                        List<Rule> apps = appsByUid.get(uid);
-                        if (apps == null) continue;
-                        for (Rule app : apps) {
-                            // Main-search membership is independent of this app's display filters.
-                            if (!matches.containsKey(app.packageName)) matches.put(app.packageName, new HashSet<>());
-                            if (Boolean.TRUE.equals(hidden.get(app.packageName)) && (cursor.getInt(3) > 0 || cursor.getInt(5) == 0)) continue;
-                            String host = cursor.getString(1);
-                            String local = queries.get(app.packageName);
-                            if (local != null && !host.toLowerCase(java.util.Locale.ROOT).contains(local.trim().toLowerCase(java.util.Locale.ROOT))) continue;
-                            matches.get(app.packageName).add(host);
-                        }
-                    }
+        final Set<Integer> listedUids = new HashSet<>();
+        for (Rule app : listAll) listedUids.add(app.uid);
+        trafficTask.submit(() -> {
+            DatabaseHelper database = DatabaseHelper.getInstance(context);
+            Map<Integer, Map<String, Boolean>> rows = new HashMap<>();
+            if (domainMode) try (Cursor cursor = database.searchAccessDomains(query)) {
+                while (cursor.moveToNext()) {
+                    int uid = cursor.getInt(0);
+                    if (!listedUids.contains(uid)) continue;
+                    String host = cursor.getString(1);
+                    Map<String, Boolean> names = rows.get(uid);
+                    if (names == null) { names = new HashMap<>(); rows.put(uid, names); }
+                    // Multiple ports may have different outcomes; keep a host if any row is visible.
+                    boolean visible = cursor.getInt(3) <= 0 && cursor.getInt(5) != 0;
+                    names.put(host, visible || Boolean.TRUE.equals(names.get(host)));
                 }
-                return database.getAccessStats();
             }
-            protected void onPostExecute(Map<Integer, DatabaseHelper.AccessStats> result) {
-                if (generation != trafficGeneration) return;
-                stats = result;
-                domainMatches = matches;
-                applyOptions(true);
+            // Also notice writes while live updates are paused or their notification is still batched.
+            long accessRevision = database.getAccessRevision();
+            if (cachedStatsRevision != revision || cachedAccessRevision != accessRevision) {
+                cachedStats = database.getAccessStats();
+                cachedStatsRevision = revision;
+                cachedAccessRevision = accessRevision;
             }
-        }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+            return new TrafficData(cachedStats, rows);
+        }, result -> {
+            stats = result.stats;
+            domainRows = result.domains;
+            domainMatches.clear();
+            for (Rule app : listAll) updateDomainMatches(app);
+            applyOptions(true);
+        });
         refreshDomains();
     }
 
@@ -592,40 +642,34 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     }
 
     private void loadDomains(ViewHolder holder, Rule rule) {
+        if (disposed) return;
         Context context = holder.itemView.getContext();
-        int generation = ++holder.accessGeneration;
+        if (holder.domainTask == null) holder.domainTask = new LatestTask<>(queryWorker, mainHandler::post);
         boolean hide = hideAllowedDomains.containsKey(rule.packageName) ? hideAllowedDomains.get(rule.packageName)
                 : PreferenceManager.getDefaultSharedPreferences(context).getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
         String query = domainQueries.containsKey(rule.packageName) ? domainQueries.get(rule.packageName) : "";
         String mainQuery = searchingDomains ? globalDomainQuery : "";
         String sort = domainSort;
-        new AsyncTask<Void, Void, List<AccessEntry>>() {
-            protected List<AccessEntry> doInBackground(Void... ignored) {
-                List<AccessEntry> entries = new ArrayList<>();
-                DatabaseHelper database = DatabaseHelper.getInstance(context);
-                List<String> activeRules = new ArrayList<>();
-                try (Cursor cursor = database.getEnactedRules()) {
-                    while (cursor.moveToNext()) activeRules.add(cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
-                }
-                GlobalRuleIndicators indicators = new GlobalRuleIndicators(activeRules);
-                try (Cursor cursor = database.getAccess(rule.uid, hide, query, sort, mainQuery)) {
-                    while (cursor.moveToNext()) entries.add(new AccessEntry(cursor, indicators));
-                }
-                return entries;
+        holder.domainTask.submit(() -> {
+            List<AccessEntry> entries = new ArrayList<>();
+            DatabaseHelper database = DatabaseHelper.getInstance(context);
+            GlobalRuleIndicators indicators = database.getGlobalRuleIndicators();
+            try (Cursor cursor = database.getAccess(rule.uid, hide, query, sort, mainQuery)) {
+                while (cursor.moveToNext()) entries.add(new AccessEntry(cursor, indicators));
             }
-            protected void onPostExecute(List<AccessEntry> entries) {
-                if (generation != holder.accessGeneration || !rule.packageName.equals(holder.boundPackage)) return;
-                AdapterAccess access = (AdapterAccess) holder.lvAccess.getAdapter();
-                if (access == null) return;
-                access.submit(entries);
-                String emptyQuery = query.trim().isEmpty() ? mainQuery : query.trim();
-                if (entries.isEmpty() && !emptyQuery.isEmpty())
-                    holder.domainStatus.setText(context.getString(!query.trim().isEmpty() && !mainQuery.isEmpty()
-                            ? R.string.list_no_domains_query_main : R.string.list_no_domains_query, emptyQuery));
-                else holder.domainStatus.setText(entries.isEmpty() ? R.string.list_no_domains : R.string.list_domain_limit);
-                holder.domainStatus.setVisibility(entries.isEmpty() || entries.size() == 250 ? View.VISIBLE : View.GONE);
-            }
-        }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+            return entries;
+        }, entries -> {
+            if (!rule.packageName.equals(holder.boundPackage)) return;
+            AdapterAccess access = (AdapterAccess) holder.lvAccess.getAdapter();
+            if (access == null) return;
+            access.submit(entries);
+            String emptyQuery = query.trim().isEmpty() ? mainQuery : query.trim();
+            if (entries.isEmpty() && !emptyQuery.isEmpty())
+                holder.domainStatus.setText(context.getString(!query.trim().isEmpty() && !mainQuery.isEmpty()
+                        ? R.string.list_no_domains_query_main : R.string.list_no_domains_query, emptyQuery));
+            else holder.domainStatus.setText(entries.isEmpty() ? R.string.list_no_domains : R.string.list_domain_limit);
+            holder.domainStatus.setVisibility(entries.isEmpty() || entries.size() == 250 ? View.VISIBLE : View.GONE);
+        });
     }
 
     public void setWifiActive() {
@@ -1036,7 +1080,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         TooltipCompat.setTooltipText(holder.cbHideAllowedDomains, holder.cbHideAllowedDomains.getContentDescription());
         holder.cbHideAllowedDomains.setOnClickListener(button -> {
             hideAllowedDomains.put(rule.packageName, !hideAllowed);
-            refreshTraffic();
+            updateDomainMatches(rule);
+            updateMatchingCount();
             int currentPosition = holder.getAdapterPosition();
             if (currentPosition != RecyclerView.NO_POSITION) notifyItemChanged(currentPosition);
         });
@@ -1082,7 +1127,9 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
             public void onTextChanged(CharSequence text, int start, int before, int count) {
                 domainQueries.put(rule.packageName, text.toString());
-                if (searchingDomains) refreshTraffic(); else loadDomains(holder, rule);
+                updateDomainMatches(rule);
+                updateMatchingCount();
+                loadDomains(holder, rule);
             }
             public void afterTextChanged(Editable text) { }
         };
@@ -1098,12 +1145,12 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                     refreshDomains();
                 }));
         if (!rule.packageName.equals(holder.boundPackage)) {
-            holder.accessGeneration++;
+            if (holder.domainTask != null) holder.domainTask.cancel();
             holder.boundPackage = rule.packageName;
             holder.lvAccess.setAdapter(new AdapterAccess(context, entry -> showAccessMenu(context, holder.boundRule, entry)));
         }
         if (rule.expanded) loadDomains(holder, rule);
-        else holder.accessGeneration++;
+        else if (holder.domainTask != null) holder.domainTask.cancel();
 
         // Clear access log
         holder.btnClearAccess.setOnClickListener(new View.OnClickListener() {
@@ -1251,7 +1298,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
     public void onViewRecycled(ViewHolder holder) {
         super.onViewRecycled(holder);
         boundHolders.remove(holder);
-        holder.accessGeneration++;
+        if (holder.domainTask != null) holder.domainTask.cancel();
         holder.boundRule = null;
         holder.boundPackage = null;
         holder.lvAccess.setAdapter(null);

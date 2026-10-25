@@ -73,6 +73,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private SharedPreferences prefs;
     private ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
+    private GlobalRuleIndicators globalRuleIndicators;
+    private final Object indicatorLock = new Object();
+    private final java.util.concurrent.atomic.AtomicLong accessRevision = new java.util.concurrent.atomic.AtomicLong();
+
+    long getAccessRevision() { return accessRevision.get(); }
+
+    // Shared presentation data; this cache is never used to make firewall decisions.
+    GlobalRuleIndicators getGlobalRuleIndicators() {
+        synchronized (indicatorLock) {
+            if (globalRuleIndicators == null) {
+                List<String> active = new ArrayList<>();
+                try (Cursor cursor = getEnactedRules()) {
+                    int text = cursor.getColumnIndexOrThrow("ruletext");
+                    while (cursor.moveToNext()) active.add(cursor.getString(text));
+                }
+                globalRuleIndicators = new GlobalRuleIndicators(active);
+            }
+            return globalRuleIndicators;
+        }
+    }
 
     static {
         hthread = new HandlerThread("DatabaseHelper");
@@ -1363,6 +1383,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     private void notifyAccessChanged() {
+        accessRevision.incrementAndGet();
         Message msg = handler.obtainMessage();
         msg.what = MSG_ACCESS;
         handler.sendMessage(msg);
@@ -1383,6 +1404,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     // HeartGuard change - notify of rule changes
     private void notifyRuleChanged() {
+        // Invalidate immediately; UI notifications are intentionally batched later.
+        synchronized (indicatorLock) { globalRuleIndicators = null; }
         Message msg = handler.obtainMessage();
         msg.what = MSG_RULE;
         handler.sendMessage(msg);
@@ -1624,6 +1647,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         } finally {
             lock.writeLock().unlock();
         }
+        if (cv.containsKey("ruletext") || cv.containsKey("enacted"))
+            synchronized (indicatorLock) { globalRuleIndicators = null; }
     }
 
     public void removeRulesById(Long[] ids) {
