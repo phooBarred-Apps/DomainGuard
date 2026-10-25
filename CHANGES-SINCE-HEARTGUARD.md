@@ -1,6 +1,6 @@
 # Changes since HeartGuard
 
-Current in DomainGuard 2.82. This combines the HeartGuard-MW and DomainGuard work, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
+Current in DomainGuard 2.83. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
 
 ## 1. Allowing and blocking internet access
 
@@ -97,9 +97,9 @@ Android controls backup timing and restoration; this does not create Google Driv
 
 ### Installing and updating
 
-- **DomainGuard branding** — Current app names use DomainGuard while genuine HeartGuard/NetGuard attribution and historical HeartGuard-MW release names remain intact.
+- **DomainGuard branding** — The app and repositories use DomainGuard, with genuine HeartGuard/NetGuard attribution retained.
 - **Updates inside the app** — The update screen checks this fork's public releases, and Install update downloads the APK, verifies it and opens Android's installation confirmation.
-- **Complete fork history** — Update history includes HeartGuard-MW and DomainGuard releases from the fork onward, newest first, with full versions and dates.
+- **Update history** — Browse releases newest first, with full versions and dates.
 - **Upgrade continuity** — The fork keeps its Android package identity and signing key so new releases update previous fork installations without discarding their settings.
 
 ### Availability and maintenance

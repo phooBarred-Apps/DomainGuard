@@ -10,7 +10,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class UpdateRelease {
-    static final String REPOSITORY = "phooBarred/heartguard-mw-downloads";
+    static final String REPOSITORY = "phooBarred/DomainGuard-downloads";
     static final long MAX_APK_BYTES = 64 * 1024 * 1024;
     private static final Pattern VERSION = Pattern.compile("(\\d+)\\.(\\d+)-mw\\.(\\d+)");
     private static final Pattern DOMAIN_GUARD_VERSION = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?");
@@ -82,7 +82,7 @@ final class UpdateRelease {
         Matcher a = (legacyFirst ? VERSION : DOMAIN_GUARD_VERSION).matcher(first);
         Matcher b = (legacySecond ? VERSION : DOMAIN_GUARD_VERSION).matcher(second);
         if (!a.matches() || !b.matches()) throw new IllegalArgumentException("Unsupported version.");
-        // DomainGuard 2.4 follows every HeartGuard-MW release despite the old upstream 2.317 base.
+        // DomainGuard 2.4 follows every legacy release despite the old upstream 2.317 base.
         if (legacyFirst != legacySecond) return legacyFirst ? -1 : 1;
         for (int group = 1; group <= 3; group++) {
             int compared = new java.math.BigInteger(a.group(group) == null ? "0" : a.group(group))

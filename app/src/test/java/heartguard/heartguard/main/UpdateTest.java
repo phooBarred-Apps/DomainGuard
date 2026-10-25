@@ -24,6 +24,16 @@ public class UpdateTest {
         return UpdateRelease.parse(listing.toString(), "2.317-mw.1");
     }
     @Test public void findsNewerMwRelease() throws Exception { assertEquals("2.317-mw.2", parse(listing()).version); }
+    // Test: The configured API and strict asset validation accept the canonical release repository.
+    // Why: A working API check is insufficient if the installer rejects the returned download URL.
+    @Test public void acceptsCanonicalDomainGuardRelease() throws Exception {
+        assertEquals("https://api.github.com/repos/phooBarred/DomainGuard-downloads/releases/latest",
+                BuildConfig.GITHUB_LATEST_API);
+        JSONObject release = listing().put("tag_name", "v2.83").put("name", "DomainGuard 2.83");
+        release.getJSONArray("assets").getJSONObject(0).put("name", "DomainGuard.apk")
+                .put("browser_download_url", "https://github.com/phooBarred/DomainGuard-downloads/releases/download/v2.83/DomainGuard.apk");
+        assertEquals("2.83", UpdateRelease.parse(release.toString(), "2.82").version);
+    }
     @Test public void comparesNumericVersionComponents() {
         assertTrue(UpdateRelease.compare("2.317-mw.10", "2.317-mw.2") > 0);
         assertTrue(UpdateRelease.compare("2.318-mw.1", "2.317-mw.99") > 0);

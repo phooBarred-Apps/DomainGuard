@@ -2,7 +2,9 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-DomainGuard continues the HeartGuard-MW fork. Latest changes: October 23, 2026.
+Latest changes: October 24, 2026.
+
+Version `2.83` updates in-app update handling and cleans up release documentation.
 
 Version `2.82` fixes:
 
@@ -65,7 +67,7 @@ Saved activation times survive restarts and backup/restore; timers do not restar
 
 Version `2.4` (DomainGuard) adds:
 
-- **DomainGuard branding** with the same Android package and signing certificate, so existing settings remain in place. Earlier HeartGuard-MW versions and their original release notes remain in Update history.
+- **DomainGuard branding** replaces the previous app name for new releases.
 - **Compact toolbar and expanded apps:** Search, Filter and Sort stay in the top toolbar; app count and Reset appear only when filtering. Expanded apps put domain tools together, with app details under Options. Buttons are frameless.
 - **Consistent action colors:** Add, Agree, Save, Apply and Resume use green; Delete, Remove, Cancel pending and Pause use red; plain Cancel and Done use gray. Shades adapt to light and dark themes.
 - **Main-screen domain search:** hold Search to choose apps or domains. Domain mode uses the normal app layout, expands matching apps, and copies every distinct matching domain. Switching modes retains separate queries. Restoring a query does not summon the keyboard.
@@ -111,7 +113,7 @@ Version `2.317-mw.6` added:
   Sort solely because the toolbar's action-count limit was reached.
 - **Install update** starts the download, verifies the APK, and automatically
   opens Android's installation confirmation. No separate download action is
-  needed inside HeartGuard-MW.
+  needed inside the app.
 
 Version `2.317-mw.5` added:
 
@@ -205,7 +207,7 @@ cannot detect.
 ## Distribution
 
 The development repository is private. Public releases are in
-`phooBarred/heartguard-mw-downloads`. Each release includes the APK, its checksum,
+[`phooBarred/DomainGuard-downloads`](https://github.com/phooBarred/DomainGuard-downloads). Each release includes the APK, its checksum,
 and the corresponding GPLv3 source archive (including build scripts).
 The private repository does not restrict recipients' GPL rights to that released
 source. Original notices and [LICENSE](LICENSE) are retained.

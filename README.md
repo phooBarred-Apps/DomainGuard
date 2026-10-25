@@ -1,6 +1,8 @@
 # DomainGuard
 
-This fork continues HeartGuard-MW. See [DomainGuard changes and build instructions](README-DomainGuard.md). The original upstream documentation follows.
+A firewall with domain rules, delayed changes, and temporary pauses. See [features and build instructions](README-DomainGuard.md) or [download the latest APK](https://github.com/phooBarred/DomainGuard-downloads/releases/latest/download/DomainGuard.apk).
+
+DomainGuard is a modified GPLv3 build of HeartGuard, which derives from NetGuard. The original upstream documentation follows.
 
 # HeartGuard
 
