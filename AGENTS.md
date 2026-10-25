@@ -10,3 +10,4 @@
 - Report the pull request link and verification result after merging.
 - APK publication requires release authorization. Publish from the merged source revision, preserve the existing Android application ID and signing key, and include the corresponding source archive. Merging a workflow or documentation change does not require a new APK.
 - Use `scripts/publish-release.py` for APK publication and follow `docs/releases.md`. Maintain this reusable publisher instead of creating a script for each version. It must never push source changes directly to `main`.
+- Use `scripts/preview_pdf.py` and `scripts/publish-preview.py` for numbered PDF reviews; see `docs/previews.md`. Reuse these tools rather than copying a renderer, uploader, or GitHub client per review.

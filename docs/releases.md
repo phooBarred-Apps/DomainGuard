@@ -129,9 +129,9 @@ APK. They do not substitute for the publisher's real release-time checks.
 The twelve former local APK publishers were archived under
 `.gradle/verification/archive/apk-publishers-20261025/` with original paths and
 SHA-256 hashes in `manifest.json`. Their files have an `.archived` suffix and
-are retained only as historical references. Preview-upload tools and
+are retained only as historical references. [Preview tools](previews.md) and
 `scripts/test-release.ps1` (the emulator release smoke test) serve separate
-purposes and remain in place.
+purposes and have their own maintained entry points.
 
 Completed local migration/edit scripts, version-specific verifiers and old build
 wrappers are separately archived under
