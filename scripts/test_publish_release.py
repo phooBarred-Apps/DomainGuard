@@ -128,10 +128,9 @@ class ReleaseTests(unittest.TestCase):
         """Test: Default invocation builds matching APK/source/checksums without writes.
         Why: Reviewing release preparation must not publish or change GitHub.
         """
-        self.assertIsNone(self.run_release())
+        directory = self.run_release()
         self.assertEqual([], self.github.writes)
         self.build.assert_called_once()
-        directory = next((self.root / ".gradle/verification").glob("release-2.84-*"))
         with zipfile.ZipFile(directory / "DomainGuard-source.zip") as archive:
             self.assertEqual((self.root / "app/build.gradle").read_bytes(), archive.read("DomainGuard/app/build.gradle"))
         verification = json.loads((directory / "verification.json").read_text())
@@ -256,6 +255,79 @@ class ReleaseTests(unittest.TestCase):
             self.run_release(publish=True)
         self.assertFalse(self.github.public)
         self.assertFalse(any(method == "PATCH" for method, _ in self.github.writes))
+
+    def test_prepared_bundle_publishes_without_build_outputs_or_another_build(self):
+        """Test: Publish the prepared APK after app/build was replaced, with one build total.
+        Why: Publishing must use exactly the files that passed preparation.
+        """
+        directory = self.run_release()
+        digest = publisher.sha256(directory / "DomainGuard.apk")
+        self.apk.write_bytes(b"unrelated later build")
+        self.report.write_text('<testsuite tests="1" failures="1"/>')
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = publisher.publish_bundle(self.root, self.github, directory, self.root)
+        self.build.assert_called_once()
+        self.assertEqual(digest, result["assets"][0]["sha256"])
+
+    def test_changed_bundle_files_cannot_be_published(self):
+        """Test: Changing any asset or prepared notes prevents all uploads.
+        Why: The publication must remain tied to the reviewed verification bundle.
+        """
+        directory = self.run_release()
+        for name in (*publisher.ASSET_NAMES, "release-notes.md"):
+            with self.subTest(name=name):
+                path = directory / name
+                original = path.read_bytes()
+                path.write_bytes(original + b"changed")
+                with self.assertRaisesRegex(RuntimeError, "Bundle file changed"):
+                    publisher.publish_bundle(self.root, self.github, directory, self.root)
+                self.assertEqual([], self.github.writes)
+                path.write_bytes(original)
+
+    def test_bundle_requires_same_source_and_local_configuration(self):
+        """Test: An altered source revision or ignored build settings require preparation again.
+        Why: Old verification cannot silently authorize different build inputs.
+        """
+        directory = self.run_release()
+        manifest = directory / "verification.json"
+        original = manifest.read_text()
+        verification = json.loads(original)
+        verification["sourceCommit"] = "old-commit"
+        publisher.save_json(manifest, verification)
+        with self.assertRaisesRegex(RuntimeError, "Bundle source changed"):
+            publisher.publish_bundle(self.root, self.github, directory, self.root)
+        manifest.write_text(original)
+        with patch.object(publisher, "local_build_inputs", return_value="different"):
+            with self.assertRaisesRegex(RuntimeError, "Local build configuration changed"):
+                publisher.publish_bundle(self.root, self.github, directory, self.root)
+        self.assertEqual([], self.github.writes)
+
+    def test_bundle_rechecks_signing_and_main_before_publication(self):
+        """Test: Publication reinspects the signature and current GitHub main.
+        Why: Reusing files must not skip signing or merged-source checks.
+        """
+        directory = self.run_release()
+        self.certificate = "0" * 64
+        with self.assertRaisesRegex(RuntimeError, "certificate changed"):
+            publisher.publish_bundle(self.root, self.github, directory, self.root)
+        self.certificate = publisher.CERTIFICATE
+        self.github.main = "newer-commit"
+        with self.assertRaisesRegex(RuntimeError, "merged main revision"):
+            publisher.publish_bundle(self.root, self.github, directory, self.root)
+        self.assertEqual([], self.github.writes)
+
+    def test_legacy_verification_cannot_be_reused_as_a_bundle(self):
+        """Test: A historical verification report without bundle provenance is rejected.
+        Why: Old reports do not bind all publication files to the validated build.
+        """
+        directory = self.run_release()
+        manifest = directory / "verification.json"
+        verification = json.loads(manifest.read_text())
+        del verification["schemaVersion"]
+        publisher.save_json(manifest, verification)
+        with self.assertRaisesRegex(RuntimeError, "Prepare a new bundle"):
+            publisher.publish_bundle(self.root, self.github, directory, self.root)
+        self.assertEqual([], self.github.writes)
 
 
 if __name__ == "__main__":

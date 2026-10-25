@@ -53,7 +53,7 @@ python -B scripts/publish-release.py --version 2.84 --notes .gradle/verification
 ```
 
 Without `--publish`, the script reads GitHub state, builds and prepares the
-files locally. It does not create a release or upload anything. Each invocation
+files locally. It does not create a release or upload anything. Each preparation
 cleans the app's build output and runs unit tests, release lint, the debug build,
 device-test compilation and the signed release build. Do not run another build
 or edit the checkout concurrently.
@@ -64,13 +64,25 @@ come from the actual reports. The publisher compiles device tests but does not
 run an emulator or a physical device; release notes state that limitation.
 Perform any separately requested device checks before authorizing publication.
 
-When publication is authorized, use the same command with `--publish`:
+When publication is authorized, pass the output directory printed by preparation:
 
 ```powershell
-python -B scripts/publish-release.py --version 2.84 --notes .gradle/verification/release-notes.md --publish
+python -B scripts/publish-release.py --publish --bundle .gradle/verification/release-2.84-EXAMPLE
 ```
 
-This runs the build and verification again, creates a draft release, and uploads:
+This does **not** run Gradle or read a later APK from `app/build`. It checks the
+bundle's file hashes and original successful verification, inspects the saved
+APK's signature/package/version/history, and confirms the source is still merged
+`main`. The source revision includes tracked build configuration; a separate
+fingerprint detects changes to local Gradle settings, build environment and JDK
+metadata without storing their contents. Changed inputs require fresh preparation.
+
+Preparation records the final notes as part of the bundle. Review
+`release-notes.md` there before publication. If notes or artifacts need changing,
+prepare again; do not edit the verified bundle. Signing passwords are not stored
+in the manifest. Keep the signing environment configured between steps.
+
+After these checks it creates a draft release and uploads the saved files:
 
 - `DomainGuard.apk`
 - `DomainGuard-source.zip`, made from the exact source commit using `git archive`
@@ -98,6 +110,11 @@ absence of a success message means nothing happened. Existing drafts/releases
 stop subsequent runs; investigate and resolve the specific failure rather than
 blindly rerunning or overwriting assets.
 
+For an already authorized one-step release, `--version ... --notes ... --publish`
+still prepares once and publishes that same bundle. Use `--bundle` after a
+separate preparation to avoid a second build. Historical verification reports
+without the bundle schema and hashes cannot be reused.
+
 ## Maintaining the publisher
 
 ```powershell
@@ -115,3 +132,12 @@ SHA-256 hashes in `manifest.json`. Their files have an `.archived` suffix and
 are retained only as historical references. Preview-upload tools and
 `scripts/test-release.ps1` (the emulator release smoke test) serve separate
 purposes and remain in place.
+
+Completed local migration/edit scripts, version-specific verifiers and old build
+wrappers are separately archived under
+`.gradle/verification/archive/maintenance-20261025/`, with original paths and
+hashes in its manifest. The maintained build entry point is
+`Build-DomainGuard.ps1`; device checks remain in `scripts/test-*.ps1` and
+`scripts/test-pause-network.py`. Local environment setup, when present, lives in
+the ignored `.gradle/verification/local-build-env.ps1`. It contains private
+machine/signing settings and must never be committed or published.
