@@ -1,5 +1,6 @@
 <resources>
     <item name="whitelist_input" type="id" />
+    <item name="whitelist_add" type="id" />
     <string name="global_add_hint">Domains or URLs, one per line</string>
     <string name="global_add_action">Add</string>
     <item name="backup_information" type="id" />

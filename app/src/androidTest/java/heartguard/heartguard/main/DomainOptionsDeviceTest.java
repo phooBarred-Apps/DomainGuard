@@ -396,7 +396,7 @@ public class DomainOptionsDeviceTest {
         apps = new ArrayList<>(available.subList(0, Math.min(30, available.size())));
         for (int i = 0; i < apps.size(); i++) apps.get(i).uid = UID + i;
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
-                new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         onMain(() -> {
             ((ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE))
                     .setPrimaryClip(ClipData.newPlainText("Test", "clipboard-before-copy"));

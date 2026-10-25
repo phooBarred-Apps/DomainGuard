@@ -112,7 +112,7 @@ public class ListDisplayDeviceTest {
         db.getWritableDatabase().update("access", update, "uid=? AND daddr=?", new String[]{"" + UID, "first.mw-list-test.invalid"});
         List<AccessEntry> after = read();
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
-                new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         onMain(() -> {
             String[] clicked = {null}; int[] reset = {0}, moves = {0};
             AdapterAccess adapter = new AdapterAccess(activity, entry -> clicked[0] = entry.address);
@@ -141,16 +141,17 @@ public class ListDisplayDeviceTest {
     @Test public void sortDefaultRequiresItsExplicitButton() {
         onMain(() -> prefs.edit().remove(ListSort.APP_DEFAULT).commit());
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
-                new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         String[] chosen = {ListSort.NAME};
         onMain(() -> SortDialog.show(activity, R.string.list_sort_apps, ListSort.APPS, ListSort.NAME,
                 ListSort.APP_DEFAULT, sort -> chosen[0] = sort));
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.wait(Until.findObject(By.text(context.getString(R.string.sort_criterion_access))), 5000).click();
         device.wait(Until.findObject(By.text(context.getString(R.string.list_sort_blocked))), 5000).click();
         device.waitForIdle();
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         assertEquals(ListSort.BLOCKED, chosen[0]); assertFalse(prefs.contains(ListSort.APP_DEFAULT));
-        device.findObject(By.res("android", "button3")).click();
+        device.findObject(By.text(context.getString(R.string.list_set_default))).click();
         long deadline = SystemClock.elapsedRealtime() + 5000;
         while (!ListSort.BLOCKED.equals(prefs.getString(ListSort.APP_DEFAULT, null)) && SystemClock.elapsedRealtime() < deadline)
             SystemClock.sleep(50);
