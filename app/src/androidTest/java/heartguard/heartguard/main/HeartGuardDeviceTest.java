@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.os.Build;
 import android.os.SystemClock;
-import android.widget.EditText;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import androidx.test.uiautomator.By;
@@ -117,7 +116,13 @@ public class HeartGuardDeviceTest {
         assertFalse(rule.rule.matchesAddr("2001:db8::2"));
     }
 
-    @Test public void blockParserRequiresAppAndPreservesDelayPolicy() {
+    // Test: Removing an app block and adding a global allow honor the configured delay.
+    // Why: Delay policy now reads active rules rather than trusting the legacy method argument.
+    @Test public void blockParserRequiresAppAndPreservesDelayPolicy() throws Exception {
+        assertEquals("Fixture must start without a delay", 0, rules.getGlobalProtectionDelay());
+        ownedRules.add("delay 60");
+        rules.queueRuleText(context, "delay 60");
+        waitFor(() -> rules.getGlobalProtectionDelay() == 60);
         assertNull(MyRule.getRuleFromText(context, "block host:" + HOST));
         assertNull(MyRule.getRuleFromText(context, "block package:" + context.getPackageName() + " directip"));
         RuleAndPackage block = (RuleAndPackage) MyRule.getRuleFromText(context,
@@ -129,14 +134,13 @@ public class HeartGuardDeviceTest {
         assertEquals(60, allow.getDelayToAdd(context, 60));
     }
 
-    @Test public void whitelistScreenAcceptsPastedUrlsAndSurvivesReopen() throws Exception {
+    // Test: The current Global lists dialog accepts a URL and retains its rule after reopening.
+    // Why: Removing the unused activity must leave the actual menu path and saved whitelist intact.
+    @Test public void whitelistDialogAcceptsPastedUrlsAndSurvivesReopen() throws Exception {
         String rule = "allow host:" + HOST;
         ownedRules.add(rule);
-        launch(ActivityGlobalWhitelist.class);
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
-            ((EditText) activity.findViewById(R.id.whitelist_input)).setText("https://" + HOST + "/path?q=1");
-            activity.findViewById(R.id.whitelist_add).performClick();
-        });
+        openWhitelist();
+        enterWhitelist("https://" + HOST + "/path?q=1");
         waitFor(() -> active(rule));
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         androidx.test.uiautomator.BySelector entry = By.text(java.util.regex.Pattern.compile("(?s).*" + java.util.regex.Pattern.quote(HOST) + ".*"));
@@ -147,25 +151,45 @@ public class HeartGuardDeviceTest {
         }
         assertTrue(shown);
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> activity.finish());
-        launch(ActivityGlobalWhitelist.class);
+        openWhitelist();
         assertTrue(device.wait(Until.hasObject(entry), 5000));
     }
 
+    // Test: A mixed valid/invalid batch stays in the add dialog and queues no partial rule.
+    // Why: The active dialog must validate the whole batch before changing the whitelist.
     @Test public void invalidBatchDoesNotPartiallyAddRules() throws Exception {
-        launch(ActivityGlobalWhitelist.class);
+        openWhitelist();
         String rule = "allow host:" + HOST;
         ownedRules.add(rule);
-        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
-            ((EditText) activity.findViewById(R.id.whitelist_input)).setText(HOST + "\nhttps://user:pass@example.com/");
-            activity.findViewById(R.id.whitelist_add).performClick();
-            assertNotNull(((EditText) activity.findViewById(R.id.whitelist_input)).getError());
-        });
+        enterWhitelist(HOST + "\nhttps://user:pass@example.com/");
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        assertTrue("Invalid batch must keep the add dialog open", device.hasObject(By.res(context.getPackageName(), "whitelist_input")));
+        assertTrue("Validation must explain the invalid address", device.hasObject(By.text(context.getString(R.string.domain_error))));
         assertFalse(active(rule));
     }
 
-    private void launch(Class<?> type) {
+    private void openWhitelist() {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
-                new Intent(context, type).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                new Intent(context, ActivityMain.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.waitForIdle();
+        if (device.hasObject(By.res(context.getPackageName(), "cbDontAsk")))
+            device.findObject(By.res("android", "button2")).click();
+        device.wait(Until.findObject(By.desc("More options")), 5000).click();
+        device.wait(Until.findObject(By.text(context.getString(R.string.global_lists))), 5000).click();
+        device.wait(Until.findObject(By.text(context.getString(R.string.global_whitelist))), 5000).click();
+    }
+
+    private void enterWhitelist(String text) {
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.wait(Until.findObject(By.res(context.getPackageName(), "whitelist_add")), 5000).click();
+        androidx.test.uiautomator.UiObject2 input = device.wait(Until.findObject(By.res(context.getPackageName(), "whitelist_input")), 5000);
+        input.click();
+        input.setText(text);
+        device.waitForIdle();
+        device.pressBack();
+        device.findObject(By.res("android", "button1")).click();
+        device.waitForIdle();
     }
 
     private Packet packet() {

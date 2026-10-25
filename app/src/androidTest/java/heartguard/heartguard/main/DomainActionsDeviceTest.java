@@ -156,7 +156,7 @@ public class DomainActionsDeviceTest {
 
     private void launchMenuFixture() {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
-                new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         onMain(() -> {
             Button anchor = new Button(activity);
             anchor.setAllCaps(false);

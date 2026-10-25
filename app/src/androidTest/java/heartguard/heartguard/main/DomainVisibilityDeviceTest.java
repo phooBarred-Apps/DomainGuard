@@ -110,7 +110,7 @@ public class DomainVisibilityDeviceTest {
         apps.get(1).uid = SECOND_UID;
         for (Rule app : apps) app.expanded = true;
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
-                new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         onMain(() -> {
             list = new RecyclerView(activity);
             list.setLayoutManager(new LinearLayoutManager(activity));
@@ -153,7 +153,7 @@ public class DomainVisibilityDeviceTest {
         apps.get(0).uid = FIRST_UID;
         apps.get(1).uid = SECOND_UID;
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
-                new Intent(context, ActivityGlobalWhitelist.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         onMain(() -> {
             list = new RecyclerView(activity);
             list.setLayoutManager(new LinearLayoutManager(activity));
