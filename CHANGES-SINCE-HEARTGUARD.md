@@ -57,6 +57,13 @@ Current in DomainGuard 2.83. This combines the work since the fork, groups relat
 
 ## 4. App layout and everyday use
 
+### Recent traffic (unreleased)
+
+- **Combined live timeline** — Menu > Recent traffic shows individual recorded attempts across apps, including repeats, newest first. The rolling window starts at three minutes and can be extended to the log's three-day retention window; other sorts are available.
+- **Hide noisy apps** — Each row has the app icon and an eye button. Hiding filters all traffic for that network identity from this view only; Hidden apps restores it. Hidden apps, time window and sort are session choices that survive screen recreation.
+- **Review and act** — Rows show the original allowed/blocked outcome and timestamp. Domain actions reuse the existing Allow/Block dialogs and delays. Newest-first follows arrivals at the top while preserving position when reviewing older entries; Load more reveals additional recorded attempts.
+- **Recording remains explicit** — This view uses the existing detailed traffic log and respects the logging permission rule. If recording is off, enable it in the view; if rules disallow it, the screen explains the prerequisite and links to Rules. Missing history cannot be reconstructed from the latest-per-domain summary. Only VPN-observed traffic appears.
+
 ### Expanded apps
 
 - **Domains and Info & controls tabs** — App information and controls are directly accessible without scrolling through the entire domain list, with an option to open that panel by default.

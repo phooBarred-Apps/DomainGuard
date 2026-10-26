@@ -858,6 +858,10 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             //    menu_lockdown(item);
             //    return true;
 
+            case R.id.menu_recent_traffic:
+                startActivity(new Intent(this, ActivityRecentTraffic.class));
+                return true;
+
             case R.id.menu_log:
                 if (RulesManager.getInstance(this).getPreferenceAllowLogging(this)) {
                     if (Util.canFilter(this))

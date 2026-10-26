@@ -20,6 +20,7 @@
         android:title="@string/rules_list_pref"/>
     <item android:id="@+id/menu_global_lists" android:title="@string/global_lists"/>
     <item android:id="@+id/menu_domain_search" android:title="@string/domain_search_title"/>
+    <item android:id="@+id/menu_recent_traffic" android:title="@string/recent_traffic_title"/>
     <item android:id="@+id/menu_display_settings" android:title="@string/display_settings"/>
     <item android:id="@+id/menu_help_tutorials" android:title="@string/help_tutorials"/>
     <item android:id="@+id/menu_updates" android:title="@string/check_updates"/>
