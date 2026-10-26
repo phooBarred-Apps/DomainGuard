@@ -4,6 +4,8 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 Latest changes: October 24, 2026.
 
+Version `2.84` adds **Menu > Recent traffic**: individual recorded attempts across apps, including repeats, with a rolling three-minute window, sorting, and eye buttons to hide or restore apps. Tap an attempt for the existing Allow/Block actions. The view explains how to enable detailed recording when needed. Domain searching and filtering also avoid repeated database reads.
+
 Version `2.83` updates in-app update handling and cleans up release documentation.
 
 Version `2.82` fixes:
