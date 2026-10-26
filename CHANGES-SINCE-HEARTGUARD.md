@@ -1,6 +1,6 @@
 # Changes since HeartGuard
 
-Current in DomainGuard 2.83. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
+Current in DomainGuard 2.84. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
 
 ## 1. Allowing and blocking internet access
 
@@ -57,7 +57,7 @@ Current in DomainGuard 2.83. This combines the work since the fork, groups relat
 
 ## 4. App layout and everyday use
 
-### Recent traffic (unreleased)
+### Recent traffic
 
 - **Combined live timeline** — Menu > Recent traffic shows individual recorded attempts across apps, including repeats, newest first. The rolling window starts at three minutes and can be extended to the log's three-day retention window; other sorts are available.
 - **Hide noisy apps** — Each row has the app icon and an eye button. Hiding filters all traffic for that network identity from this view only; Hidden apps restores it. Hidden apps, time window and sort are session choices that survive screen recreation.

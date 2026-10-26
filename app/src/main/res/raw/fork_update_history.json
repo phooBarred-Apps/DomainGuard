@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.84",
+    "name": "DomainGuard 2.84",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-25",
+    "body": "DomainGuard 2.84\n\n- Added Menu > Recent traffic: one combined timeline across apps, with a separate row for every recorded attempt, including repeats.\n- Starts with the last three minutes, newest first. Change the time window or sort order to review older recorded traffic.\n- App icons and eye buttons let you hide an app from this view; Hidden apps restores it. Logging and protection stay unchanged.\n- Tap an attempt for Allow, Block or Copy. Existing rule delays and temporary-rule options still apply. Live updates preserve the original tap target and your position when reviewing older attempts.\n- Shows the recording status and explains how to enable detailed recording when needed. New eye icons are included in the Legend.\n- Reduced repeated database reads while searching and filtering domains.\n\nInstall DomainGuard.apk from the assets below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.83",
     "name": "DomainGuard 2.83",
     "draft": false,
