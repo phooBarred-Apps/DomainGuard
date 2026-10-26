@@ -9,11 +9,15 @@ import java.util.Map;
 
 /** Session view choices, initialized from explicitly saved defaults. */
 final class AppListOptions {
-    private static final String DEFAULT_ACCESS = "app_filter_default_access";
-    private static final String DEFAULT_ACTIVITY = "app_filter_default_activity";
-    private static final String DEFAULT_TYPE = "app_filter_default_type";
-    private static final String DEFAULT_NO_INTERNET = "app_filter_default_no_internet";
-    private static final String DEFAULT_DISABLED = "app_filter_default_disabled";
+    final boolean trafficOnly;
+    private final String defaultPrefix;
+
+    AppListOptions() { this(false); }
+
+    AppListOptions(boolean trafficOnly) {
+        this.trafficOnly = trafficOnly;
+        defaultPrefix = trafficOnly ? "recent_filter_default_" : "app_filter_default_";
+    }
     String query = "";
     String sort = ListSort.NAME;
     int access;   // All, allowed by default, blocked by default.
@@ -23,20 +27,20 @@ final class AppListOptions {
     boolean includeDisabled = true;
 
     void loadFilterDefaults(SharedPreferences prefs) {
-        access = validFilter(prefs.getInt(DEFAULT_ACCESS, 0));
-        activity = validFilter(prefs.getInt(DEFAULT_ACTIVITY, 0));
-        type = validFilter(prefs.getInt(DEFAULT_TYPE, 0));
-        includeNoInternet = prefs.getBoolean(DEFAULT_NO_INTERNET, true);
-        includeDisabled = prefs.getBoolean(DEFAULT_DISABLED, true);
+        access = validFilter(prefs.getInt(defaultPrefix + "access", 0));
+        activity = trafficOnly ? 0 : validFilter(prefs.getInt(defaultPrefix + "activity", 0));
+        type = validFilter(prefs.getInt(defaultPrefix + "type", 0));
+        includeNoInternet = trafficOnly || prefs.getBoolean(defaultPrefix + "no_internet", true);
+        includeDisabled = prefs.getBoolean(defaultPrefix + "disabled", true);
     }
 
     void saveFilterDefaults(SharedPreferences prefs) {
         // Search text stays temporary; sort has its own Set as default button.
-        prefs.edit().putInt(DEFAULT_ACCESS, access)
-                .putInt(DEFAULT_ACTIVITY, activity)
-                .putInt(DEFAULT_TYPE, type)
-                .putBoolean(DEFAULT_NO_INTERNET, includeNoInternet)
-                .putBoolean(DEFAULT_DISABLED, includeDisabled).apply();
+        SharedPreferences.Editor edit = prefs.edit().putInt(defaultPrefix + "access", access)
+                .putInt(defaultPrefix + "type", type).putBoolean(defaultPrefix + "disabled", includeDisabled);
+        if (!trafficOnly) edit.putInt(defaultPrefix + "activity", activity)
+                .putBoolean(defaultPrefix + "no_internet", includeNoInternet);
+        edit.apply();
     }
 
     private static int validFilter(int value) {
@@ -51,14 +55,26 @@ final class AppListOptions {
         String term = domains ? "" : query.trim().toLowerCase(Locale.ROOT);
         boolean searchMatch = term.isEmpty() || (app.name != null && app.name.toLowerCase(Locale.ROOT).contains(term))
                 || app.packageName.toLowerCase(Locale.ROOT).contains(term) || Integer.toString(app.uid).equals(term);
-        boolean blocked = app.wifi_blocked && app.other_blocked && app.apply;
         boolean hasAttempts = stats != null && stats.count > 0;
-        return searchMatch
-                && (access == 0 || (access == 2) == blocked)
+        return searchMatch && matchesApp(app)
                 && (activity == 0 || (activity == 1) == hasAttempts)
+                && (includeNoInternet || app.internet);
+    }
+
+    boolean matchesApp(Rule app) {
+        boolean blocked = app.wifi_blocked && app.other_blocked && app.apply;
+        return (access == 0 || (access == 2) == blocked)
                 && (type == 0 || (type == 2) == app.system)
-                && (includeNoInternet || app.internet)
                 && (includeDisabled || app.enabled);
+    }
+
+    boolean hasAppFilters() { return access != 0 || type != 0 || !includeDisabled; }
+
+    // A UID may belong to several apps: include it when any one app matches all choices.
+    java.util.Set<Integer> matchingUids(Iterable<Rule> apps) {
+        java.util.Set<Integer> uids = new java.util.HashSet<>();
+        for (Rule app : apps) if (matchesApp(app)) uids.add(app.uid);
+        return uids;
     }
 
     Comparator<Rule> comparator(Map<Integer, DatabaseHelper.AccessStats> stats) {
@@ -111,10 +127,10 @@ final class AppListOptions {
     void restore(Bundle state) {
         query = state.getString("query", "");
         sort = ListSort.valid(state.getString("sort"), ListSort.APPS);
-        access = state.getInt("access");
-        activity = state.getInt("activity");
-        type = state.getInt("type");
-        includeNoInternet = state.getBoolean("noInternet", true);
+        access = validFilter(state.getInt("access"));
+        activity = trafficOnly ? 0 : validFilter(state.getInt("activity"));
+        type = validFilter(state.getInt("type"));
+        includeNoInternet = trafficOnly || state.getBoolean("noInternet", true);
         includeDisabled = state.getBoolean("disabled", true);
     }
 }

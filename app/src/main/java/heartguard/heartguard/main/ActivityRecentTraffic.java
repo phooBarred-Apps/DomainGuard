@@ -2,6 +2,10 @@ package heartguard.heartguard.main;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -10,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.MenuItem;
+import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
@@ -20,6 +25,7 @@ import android.widget.TextView;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.TooltipCompat;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -44,13 +50,32 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     // This cache is only read and written by the single database worker.
     private final Map<Integer, RecentTrafficAdapter.App> appCache = new HashMap<>();
     private final Map<Integer, String> hiddenApps = new LinkedHashMap<>();
+    private final AppListOptions filters = new AppListOptions(true);
+    private long catalogRevision, packagesRevision;
+    // Owned by the same worker as appCache; traffic arrivals do not rebuild the app catalog.
+    private long loadedCatalogRevision = -1, loadedPackagesRevision = -1;
+    private List<Rule> appCatalog = Collections.emptyList();
+    private final BroadcastReceiver appRulesChanged = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent.hasExtra(ActivityMain.EXTRA_CONNECTED)) return;
+            catalogRevision++;
+            refresh();
+        }
+    };
+    private final BroadcastReceiver packagesChanged = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            packagesRevision++;
+            catalogRevision++;
+            refresh();
+        }
+    };
     private DatabaseHelper database;
     private RecentTrafficAdapter adapter;
     private RecyclerView list;
     private LinearLayoutManager layout;
     private Button window, more;
     private TextView empty, count, protectionStatus;
-    private ImageButton hidden, hideAllowedButton;
+    private ImageButton hidden, hideAllowedButton, filterButton;
     private int seconds = DEFAULT_WINDOW_SECONDS, limit = PAGE_SIZE;
     private String sort = ListSort.RECENT;
     private boolean resumed, failed, scrollToTop, hideAllowed;
@@ -79,9 +104,12 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         getSupportActionBar().setTitle(R.string.recent_traffic_title);
         worker.setRemoveOnCancelPolicy(true);
         database = DatabaseHelper.getInstance(this);
+        filters.loadFilterDefaults(PreferenceManager.getDefaultSharedPreferences(this));
         hideAllowed = PreferenceManager.getDefaultSharedPreferences(this)
                 .getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
         if (state != null) {
+            Bundle savedFilters = state.getBundle("filters");
+            if (savedFilters != null) filters.restore(savedFilters);
             hideAllowed = state.getBoolean("hide_allowed", hideAllowed);
             seconds = Math.max(1, Math.min(MAX_WINDOW_SECONDS, state.getInt("seconds", DEFAULT_WINDOW_SECONDS)));
             sort = ListSort.valid(state.getString("sort", ListSort.RECENT), ListSort.DOMAINS);
@@ -133,6 +161,17 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        invalidateOptionsMenu();
+        catalogRevision++;
+        packagesRevision++;
+        LocalBroadcastManager.getInstance(this).registerReceiver(appRulesChanged,
+                new IntentFilter(ActivityMain.ACTION_RULES_CHANGED));
+        IntentFilter packages = new IntentFilter();
+        packages.addAction(Intent.ACTION_PACKAGE_ADDED);
+        packages.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        packages.addAction(Intent.ACTION_PACKAGE_CHANGED);
+        packages.addDataScheme("package");
+        registerReceiver(packagesChanged, packages);
         database.addAccessChangedListener(changed);
         database.addRuleChangedListener(rulesChanged);
         failed = false;
@@ -147,6 +186,8 @@ public class ActivityRecentTraffic extends AppCompatActivity {
 
     @Override protected void onPause() {
         resumed = false;
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(appRulesChanged);
+        unregisterReceiver(packagesChanged);
         database.removeAccessChangedListener(changed);
         database.removeRuleChangedListener(rulesChanged);
         reads.cancel();
@@ -162,7 +203,45 @@ public class ActivityRecentTraffic extends AppCompatActivity {
 
     @Override public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == android.R.id.home) { finish(); return true; }
+        if (item.getItemId() == R.id.recent_filter) { showFilters(); return true; }
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.recent_traffic, menu);
+        MenuItem item = menu.findItem(R.id.recent_filter);
+        String placement = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString(Rule.PREFERENCE_STRING_LIST_CONTROLS, "always");
+        item.setShowAsAction("menu".equals(placement) ? MenuItem.SHOW_AS_ACTION_NEVER
+                : "if_room".equals(placement) ? MenuItem.SHOW_AS_ACTION_IF_ROOM : MenuItem.SHOW_AS_ACTION_ALWAYS);
+        CompactImageButton button = new CompactImageButton(this, null);
+        filterButton = button;
+        button.setId(R.id.recent_filter);
+        int size = CompactUi.dp(this, 48), padding = CompactUi.dp(this, 12);
+        button.setLayoutParams(new ViewGroup.LayoutParams(size, size));
+        button.setPadding(padding, padding, padding, padding);
+        button.setImageResource(R.drawable.ic_filter_list_white_24dp);
+        button.setSelected(filters.hasAppFilters());
+        button.setContentDescription(getString(R.string.recent_traffic_filters));
+        TooltipCompat.setTooltipText(button, button.getContentDescription());
+        button.setOnClickListener(view -> showFilters());
+        item.setActionView(button);
+        return true;
+    }
+
+    private void showFilters() {
+        AppFilterDialog.show(this, filters, this::applyFilters, () -> {
+            filters.loadFilterDefaults(PreferenceManager.getDefaultSharedPreferences(this));
+            applyFilters();
+        });
+    }
+
+    private void applyFilters() {
+        limit = PAGE_SIZE;
+        scrollToTop = true;
+        failed = false;
+        updateControls();
+        refresh();
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -170,6 +249,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         state.putInt("limit", limit);
         state.putString("sort", sort);
         state.putBoolean("hide_allowed", hideAllowed);
+        state.putBundle("filters", filters.save());
         int[] uids = new int[hiddenApps.size()];
         int i = 0;
         for (int uid : hiddenApps.keySet()) uids[i++] = uid;
@@ -179,6 +259,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     }
 
     private void updateControls() {
+        if (filterButton != null) filterButton.setSelected(filters.hasAppFilters());
         window.setText(getString(R.string.recent_traffic_window, RuleDelay.duration(this, seconds)));
         hideAllowedButton.setSelected(hideAllowed);
         hideAllowedButton.setAlpha(hideAllowed ? 1f : 0.5f);
@@ -199,27 +280,48 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         String requestedSort = sort;
         int requestedSeconds = seconds, requestedLimit = limit;
         boolean requestedHideAllowed = hideAllowed;
-        reads.submit(() -> read(hiddenSnapshot, requestedHideAllowed, requestedSort, requestedSeconds, requestedLimit), this::display);
+        AppListOptions requestedFilters = new AppListOptions(true);
+        requestedFilters.restore(filters.save());
+        long requestedCatalogRevision = catalogRevision, requestedPackagesRevision = packagesRevision;
+        reads.submit(() -> read(hiddenSnapshot, requestedHideAllowed, requestedSort, requestedSeconds, requestedLimit,
+                requestedFilters, requestedCatalogRevision, requestedPackagesRevision), this::display);
     }
 
-    private Snapshot read(Set<Integer> hiddenUids, boolean requestedHideAllowed, String requestedSort, int requestedSeconds, int requestedLimit) {
+    private Snapshot read(Set<Integer> hiddenUids, boolean requestedHideAllowed, String requestedSort,
+                          int requestedSeconds, int requestedLimit, AppListOptions requestedFilters,
+                          long requestedCatalogRevision, long requestedPackagesRevision) {
         long revision = database.getAccessRevision();
         List<RecentTrafficAdapter.Entry> entries = new ArrayList<>();
         long oldest = Long.MAX_VALUE;
-        GlobalRuleIndicators indicators = database.getGlobalRuleIndicators();
-        try (Cursor cursor = database.getRecentAccess(System.currentTimeMillis() - requestedSeconds * 1000L,
-                hiddenUids, requestedHideAllowed, requestedSort, requestedLimit + 1)) {
-            boolean hasMore = false;
-            while (cursor.moveToNext()) {
-                if (entries.size() == requestedLimit) { hasMore = true; break; }
-                int uid = cursor.getInt(cursor.getColumnIndexOrThrow("uid"));
-                RecentTrafficAdapter.App app = appCache.get(uid);
-                if (app == null) { app = resolveApp(uid); appCache.put(uid, app); }
-                AccessEntry access = new AccessEntry(cursor, indicators);
-                oldest = Math.min(oldest, access.time);
-                entries.add(new RecentTrafficAdapter.Entry(uid, access, app));
+        try {
+            if (loadedPackagesRevision != requestedPackagesRevision) {
+                Rule.clearCache(getApplicationContext());
+                appCache.clear();
+                loadedPackagesRevision = requestedPackagesRevision;
             }
-            return new Snapshot(entries, revision, oldest, hasMore, false);
+            Set<Integer> includedUids = null;
+            if (requestedFilters.hasAppFilters()) {
+                if (loadedCatalogRevision != requestedCatalogRevision) {
+                    appCatalog = Rule.getRules(true, this);
+                    loadedCatalogRevision = requestedCatalogRevision;
+                }
+                includedUids = requestedFilters.matchingUids(appCatalog);
+            }
+            GlobalRuleIndicators indicators = database.getGlobalRuleIndicators();
+            try (Cursor cursor = database.getRecentAccess(System.currentTimeMillis() - requestedSeconds * 1000L,
+                    hiddenUids, includedUids, requestedHideAllowed, requestedSort, requestedLimit + 1)) {
+                boolean hasMore = false;
+                while (cursor.moveToNext()) {
+                    if (entries.size() == requestedLimit) { hasMore = true; break; }
+                    int uid = cursor.getInt(cursor.getColumnIndexOrThrow("uid"));
+                    RecentTrafficAdapter.App app = appCache.get(uid);
+                    if (app == null) { app = resolveApp(uid); appCache.put(uid, app); }
+                    AccessEntry access = new AccessEntry(cursor, indicators);
+                    oldest = Math.min(oldest, access.time);
+                    entries.add(new RecentTrafficAdapter.Entry(uid, access, app));
+                }
+                return new Snapshot(entries, revision, oldest, hasMore, false);
+            }
         } catch (RuntimeException failure) {
             Log.e("DomainGuard.Recent", "Unable to read recent traffic", failure);
             return new Snapshot(Collections.emptyList(), revision, oldest, false, true);
@@ -249,6 +351,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         updateProtectionStatus();
         failed = result.failed;
         empty.setText(failed ? R.string.recent_traffic_error
+                : filters.hasAppFilters() ? R.string.recent_traffic_empty_filtered
                 : hideAllowed ? R.string.recent_traffic_empty_blocked
                 : hiddenApps.isEmpty() ? R.string.recent_traffic_empty : R.string.recent_traffic_empty_hidden);
         if (failed) {

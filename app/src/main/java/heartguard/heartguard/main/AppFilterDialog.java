@@ -17,6 +17,12 @@ final class AppFilterDialog {
         Spinner type = content.findViewById(R.id.filter_type);
         SwitchCompat noInternet = content.findViewById(R.id.filter_no_internet);
         SwitchCompat disabled = content.findViewById(R.id.filter_disabled);
+        if (options.trafficOnly) {
+            ((View) activity.getParent()).setVisibility(View.GONE);
+            noInternet.setVisibility(View.GONE);
+            content.findViewById(R.id.filter_recent_explanation).setVisibility(View.VISIBLE);
+            content.findViewById(R.id.filter_reset).setContentDescription(context.getString(R.string.list_reset_filters));
+        }
         CompactUi.actionButton(content.findViewById(R.id.filter_default));
         access.setSelection(options.access);
         activity.setSelection(options.activity);
@@ -25,13 +31,14 @@ final class AppFilterDialog {
         disabled.setChecked(options.includeDisabled);
         Runnable applySelection = () -> {
             options.access = access.getSelectedItemPosition();
-            options.activity = activity.getSelectedItemPosition();
+            options.activity = options.trafficOnly ? 0 : activity.getSelectedItemPosition();
             options.type = type.getSelectedItemPosition();
-            options.includeNoInternet = noInternet.isChecked();
+            options.includeNoInternet = options.trafficOnly || noInternet.isChecked();
             options.includeDisabled = disabled.isChecked();
             apply.run();
         };
-        AlertDialog dialog = new AlertDialog.Builder(context).setCustomTitle(SortDialog.title(context, R.string.list_filters))
+        AlertDialog dialog = new AlertDialog.Builder(context).setCustomTitle(SortDialog.title(context,
+                        options.trafficOnly ? R.string.recent_traffic_filters : R.string.list_filters))
                 .setView(content)
                 .setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.list_apply, (window, which) -> applySelection.run()).create();
