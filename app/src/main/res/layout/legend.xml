@@ -143,5 +143,13 @@
             <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_delay_clock" android:layout_marginEnd="12dp" />
             <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/global_pause_legend" android:textAppearance="@style/TextSmall" />
         </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:minHeight="44dp">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_visibility_compact" android:layout_marginEnd="12dp" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/recent_traffic_hide_legend" android:textAppearance="@style/TextSmall" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:minHeight="44dp">
+            <ImageView android:layout_width="24dp" android:layout_height="24dp" android:src="@drawable/ic_visibility_off_compact" android:layout_marginEnd="12dp" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/recent_traffic_show_legend" android:textAppearance="@style/TextSmall" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

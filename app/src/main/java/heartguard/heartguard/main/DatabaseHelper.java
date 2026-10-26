@@ -41,6 +41,8 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
@@ -78,6 +80,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private final java.util.concurrent.atomic.AtomicLong accessRevision = new java.util.concurrent.atomic.AtomicLong();
 
     long getAccessRevision() { return accessRevision.get(); }
+    private final AtomicLong logRevision = new AtomicLong();
+    long getLogRevision() { return logRevision.get(); }
 
     // Shared presentation data; this cache is never used to make firewall decisions.
     GlobalRuleIndicators getGlobalRuleIndicators() {
@@ -566,6 +570,37 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             query += ")";
             query += " ORDER BY time DESC";
             return db.rawQuery(query, new String[]{});
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
+    Cursor getRecentTraffic(long since, Set<Integer> hiddenUids, String sort, int limit) {
+        lock.readLock().lock();
+        try {
+            StringBuilder where = new StringBuilder("time >= ? AND daddr IS NOT NULL AND daddr <> ''");
+            List<String> args = new ArrayList<>();
+            args.add(Long.toString(since));
+            if (!hiddenUids.isEmpty()) {
+                where.append(" AND COALESCE(uid, -1) NOT IN (");
+                for (int uid : hiddenUids) {
+                    if (args.size() > 1) where.append(',');
+                    // COALESCE has no column affinity, so convert bound text IDs explicitly.
+                    where.append("CAST(? AS INTEGER)");
+                    args.add(Integer.toString(uid));
+                }
+                where.append(')');
+            }
+            String order = "time DESC, ID DESC";
+            if (ListSort.OLDEST.equals(sort)) order = "time ASC, ID ASC";
+            else if (ListSort.NAME.equals(sort)) order = "COALESCE(NULLIF(dname, ''), daddr) COLLATE NOCASE, " + order;
+            else if (ListSort.NAME_DESC.equals(sort)) order = "COALESCE(NULLIF(dname, ''), daddr) COLLATE NOCASE DESC, " + order;
+            else if (ListSort.BLOCKED.equals(sort)) order = "allowed ASC, " + order;
+            else if (ListSort.ALLOWED.equals(sort)) order = "allowed DESC, " + order;
+            return getReadableDatabase().query("log", new String[]{"ID AS _id", "time", "uid",
+                    "COALESCE(NULLIF(dname, ''), daddr) AS destination", "allowed"},
+                    where.toString(), args.toArray(new String[0]), null, null, order,
+                    Integer.toString(Math.max(1, limit)));
         } finally {
             lock.readLock().unlock();
         }
@@ -1377,6 +1412,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     private void notifyLogChanged() {
+        logRevision.incrementAndGet();
         Message msg = handler.obtainMessage();
         msg.what = MSG_LOG;
         handler.sendMessage(msg);

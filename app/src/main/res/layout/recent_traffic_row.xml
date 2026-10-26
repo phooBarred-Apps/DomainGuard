@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="76dp" android:gravity="center_vertical" android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="6dp" android:paddingBottom="6dp" android:background="?attr/selectableItemBackground">
+    <ImageView android:id="@+id/recent_app_icon" android:layout_width="32dp" android:layout_height="32dp" android:importantForAccessibility="no" />
+    <heartguard.heartguard.main.CompactImageButton android:id="@+id/recent_hide_app" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_visibility_compact" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+        <TextView android:id="@+id/recent_app_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:textAppearance="@style/TextSmall" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+            <ImageView android:id="@+id/recent_outcome" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+            <TextView android:id="@+id/recent_domain" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textAppearance="@style/TextMedium" android:breakStrategy="simple" />
+        </LinearLayout>
+        <TextView android:id="@+id/recent_time" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="end" android:textAppearance="@style/TextSmall" />
+    </LinearLayout>
+</LinearLayout>
