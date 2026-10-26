@@ -572,12 +572,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
-    Cursor getRecentAccess(long since, Set<Integer> hiddenUids, boolean hideAllowed, String sort, int limit) {
+    Cursor getRecentAccess(long since, Set<Integer> hiddenUids, Set<Integer> includedUids,
+                           boolean hideAllowed, String sort, int limit) {
         lock.readLock().lock();
         try {
             StringBuilder where = new StringBuilder("a.time >= ?");
             List<String> args = new ArrayList<>();
             args.add(Long.toString(since));
+            if (includedUids != null) {
+                // Only integer UIDs from the app catalog; avoid SQLite's bound-parameter limit on large catalogs.
+                where.append(" AND a.uid IN (");
+                boolean first = true;
+                for (int uid : includedUids) {
+                    if (!first) where.append(',');
+                    where.append(Integer.toString(uid));
+                    first = false;
+                }
+                where.append(')');
+            }
             if (!hiddenUids.isEmpty()) {
                 where.append(" AND a.uid NOT IN (");
                 for (int uid : hiddenUids) {

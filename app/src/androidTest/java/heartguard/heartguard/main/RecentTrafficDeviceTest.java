@@ -36,6 +36,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -58,6 +60,7 @@ public class RecentTrafficDeviceTest {
     private boolean originalLogging;
     private Boolean originalDark, originalHideAllowed;
     private int uid;
+    private final Map<String, Object> savedFilters = new HashMap<>();
 
     @Before public void setup() throws Exception {
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
@@ -66,6 +69,13 @@ public class RecentTrafficDeviceTest {
         rules = RulesManager.getInstance(context);
         preferences = PreferenceManager.getDefaultSharedPreferences(context);
         originalLogging = preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, false);
+        SharedPreferences.Editor clearFilters = preferences.edit();
+        for (Map.Entry<String, ?> entry : preferences.getAll().entrySet())
+            if (entry.getKey().startsWith("recent_filter_default_")) {
+                savedFilters.put(entry.getKey(), entry.getValue());
+                clearFilters.remove(entry.getKey());
+            }
+        clearFilters.commit();
         originalDark = preferences.contains("dark_theme") ? preferences.getBoolean("dark_theme", false) : null;
         originalHideAllowed = preferences.contains(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS)
                 ? preferences.getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false) : null;
@@ -83,7 +93,152 @@ public class RecentTrafficDeviceTest {
         if (originalDark == null) restore.remove("dark_theme"); else restore.putBoolean("dark_theme", originalDark);
         if (originalHideAllowed == null) restore.remove(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS);
         else restore.putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, originalHideAllowed);
+        for (String key : preferences.getAll().keySet())
+            if (key.startsWith("recent_filter_default_")) restore.remove(key);
+        for (Map.Entry<String, Object> entry : savedFilters.entrySet()) {
+            if (entry.getValue() instanceof Integer) restore.putInt(entry.getKey(), (Integer) entry.getValue());
+            else restore.putBoolean(entry.getKey(), (Boolean) entry.getValue());
+        }
         restore.commit();
+    }
+
+    // Test: App filters apply before paging and combine with Hide allowed and hidden apps.
+    // Why: Busy excluded apps must not consume the first page, including when the app catalog exceeds SQLite's parameter limit.
+    @Test public void appFiltersApplyBeforePagingAndKeepSharedUidSemantics() {
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < 255; i++) insert(99191, "excluded" + i, now - i, false);
+        insert(uid, "included", now - 1000, false);
+        insert(uid, "allowed", now - 500, true);
+        java.util.Set<Integer> included = new HashSet<>();
+        for (int i = 0; i < 1200; i++) included.add(80000 + i);
+        included.add(uid);
+        try (Cursor cursor = db.getRecentAccess(now - 10000, Collections.emptySet(), included, true, ListSort.RECENT, 1)) {
+            assertTrue(cursor.moveToFirst());
+            assertEquals("included." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
+            assertFalse(cursor.moveToNext());
+        }
+        for (java.util.Set<Integer> hidden : Arrays.asList(Collections.<Integer>emptySet(), Collections.singleton(uid)))
+            try (Cursor cursor = db.getRecentAccess(now - 10000, hidden,
+                    hidden.isEmpty() ? Collections.emptySet() : included, false, ListSort.RECENT, 10)) {
+                assertEquals(0, cursor.getCount());
+            }
+        List<Rule> apps = Rule.getRules(true, context);
+        assertTrue(apps.size() >= 2);
+        Rule first = apps.get(0), second = apps.get(1);
+        first.uid = second.uid = 99192;
+        first.system = false; first.enabled = true; first.apply = true;
+        first.wifi_blocked = first.other_blocked = true;
+        second.system = true; second.enabled = true; second.apply = false;
+        AppListOptions filter = new AppListOptions(true);
+        filter.access = 2; filter.type = 1; filter.includeDisabled = false;
+        assertEquals(Collections.singleton(99192), filter.matchingUids(Arrays.asList(first, second)));
+        filter.access = 1;
+        assertTrue("Different apps sharing a UID must not combine half-matching criteria", filter.matchingUids(Arrays.asList(first, second)).isEmpty());
+        filter.type = 2;
+        assertEquals(Collections.singleton(99192), filter.matchingUids(Arrays.asList(first, second)));
+        second.enabled = false;
+        assertTrue(filter.matchingUids(Arrays.asList(first, second)).isEmpty());
+    }
+
+    // Test: Apply is temporary, Cancel does nothing, and Set as default/Reset remain independent of the main screen.
+    // Why: Recent traffic must keep the familiar dialog without inheriting irrelevant or overwriting saved main-list filters.
+    @Test public void filterDialogPreservesSeparateDefaultsAndSessionChoices() throws Exception {
+        Map<String, ?> mainDefaults = new HashMap<>(preferences.getAll());
+        Rule user = null;
+        for (Rule app : Rule.getRules(true, context)) if (!app.system && app.enabled) { user = app; break; }
+        assertNotNull("Installed synthetic test app", user);
+        insert(user.uid, "user", System.currentTimeMillis(), false);
+        insert(0, "system", System.currentTimeMillis(), false);
+        open(); await(() -> count() == 2);
+        find("recent_filter").click();
+        find("filter_type");
+        assertFalse(device.hasObject(By.res(context.getPackageName(), "filter_activity")));
+        assertFalse(device.hasObject(By.res(context.getPackageName(), "filter_no_internet")));
+        chooseFilter("filter_type", R.array.list_type_choices, 1);
+        closeFilter("button2"); await(() -> count() == 2);
+        find("recent_filter").click();
+        chooseFilter("filter_type", R.array.list_type_choices, 1);
+        closeFilter("button1"); await(() -> count() == 1);
+        assertFalse(preferences.contains("recent_filter_default_type"));
+        recreate(); await(() -> count() == 1);
+        onMain(() -> assertTrue(activity.findViewById(R.id.recent_filter).isSelected()));
+        find("recent_filter").click(); find("filter_default").click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        assertEquals(1, preferences.getInt("recent_filter_default_type", 0));
+        setWindow("5", RuleDelay.Unit.MINUTES);
+        find("recent_sort").click();
+        device.wait(Until.findObject(By.text(context.getString(R.string.sort_oldest))), 5000).click();
+        find("recent_hide_allowed").click();
+        device.waitForIdle();
+        find("recent_filter").click();
+        chooseFilter("filter_type", R.array.list_type_choices, 2);
+        closeFilter("button1"); await(() -> count() == 1);
+        find("recent_filter").click(); find("filter_reset").click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        await(() -> {
+            boolean[] userShown = new boolean[1];
+            onMain(() -> {
+                RecentTrafficAdapter rows = (RecentTrafficAdapter) ((RecyclerView) activity.findViewById(R.id.recent_list)).getAdapter();
+                userShown[0] = rows.getItemCount() == 1 && rows.entry(0).destination.startsWith("user.");
+            });
+            return userShown[0];
+        });
+        assertEquals(1, preferences.getInt("recent_filter_default_type", 0));
+        assertTrue(find("recent_window").getText().contains("5 minutes"));
+        assertEquals(context.getString(R.string.sort_oldest), find("recent_sort").getContentDescription());
+        onMain(() -> assertTrue(activity.findViewById(R.id.recent_hide_allowed).isSelected()));
+        for (String key : mainDefaults.keySet()) if (key.startsWith("app_filter_default_"))
+            assertEquals(mainDefaults.get(key), preferences.getAll().get(key));
+        onMain(() -> activity.finish()); open(); await(() -> count() == 1);
+        assertEquals(2, fixtureCount());
+        for (boolean dark : new boolean[]{false, true}) {
+            preferences.edit().putBoolean("dark_theme", dark).commit();
+            recreate(); await(() -> count() == 1);
+            find("recent_filter").click(); find("filter_type");
+            device.waitForIdle();
+            device.takeScreenshot(new File(context.getExternalFilesDir(null), "recent-filters-" + (dark ? "dark" : "light") + ".png"));
+            closeFilter("button2");
+        }
+    }
+
+    private void chooseFilter(String id, int labels, int selection) {
+        find(id).click();
+        UiObject2 choice = device.wait(Until.findObject(By.text(context.getResources().getStringArray(labels)[selection])), 5000);
+        assertNotNull(choice); choice.click();
+    }
+
+    // Test: Changing an app's default access refreshes the active filter without requiring new traffic.
+    // Why: A cached app catalog must not leave records in the wrong Access category after rule changes.
+    @Test public void accessFilterRefreshesAfterAppRulesChange() {
+        Rule blocked = null;
+        for (Rule app : Rule.getRules(true, context))
+            if (app.apply && app.wifi_blocked && app.other_blocked) { blocked = app; break; }
+        assertNotNull("Blocked app available in disposable fixture", blocked);
+        String name = blocked.packageName;
+        SharedPreferences apply = context.getSharedPreferences(Rule.PREFERENCE_STRING_PERAPP_APPLY, Context.MODE_PRIVATE);
+        Boolean saved = apply.contains(name) ? apply.getBoolean(name, true) : null;
+        try {
+            preferences.edit().putInt("recent_filter_default_access", 1).commit();
+            insert(blocked.uid, "changing-app", System.currentTimeMillis(), false);
+            open(); find("recent_filter");
+            await(() -> context.getString(R.string.recent_traffic_empty_filtered).equals(find("recent_empty").getText()));
+            apply.edit().putBoolean(name, false).commit();
+            androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context)
+                    .sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
+            await(() -> count() == 1);
+            apply.edit().putBoolean(name, true).commit();
+            androidx.localbroadcastmanager.content.LocalBroadcastManager.getInstance(context)
+                    .sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
+            await(() -> count() == 0);
+            assertEquals(1, fixtureCount());
+        } finally {
+            if (saved == null) apply.edit().remove(name).commit(); else apply.edit().putBoolean(name, saved).commit();
+        }
+    }
+
+    private void closeFilter(String button) {
+        device.wait(Until.findObject(By.res("android", button)), 5000).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
     }
 
     // Test: The combined view uses the per-app records, including repeated updates, cutoff, sorting and hiding.
@@ -103,10 +258,10 @@ public class RecentTrafficDeviceTest {
         assertEquals(2, ids(now - 180000, Collections.singleton(uid), ListSort.RECENT, 100).size());
         assertEquals(1, ids(now - 180000, new HashSet<>(Arrays.asList(uid, -1)), ListSort.RECENT, 100).size());
         assertEquals(recent.subList(0, 2), ids(now - 180000, Collections.emptySet(), ListSort.RECENT, 2));
-        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.emptySet(), false, ListSort.NAME, 100)) {
+        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.emptySet(), null, false, ListSort.NAME, 100)) {
             assertTrue(cursor.moveToFirst()); assertEquals("alpha." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
         }
-        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.singleton(uid), true, ListSort.RECENT, 1)) {
+        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.singleton(uid), null, true, ListSort.RECENT, 1)) {
             assertTrue(cursor.moveToFirst()); assertEquals("unknown." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
             assertFalse(cursor.moveToNext());
         }
@@ -181,7 +336,7 @@ public class RecentTrafficDeviceTest {
         try (Cursor cursor = db.getAccess(uid, true)) {
             while (cursor.moveToNext()) expected.add(cursor.getLong(cursor.getColumnIndexOrThrow("ID")));
         }
-        try (Cursor cursor = db.getRecentAccess(now - 1000, Collections.emptySet(), true, ListSort.RECENT, 100)) {
+        try (Cursor cursor = db.getRecentAccess(now - 1000, Collections.emptySet(), null, true, ListSort.RECENT, 100)) {
             while (cursor.moveToNext()) combined.add(cursor.getLong(cursor.getColumnIndexOrThrow("ID")));
         }
         assertEquals(3, expected.size());
@@ -480,7 +635,7 @@ public class RecentTrafficDeviceTest {
     }
     private List<Long> ids(long cutoff, java.util.Set<Integer> hidden, String sort, int limit) {
         List<Long> ids = new ArrayList<>();
-        try (Cursor cursor = db.getRecentAccess(cutoff, hidden, false, sort, limit)) {
+        try (Cursor cursor = db.getRecentAccess(cutoff, hidden, null, false, sort, limit)) {
             while (cursor.moveToNext()) ids.add(cursor.getLong(0));
         }
         return ids;

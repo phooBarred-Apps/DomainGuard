@@ -1,6 +1,6 @@
 # Changes since HeartGuard
 
-Current in DomainGuard 2.85. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
+Current in DomainGuard 2.86. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
 
 ## 1. Allowing and blocking internet access
 
@@ -58,6 +58,8 @@ Current in DomainGuard 2.85. This combines the work since the fork, groups relat
 ## 4. App layout and everyday use
 
 ### Recent traffic
+
+- **Focused app filters** — Filter by the app's default access, user/system app type and enabled status. Recent traffic has its own saved defaults; Reset restores them without changing the main list or other traffic controls.
 
 - **Hide allowed domains** — The usual icon applies the same filter as the per-app lists. It starts from the global display default, can be changed for the session, and leaves recording, rules and saved history unchanged.
 - **Combined live timeline** — Menu > Recent traffic combines the existing per-app access records, newest first. Repeated attempts update their existing record. The rolling window starts at three minutes and can be extended up to three days; other sorts are available.
