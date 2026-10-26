@@ -37,15 +37,15 @@ final class RecentTrafficAdapter extends RecyclerView.Adapter<RecentTrafficAdapt
         final long id, time;
         final int uid;
         final String destination;
-        final boolean allowed;
+        final AccessEntry access;
         final App app;
 
-        Entry(long id, long time, int uid, String destination, boolean allowed, App app) {
-            this.id = id;
-            this.time = time;
+        Entry(int uid, AccessEntry access, App app) {
+            this.id = access.id;
+            this.time = access.time;
             this.uid = uid;
-            this.destination = destination;
-            this.allowed = allowed;
+            this.destination = access.address;
+            this.access = access;
             this.app = app;
         }
     }
@@ -75,8 +75,7 @@ final class RecentTrafficAdapter extends RecyclerView.Adapter<RecentTrafficAdapt
             }
             public boolean areContentsTheSame(int oldPosition, int newPosition) {
                 Entry old = previous.get(oldPosition), next = updated.get(newPosition);
-                return old.time == next.time && old.allowed == next.allowed
-                        && old.destination.equals(next.destination) && old.app.name.equals(next.app.name);
+                return old.access.sameContents(next.access) && old.app.name.equals(next.app.name);
             }
         }, false);
         entries = Collections.unmodifiableList(new ArrayList<>(updated));
@@ -96,9 +95,11 @@ final class RecentTrafficAdapter extends RecyclerView.Adapter<RecentTrafficAdapt
         private final ImageView icon, outcome;
         private final ImageButton hide;
         private final TextView name, domain, time;
+        private final AccessRowStyle rowStyle;
 
         Holder(View view) {
             super(view);
+            rowStyle = new AccessRowStyle(view.getContext());
             icon = view.findViewById(R.id.recent_app_icon);
             outcome = view.findViewById(R.id.recent_outcome);
             hide = view.findViewById(R.id.recent_hide_app);
@@ -134,9 +135,7 @@ final class RecentTrafficAdapter extends RecyclerView.Adapter<RecentTrafficAdapt
             domain.setText(entry.destination);
             refreshTime();
             time.setContentDescription(DomainTimestamp.full(entry.time));
-            outcome.setImageResource(entry.allowed ? R.drawable.host_allowed : R.drawable.host_blocked);
-            outcome.setContentDescription(itemView.getContext().getString(entry.allowed
-                    ? R.string.recent_traffic_allowed : R.string.recent_traffic_blocked));
+            rowStyle.bind(entry.access, outcome, domain);
             hide.setContentDescription(itemView.getContext().getString(R.string.recent_traffic_hide, entry.app.name));
             TooltipCompat.setTooltipText(hide, hide.getContentDescription());
         }

@@ -42,7 +42,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
@@ -80,8 +79,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private final java.util.concurrent.atomic.AtomicLong accessRevision = new java.util.concurrent.atomic.AtomicLong();
 
     long getAccessRevision() { return accessRevision.get(); }
-    private final AtomicLong logRevision = new AtomicLong();
-    long getLogRevision() { return logRevision.get(); }
 
     // Shared presentation data; this cache is never used to make firewall decisions.
     GlobalRuleIndicators getGlobalRuleIndicators() {
@@ -575,32 +572,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
-    Cursor getRecentTraffic(long since, Set<Integer> hiddenUids, String sort, int limit) {
+    Cursor getRecentAccess(long since, Set<Integer> hiddenUids, boolean hideAllowed, String sort, int limit) {
         lock.readLock().lock();
         try {
-            StringBuilder where = new StringBuilder("time >= ? AND daddr IS NOT NULL AND daddr <> ''");
+            StringBuilder where = new StringBuilder("a.time >= ?");
             List<String> args = new ArrayList<>();
             args.add(Long.toString(since));
             if (!hiddenUids.isEmpty()) {
-                where.append(" AND COALESCE(uid, -1) NOT IN (");
+                where.append(" AND a.uid NOT IN (");
                 for (int uid : hiddenUids) {
                     if (args.size() > 1) where.append(',');
-                    // COALESCE has no column affinity, so convert bound text IDs explicitly.
-                    where.append("CAST(? AS INTEGER)");
+                    where.append('?');
                     args.add(Integer.toString(uid));
                 }
                 where.append(')');
             }
-            String order = "time DESC, ID DESC";
-            if (ListSort.OLDEST.equals(sort)) order = "time ASC, ID ASC";
-            else if (ListSort.NAME.equals(sort)) order = "COALESCE(NULLIF(dname, ''), daddr) COLLATE NOCASE, " + order;
-            else if (ListSort.NAME_DESC.equals(sort)) order = "COALESCE(NULLIF(dname, ''), daddr) COLLATE NOCASE DESC, " + order;
-            else if (ListSort.BLOCKED.equals(sort)) order = "allowed ASC, " + order;
-            else if (ListSort.ALLOWED.equals(sort)) order = "allowed DESC, " + order;
-            return getReadableDatabase().query("log", new String[]{"ID AS _id", "time", "uid",
-                    "COALESCE(NULLIF(dname, ''), daddr) AS destination", "allowed"},
-                    where.toString(), args.toArray(new String[0]), null, null, order,
-                    Integer.toString(Math.max(1, limit)));
+            if (hideAllowed) where.append(HIDE_ALLOWED_ACCESS);
+            return getReadableDatabase().rawQuery(ACCESS_SELECT + " WHERE " + where
+                    + " ORDER BY " + accessOrder(sort) + " LIMIT " + Math.max(1, limit), args.toArray(new String[0]));
         } finally {
             lock.readLock().unlock();
         }
@@ -852,6 +841,22 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         notifyAccessChanged();
     }
 
+    private static final String ACCESS_SELECT = "SELECT a.ID AS _id, a.*"
+            + ", (SELECT COUNT(DISTINCT d.qname) FROM dns d WHERE d.resource IN"
+            + " (SELECT d1.resource FROM dns d1 WHERE d1.qname = a.daddr)) count FROM access a";
+    // Keep blocked, unknown and pending entries visible in both access-list views.
+    private static final String HIDE_ALLOWED_ACCESS = " AND COALESCE(a.allowed, -1) <= 0 AND COALESCE(a.block, -1) <> 0";
+
+    private static String accessOrder(String sort) {
+        String order = "a.time DESC";
+        if (ListSort.NAME.equals(sort)) order = "a.daddr COLLATE NOCASE";
+        else if (ListSort.NAME_DESC.equals(sort)) order = "a.daddr COLLATE NOCASE DESC";
+        else if (ListSort.OLDEST.equals(sort)) order = "a.time ASC";
+        else if (ListSort.BLOCKED.equals(sort)) order = "(a.block > 0) DESC, a.time DESC";
+        else if (ListSort.ALLOWED.equals(sort)) order = "(a.block = 0) DESC, a.time DESC";
+        return order + ", a.ID DESC";
+    }
+
     public Cursor getAccess(int uid) {
         return getAccess(uid, false);
     }
@@ -870,13 +875,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             SQLiteDatabase db = this.getReadableDatabase();
             // There is a segmented index on uid
             // There is no index on time for write performance
-            String query = "SELECT a.ID AS _id, a.*";
-            query += ", (SELECT COUNT(DISTINCT d.qname) FROM dns d WHERE d.resource IN (SELECT d1.resource FROM dns d1 WHERE d1.qname = a.daddr)) count";
-            query += " FROM access a";
-            query += " WHERE a.uid = ?";
-            // Keep blocked, unknown and pending entries visible. Filter before the row limit.
-            if (hideAllowed)
-                query += " AND COALESCE(a.allowed, -1) <= 0 AND COALESCE(a.block, -1) <> 0";
+            String query = ACCESS_SELECT + " WHERE a.uid = ?";
+            if (hideAllowed) query += HIDE_ALLOWED_ACCESS;
             List<String> args = new ArrayList<>();
             args.add(Integer.toString(uid));
             if (search != null && !search.trim().isEmpty()) {
@@ -887,13 +887,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 query += " AND a.daddr LIKE ? ESCAPE '\\'";
                 args.add(new DomainSearchQuery(mainSearch).sqlContains());
             }
-            String order = "a.time DESC";
-            if (ListSort.NAME.equals(sort)) order = "a.daddr COLLATE NOCASE";
-            else if (ListSort.NAME_DESC.equals(sort)) order = "a.daddr COLLATE NOCASE DESC";
-            else if (ListSort.OLDEST.equals(sort)) order = "a.time ASC";
-            else if (ListSort.BLOCKED.equals(sort)) order = "(a.block > 0) DESC, a.time DESC";
-            else if (ListSort.ALLOWED.equals(sort)) order = "(a.block = 0) DESC, a.time DESC";
-            query += " ORDER BY " + order + ", a.ID DESC LIMIT 250";
+            query += " ORDER BY " + accessOrder(sort) + " LIMIT 250";
             return db.rawQuery(query, args.toArray(new String[0]));
         } finally {
             lock.readLock().unlock();
@@ -1412,7 +1406,6 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     private void notifyLogChanged() {
-        logRevision.incrementAndGet();
         Message msg = handler.obtainMessage();
         msg.what = MSG_LOG;
         handler.sendMessage(msg);

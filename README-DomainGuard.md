@@ -2,7 +2,9 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: October 25, 2026.
+Latest changes: October 26, 2026.
+
+Version `2.85`: **Recent traffic** now combines the same access records shown under individual apps, without requiring detailed recording. Repeated attempts update their existing record. The usual **Hide allowed domains** button uses the global display default and can be toggled for the session. Rule icons and domain colors match the per-app lists.
 
 Version `2.84` adds **Menu > Recent traffic**: individual recorded attempts across apps, including repeats, with a rolling three-minute window, sorting, and eye buttons to hide or restore apps. Tap an attempt for the existing Allow/Block actions. The view explains how to enable detailed recording when needed. Domain searching and filtering also avoid repeated database reads.
 

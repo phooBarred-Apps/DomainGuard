@@ -2,7 +2,6 @@ package heartguard.heartguard.main;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
-import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -34,7 +33,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 
-/** A display-only view of individual events in the existing traffic log. */
+/** A combined view of the same access records shown beneath individual apps. */
 public class ActivityRecentTraffic extends AppCompatActivity {
     static final int DEFAULT_WINDOW_SECONDS = 180;
     private static final int MAX_WINDOW_SECONDS = 3 * 24 * 60 * 60;
@@ -49,22 +48,21 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     private RecentTrafficAdapter adapter;
     private RecyclerView list;
     private LinearLayoutManager layout;
-    private Button window, more, recordingAction;
-    private TextView empty, count, recordingStatus;
-    private ImageButton hidden;
+    private Button window, more;
+    private TextView empty, count, protectionStatus;
+    private ImageButton hidden, hideAllowedButton;
     private int seconds = DEFAULT_WINDOW_SECONDS, limit = PAGE_SIZE;
     private String sort = ListSort.RECENT;
-    private boolean resumed, failed, scrollToTop;
+    private boolean resumed, failed, scrollToTop, hideAllowed;
     private long loadedRevision = -1, oldestVisible = Long.MAX_VALUE;
-    private final DatabaseHelper.LogChangedListener changed = () -> main.post(this::refresh);
+    private final DatabaseHelper.AccessChangedListener changed = () -> main.post(this::refresh);
+    private final DatabaseHelper.RuleChangedListener rulesChanged = () -> main.post(this::refresh);
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!resumed) return;
-            updateRecordingStatus();
+            updateProtectionStatus();
             long cutoff = System.currentTimeMillis() - seconds * 1000L;
-            if (!RulesManager.getInstance(ActivityRecentTraffic.this).getPreferenceAllowLogging(ActivityRecentTraffic.this))
-                showRestricted();
-            else if (!failed && (database.getLogRevision() != loadedRevision || oldestVisible < cutoff)) refresh();
+            if (!failed && (database.getAccessRevision() != loadedRevision || oldestVisible < cutoff)) refresh();
             if ("elapsed".equals(PreferenceManager.getDefaultSharedPreferences(ActivityRecentTraffic.this)
                     .getString("domain_timestamp_format", "exact")))
                 for (int i = 0; i < list.getChildCount(); i++)
@@ -81,7 +79,10 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         getSupportActionBar().setTitle(R.string.recent_traffic_title);
         worker.setRemoveOnCancelPolicy(true);
         database = DatabaseHelper.getInstance(this);
+        hideAllowed = PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
         if (state != null) {
+            hideAllowed = state.getBoolean("hide_allowed", hideAllowed);
             seconds = Math.max(1, Math.min(MAX_WINDOW_SECONDS, state.getInt("seconds", DEFAULT_WINDOW_SECONDS)));
             sort = ListSort.valid(state.getString("sort", ListSort.RECENT), ListSort.DOMAINS);
             limit = Math.max(PAGE_SIZE, state.getInt("limit", PAGE_SIZE));
@@ -106,28 +107,34 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         list.setAdapter(adapter);
         window = findViewById(R.id.recent_window);
         more = findViewById(R.id.recent_more);
-        recordingAction = findViewById(R.id.recent_recording_action);
-        recordingStatus = findViewById(R.id.recent_recording_status);
+        protectionStatus = findViewById(R.id.recent_protection_status);
         empty = findViewById(R.id.recent_empty);
         count = findViewById(R.id.recent_count);
         hidden = findViewById(R.id.recent_hidden);
-        for (Button button : new Button[]{window, more, recordingAction}) CompactUi.frameless(button);
-        CompactUi.actionButton(recordingAction);
+        hideAllowedButton = findViewById(R.id.recent_hide_allowed);
+        for (Button button : new Button[]{window, more}) CompactUi.frameless(button);
         window.setOnClickListener(view -> showWindow());
+        hideAllowedButton.setOnClickListener(view -> {
+            hideAllowed = !hideAllowed;
+            limit = PAGE_SIZE;
+            failed = false;
+            updateControls();
+            refresh();
+        });
         findViewById(R.id.recent_sort).setOnClickListener(view -> showSort());
         hidden.setOnClickListener(view -> showHidden());
         findViewById(R.id.recent_help).setOnClickListener(view -> CompactUi.help(this,
                 R.string.recent_traffic_title, getString(R.string.recent_traffic_help)));
         empty.setOnClickListener(view -> { if (failed) { failed = false; refresh(); } });
         more.setOnClickListener(view -> { limit += PAGE_SIZE; refresh(); });
-        recordingAction.setOnClickListener(view -> configureRecording());
         updateControls();
     }
 
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
-        database.addLogChangedListener(changed);
+        database.addAccessChangedListener(changed);
+        database.addRuleChangedListener(rulesChanged);
         failed = false;
         refresh();
         main.postDelayed(tick, tickInterval());
@@ -140,7 +147,8 @@ public class ActivityRecentTraffic extends AppCompatActivity {
 
     @Override protected void onPause() {
         resumed = false;
-        database.removeLogChangedListener(changed);
+        database.removeAccessChangedListener(changed);
+        database.removeRuleChangedListener(rulesChanged);
         reads.cancel();
         main.removeCallbacksAndMessages(null);
         super.onPause();
@@ -161,6 +169,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         state.putInt("seconds", seconds);
         state.putInt("limit", limit);
         state.putString("sort", sort);
+        state.putBoolean("hide_allowed", hideAllowed);
         int[] uids = new int[hiddenApps.size()];
         int i = 0;
         for (int uid : hiddenApps.keySet()) uids[i++] = uid;
@@ -171,6 +180,11 @@ public class ActivityRecentTraffic extends AppCompatActivity {
 
     private void updateControls() {
         window.setText(getString(R.string.recent_traffic_window, RuleDelay.duration(this, seconds)));
+        hideAllowedButton.setSelected(hideAllowed);
+        hideAllowedButton.setAlpha(hideAllowed ? 1f : 0.5f);
+        hideAllowedButton.setContentDescription(getString(R.string.hide_allowed_domains) + ": "
+                + getString(hideAllowed ? R.string.control_on : R.string.control_off));
+        TooltipCompat.setTooltipText(hideAllowedButton, hideAllowedButton.getContentDescription());
         hidden.setSelected(!hiddenApps.isEmpty());
         hidden.setContentDescription(getString(R.string.recent_traffic_hidden, hiddenApps.size()));
         TooltipCompat.setTooltipText(hidden, hidden.getContentDescription());
@@ -181,29 +195,29 @@ public class ActivityRecentTraffic extends AppCompatActivity {
 
     private void refresh() {
         if (!resumed) return;
-        if (!RulesManager.getInstance(this).getPreferenceAllowLogging(this)) { showRestricted(); return; }
         Set<Integer> hiddenSnapshot = new LinkedHashSet<>(hiddenApps.keySet());
         String requestedSort = sort;
         int requestedSeconds = seconds, requestedLimit = limit;
-        reads.submit(() -> read(hiddenSnapshot, requestedSort, requestedSeconds, requestedLimit), this::display);
+        boolean requestedHideAllowed = hideAllowed;
+        reads.submit(() -> read(hiddenSnapshot, requestedHideAllowed, requestedSort, requestedSeconds, requestedLimit), this::display);
     }
 
-    private Snapshot read(Set<Integer> hiddenUids, String requestedSort, int requestedSeconds, int requestedLimit) {
-        long revision = database.getLogRevision();
+    private Snapshot read(Set<Integer> hiddenUids, boolean requestedHideAllowed, String requestedSort, int requestedSeconds, int requestedLimit) {
+        long revision = database.getAccessRevision();
         List<RecentTrafficAdapter.Entry> entries = new ArrayList<>();
         long oldest = Long.MAX_VALUE;
-        try (Cursor cursor = database.getRecentTraffic(System.currentTimeMillis() - requestedSeconds * 1000L,
-                hiddenUids, requestedSort, requestedLimit + 1)) {
+        GlobalRuleIndicators indicators = database.getGlobalRuleIndicators();
+        try (Cursor cursor = database.getRecentAccess(System.currentTimeMillis() - requestedSeconds * 1000L,
+                hiddenUids, requestedHideAllowed, requestedSort, requestedLimit + 1)) {
             boolean hasMore = false;
             while (cursor.moveToNext()) {
                 if (entries.size() == requestedLimit) { hasMore = true; break; }
-                int uid = cursor.isNull(2) ? -1 : cursor.getInt(2);
+                int uid = cursor.getInt(cursor.getColumnIndexOrThrow("uid"));
                 RecentTrafficAdapter.App app = appCache.get(uid);
                 if (app == null) { app = resolveApp(uid); appCache.put(uid, app); }
-                long time = cursor.getLong(1);
-                oldest = Math.min(oldest, time);
-                entries.add(new RecentTrafficAdapter.Entry(cursor.getLong(0), time, uid,
-                        cursor.getString(3), cursor.getInt(4) > 0, app));
+                AccessEntry access = new AccessEntry(cursor, indicators);
+                oldest = Math.min(oldest, access.time);
+                entries.add(new RecentTrafficAdapter.Entry(uid, access, app));
             }
             return new Snapshot(entries, revision, oldest, hasMore, false);
         } catch (RuntimeException failure) {
@@ -232,10 +246,10 @@ public class ActivityRecentTraffic extends AppCompatActivity {
 
     private void display(Snapshot result) {
         if (!resumed) return;
-        if (!RulesManager.getInstance(this).getPreferenceAllowLogging(this)) { showRestricted(); return; }
-        updateRecordingStatus();
+        updateProtectionStatus();
         failed = result.failed;
         empty.setText(failed ? R.string.recent_traffic_error
+                : hideAllowed ? R.string.recent_traffic_empty_blocked
                 : hiddenApps.isEmpty() ? R.string.recent_traffic_empty : R.string.recent_traffic_empty_hidden);
         if (failed) {
             empty.setVisibility(View.VISIBLE);
@@ -264,46 +278,8 @@ public class ActivityRecentTraffic extends AppCompatActivity {
                 result.entries.size(), result.entries.size()));
     }
 
-    private void showRestricted() {
-        reads.cancel();
-        loadedRevision = -1;
-        failed = false;
-        if (adapter.getItemCount() != 0) adapter.submit(Collections.emptyList());
-        updateRecordingStatus();
-        empty.setText(R.string.recent_traffic_restricted_empty);
-        empty.setVisibility(View.VISIBLE);
-        more.setVisibility(View.GONE);
-        count.setVisibility(View.GONE);
-    }
-
-    private void updateRecordingStatus() {
-        RulesManager rules = RulesManager.getInstance(this);
-        boolean permitted = rules.getPreferenceAllowLogging(this);
-        boolean enabled = PreferenceManager.getDefaultSharedPreferences(this).getBoolean(Rule.PREFERENCE_STRING_LOG, false);
-        boolean protection = rules.getPreferenceEnabled(this);
-        recordingStatus.setVisibility(!permitted || !enabled || !protection ? View.VISIBLE : View.GONE);
-        recordingStatus.setText(!permitted ? R.string.recent_traffic_recording_restricted
-                : !enabled ? R.string.recent_traffic_recording_off : R.string.recent_traffic_protection_off);
-        recordingAction.setVisibility(!permitted || !enabled ? View.VISIBLE : View.GONE);
-        recordingAction.setText(permitted ? R.string.recent_traffic_recording_enable : R.string.recent_traffic_rules);
-    }
-
-    private void configureRecording() {
-        if (!RulesManager.getInstance(this).getPreferenceAllowLogging(this)) {
-            startActivity(new Intent(this, ActivityRulesList.class));
-            return;
-        }
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.recent_traffic_recording_enable)
-                .setMessage(R.string.recent_traffic_recording_enable_message)
-                .setPositiveButton(R.string.recent_traffic_recording_enable, (which, button) -> {
-                    // Recheck after confirmation; a rule may have changed while the dialog was open.
-                    if (RulesManager.getInstance(this).getPreferenceAllowLogging(this))
-                        PreferenceManager.getDefaultSharedPreferences(this).edit()
-                                .putBoolean(Rule.PREFERENCE_STRING_LOG, true).apply();
-                    updateRecordingStatus();
-                }).setNegativeButton(android.R.string.cancel, null).create();
-        dialog.show();
-        DialogSurface.apply(dialog);
+    private void updateProtectionStatus() {
+        protectionStatus.setVisibility(RulesManager.getInstance(this).getPreferenceEnabled(this) ? View.GONE : View.VISIBLE);
     }
 
     private void showWindow() {
