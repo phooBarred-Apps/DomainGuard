@@ -4,16 +4,17 @@
     <string name="recent_traffic_window">Last %1$s</string>
     <string name="recent_traffic_window_title">Time window</string>
     <string name="recent_traffic_window_error">Enter a time from 1 second to 3 days.</string>
-    <string name="recent_traffic_retention">Shows recorded attempts only. Traffic history is normally kept for up to 3 days.</string>
-    <string name="recent_traffic_empty">No recorded attempts in this time window.</string>
-    <string name="recent_traffic_empty_hidden">No attempts from visible apps in this time window. Check Hidden apps or extend the time window.</string>
+    <string name="recent_traffic_retention">Shows the same saved access records as the app lists, within the selected time window (up to 3 days).</string>
+    <string name="recent_traffic_empty">No access records in this time window.</string>
+    <string name="recent_traffic_empty_hidden">No access records from visible apps in this time window. Check Hidden apps or extend the time window.</string>
+    <string name="recent_traffic_empty_blocked">No matching access records from visible apps in this time window. Turn off Hide allowed domains, check Hidden apps, or extend the time window.</string>
     <string name="recent_traffic_loading">Loading recent traffic…</string>
     <string name="recent_traffic_error">Couldn’t read recent traffic. Tap here to retry.</string>
     <string name="recent_traffic_help_label">About Recent traffic</string>
-    <string name="recent_traffic_more">Load more attempts</string>
+    <string name="recent_traffic_more">Load more records</string>
     <plurals name="recent_traffic_count">
-        <item quantity="one">%1$d attempt shown</item>
-        <item quantity="other">%1$d attempts shown</item>
+        <item quantity="one">%1$d access record shown</item>
+        <item quantity="other">%1$d access records shown</item>
     </plurals>
     <string name="recent_traffic_hidden">Hidden apps (%1$d)</string>
     <string name="recent_traffic_hidden_title">Hidden apps</string>
@@ -24,16 +25,8 @@
     <string name="recent_traffic_show_all">Show all apps</string>
     <string name="recent_traffic_unknown_app">Unknown app</string>
     <string name="recent_traffic_uid">App UID %1$d</string>
-    <string name="recent_traffic_allowed">Allowed attempt</string>
-    <string name="recent_traffic_blocked">Blocked attempt</string>
-    <string name="recent_traffic_recording_off">Individual-attempt recording is off. Existing recorded attempts can still appear below.</string>
-    <string name="recent_traffic_recording_restricted">Your rules disable detailed traffic recording. Enable “feature allow_logging” in Rules, then turn recording on here. The normal rule delay applies.</string>
-    <string name="recent_traffic_restricted_empty">Detailed traffic is hidden while your rules disallow logging.</string>
     <string name="recent_traffic_hide_legend">Hide an app’s traffic from Recent traffic only</string>
     <string name="recent_traffic_show_legend">Hidden apps: restore traffic to Recent traffic</string>
-    <string name="recent_traffic_recording_enable">Enable recording</string>
-    <string name="recent_traffic_recording_enable_message">Record individual network attempts on this device? This uses the existing traffic log and does not change which connections are allowed.</string>
-    <string name="recent_traffic_rules">Open Rules</string>
     <string name="recent_traffic_protection_off">DomainGuard is off. New attempts are recorded only while traffic passes through its VPN.</string>
-    <string name="recent_traffic_help">Each row is a separate recorded network attempt, including repeats. Newest first follows new traffic while you are at the top; scrolling keeps your place. The time window moves with the clock.\n\nThe eye beside an app hides all traffic for its network identity from this view. Hidden apps lets you show it again. Apps sharing that identity are hidden together.\n\nThe check or X shows whether that attempt was allowed or blocked at the time. Tap a domain for Allow, Block or Copy. Where a network identity belongs to several apps, choose the app before adding a rule.\n\nOnly traffic observed and recorded by DomainGuard appears here. An IP address is shown when its domain is unknown. This can reveal activity from helper apps, but cannot establish which app triggered it.</string>
+    <string name="recent_traffic_help">The same access records shown beneath individual apps, combined into one list. Repeated attempts to the same destination update its existing record; this is not a separate row for every request. No additional recording setting is needed.\n\nNewest first follows updated records while you are at the top; scrolling keeps your place. The time window moves with the clock.\n\nHide allowed domains uses the same filter as the app lists, keeping blocked, unknown and pending entries visible. It starts with your global display setting; changing it here affects this session only. It does not change recording or firewall rules.\n\nThe eye beside an app hides all traffic for its network identity from this view. Hidden apps lets you show it again. Apps sharing that identity are hidden together.\n\nDomain colors and rule icons match the app lists. Tap a domain for Allow, Block or Copy. Where a network identity belongs to several apps, choose the app before adding a rule.\n\nOnly access observed and recorded by DomainGuard appears here. An IP address is shown when its domain is unknown. This can reveal activity from helper apps, but cannot establish which app triggered it.</string>
 </resources>

@@ -1,6 +1,6 @@
 # Changes since HeartGuard
 
-Current in DomainGuard 2.84. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
+Current in DomainGuard 2.85. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
 
 ## 1. Allowing and blocking internet access
 
@@ -59,10 +59,11 @@ Current in DomainGuard 2.84. This combines the work since the fork, groups relat
 
 ### Recent traffic
 
-- **Combined live timeline** — Menu > Recent traffic shows individual recorded attempts across apps, including repeats, newest first. The rolling window starts at three minutes and can be extended to the log's three-day retention window; other sorts are available.
+- **Hide allowed domains** — The usual icon applies the same filter as the per-app lists. It starts from the global display default, can be changed for the session, and leaves recording, rules and saved history unchanged.
+- **Combined live timeline** — Menu > Recent traffic combines the existing per-app access records, newest first. Repeated attempts update their existing record. The rolling window starts at three minutes and can be extended up to three days; other sorts are available.
 - **Hide noisy apps** — Each row has the app icon and an eye button. Hiding filters all traffic for that network identity from this view only; Hidden apps restores it. Hidden apps, time window and sort are session choices that survive screen recreation.
-- **Review and act** — Rows show the original allowed/blocked outcome and timestamp. Domain actions reuse the existing Allow/Block dialogs and delays. Newest-first follows arrivals at the top while preserving position when reviewing older entries; Load more reveals additional recorded attempts.
-- **Recording remains explicit** — This view uses the existing detailed traffic log and respects the logging permission rule. If recording is off, enable it in the view; if rules disallow it, the screen explains the prerequisite and links to Rules. Missing history cannot be reconstructed from the latest-per-domain summary. Only VPN-observed traffic appears.
+- **Review and act** — Domain colors and rule icons match the per-app lists, including global rules and pending allows. Domain actions reuse the existing Allow/Block dialogs and delays. Newest-first follows updated records at the top while preserving position when reviewing older entries; Load more reveals additional records.
+- **No extra recording setup** — The combined view reuses the access history already collected for the main app lists. It does not require or change the separate detailed-logging rule or switch. Only VPN-observed access appears.
 
 ### Expanded apps
 

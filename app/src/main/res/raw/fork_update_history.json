@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.85",
+    "name": "DomainGuard 2.85",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-26",
+    "body": "DomainGuard 2.85\n\n- Recent traffic now combines the same access records shown under individual apps. It works without enabling detailed recording or adding a logging rule.\n- Repeated attempts update their existing access record and latest time instead of adding a separate row for every request.\n- Added the usual Hide allowed domains button. It starts from your global display setting and can be toggled for this session without changing that default.\n- Rule icons, including global allow/block indicators, and domain colors now match the per-app lists.\n- The three-minute default window, sorting, hidden apps, domain actions and live-update scroll protection remain available.\n\nInstall DomainGuard.apk from the assets below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.84",
     "name": "DomainGuard 2.84",
     "draft": false,

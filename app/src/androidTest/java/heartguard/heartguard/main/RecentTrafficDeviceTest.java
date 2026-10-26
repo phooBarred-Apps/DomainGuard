@@ -55,8 +55,8 @@ public class RecentTrafficDeviceTest {
     private SharedPreferences preferences;
     private UiDevice device;
     private Activity activity;
-    private boolean ownedFeature, originalLogging;
-    private Boolean originalDark;
+    private boolean originalLogging;
+    private Boolean originalDark, originalHideAllowed;
     private int uid;
 
     @Before public void setup() throws Exception {
@@ -67,63 +67,130 @@ public class RecentTrafficDeviceTest {
         preferences = PreferenceManager.getDefaultSharedPreferences(context);
         originalLogging = preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, false);
         originalDark = preferences.contains("dark_theme") ? preferences.getBoolean("dark_theme", false) : null;
+        originalHideAllowed = preferences.contains(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS)
+                ? preferences.getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false) : null;
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         uid = context.getApplicationInfo().uid;
         clearFixtures();
-        if (!rules.getPreferenceAllowLogging(context)) {
-            try (Cursor cursor = db.getRuleMatchingRuletext(FEATURE)) {
-                assertFalse("Do not overwrite an existing pending logging rule", cursor.moveToFirst());
-            }
-            assertEquals("Fixture must use the current zero-delay rule queue", 0, RuleDelay.read(context).seconds);
-            ownedFeature = true;
-            rules.queueRuleText(context, FEATURE);
-            barrier();
-            await(() -> rules.getPreferenceAllowLogging(context));
-        }
-        preferences.edit().putBoolean(Rule.PREFERENCE_STRING_LOG, false).commit();
+        preferences.edit().putBoolean(Rule.PREFERENCE_STRING_LOG, false)
+                .putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false).commit();
     }
 
     @After public void cleanup() throws Exception {
         if (activity != null) onMain(() -> activity.finish());
         clearFixtures();
-        if (ownedFeature) {
-            List<Long> ids = new ArrayList<>();
-            try (Cursor cursor = db.getRuleMatchingRuletext(FEATURE)) {
-                while (cursor.moveToNext()) ids.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
-            }
-            db.removeRulesById(ids.toArray(new Long[0]));
-            reloadRules();
-        }
         SharedPreferences.Editor restore = preferences.edit().putBoolean(Rule.PREFERENCE_STRING_LOG, originalLogging);
         if (originalDark == null) restore.remove("dark_theme"); else restore.putBoolean("dark_theme", originalDark);
+        if (originalHideAllowed == null) restore.remove(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS);
+        else restore.putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, originalHideAllowed);
         restore.commit();
     }
 
-    // Test: SQLite preserves repeats and equal-time IDs, applies cutoff/hiding, and sorts/limits attempts.
-    // Why: The existing per-app history coalesces requests and cannot supply the new timeline's semantics.
-    @Test public void queryPreservesIndividualAttemptsAndScopes() {
+    // Test: The combined view uses the per-app records, including repeated updates, cutoff, sorting and hiding.
+    // Why: Recent traffic must use access history without creating or depending on a second detailed log.
+    @Test public void queryUsesExistingAccessRecordsAndLatestTimes() {
         long now = System.currentTimeMillis();
         insert(uid, "old", now - 240000, false);
         insert(uid, "repeat", now - 1000, false);
-        insert(uid, "repeat", now - 1000, false);
+        long repeatedId = ids(now - 180000, Collections.emptySet(), ListSort.RECENT, 100).get(0);
+        insert(uid, "repeat", now - 500, false);
         insert(99191, "alpha", now, true);
         insert(-1, "unknown", now, false);
         List<Long> recent = ids(now - 180000, Collections.emptySet(), ListSort.RECENT, 100);
-        assertEquals(4, recent.size());
-        assertNotEquals(recent.get(2), recent.get(3));
-        assertTrue(recent.get(2) > recent.get(3));
-        List<Long> oldest = ids(now - 180000, Collections.emptySet(), ListSort.OLDEST, 100);
-        Collections.reverse(oldest);
-        assertEquals(recent, oldest);
+        assertEquals(3, recent.size());
+        assertEquals(repeatedId, (long) recent.get(2));
+        assertEquals(recent.get(2), ids(now - 180000, Collections.emptySet(), ListSort.OLDEST, 100).get(0));
         assertEquals(2, ids(now - 180000, Collections.singleton(uid), ListSort.RECENT, 100).size());
         assertEquals(1, ids(now - 180000, new HashSet<>(Arrays.asList(uid, -1)), ListSort.RECENT, 100).size());
         assertEquals(recent.subList(0, 2), ids(now - 180000, Collections.emptySet(), ListSort.RECENT, 2));
-        try (Cursor cursor = db.getRecentTraffic(now - 180000, Collections.emptySet(), ListSort.NAME, 100)) {
-            assertTrue(cursor.moveToFirst()); assertEquals("alpha." + HOST, cursor.getString(3));
+        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.emptySet(), false, ListSort.NAME, 100)) {
+            assertTrue(cursor.moveToFirst()); assertEquals("alpha." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
         }
-        try (Cursor cursor = db.getRecentTraffic(now - 180000, Collections.emptySet(), ListSort.ALLOWED, 100)) {
-            assertTrue(cursor.moveToFirst()); assertEquals(1, cursor.getInt(4));
+        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.singleton(uid), true, ListSort.RECENT, 1)) {
+            assertTrue(cursor.moveToFirst()); assertEquals("unknown." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
+            assertFalse(cursor.moveToNext());
         }
+        insert(uid, "repeat", now + 1, false);
+        assertEquals(repeatedId, (long) ids(now - 180000, Collections.emptySet(), ListSort.RECENT, 100).get(0));
+    }
+
+    // Test: Hide allowed uses the global default, filters before paging, and keeps its session state on recreation.
+    // Why: Allowed traffic must not crowd blocked attempts out of the page or change recording, defaults or saved history.
+    @Test public void hideAllowedScopesPagesLiveUpdatesAndSessionState() {
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < 255; i++) insert(uid, "allowed" + i, now - i, true);
+        insert(uid, "blocked", now - 1000, false);
+        insert(99191, "helper-blocked", now - 2000, false);
+        preferences.edit().putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, true).commit();
+        open(); await(() -> count() == 2);
+        onMain(() -> {
+            View hide = activity.findViewById(R.id.recent_hide_allowed);
+            assertTrue(hide.isSelected());
+            assertEquals(context.getString(R.string.hide_allowed_domains) + ": " + context.getString(R.string.control_on),
+                    hide.getContentDescription().toString());
+            assertEquals(View.GONE, activity.findViewById(R.id.recent_more).getVisibility());
+        });
+        insert(uid, "new-allowed", System.currentTimeMillis(), true);
+        insert(uid, "new-blocked", System.currentTimeMillis(), false);
+        await(() -> count() == 3);
+        onMain(() -> {
+            RecentTrafficAdapter adapter = (RecentTrafficAdapter) ((RecyclerView) activity.findViewById(R.id.recent_list)).getAdapter();
+            for (int i = 0; i < adapter.getItemCount(); i++) assertTrue(adapter.entry(i).access.allowed <= 0 && adapter.entry(i).access.block != 0);
+        });
+        clickRowControl(99191, R.id.recent_hide_app);
+        await(() -> count() == 2);
+        find("recent_hide_allowed").click();
+        await(() -> count() == 250);
+        find("recent_more").click();
+        await(() -> count() == 258);
+        recreate(); await(() -> count() == 258);
+        onMain(() -> assertFalse(activity.findViewById(R.id.recent_hide_allowed).isSelected()));
+        assertTrue(preferences.getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false));
+        assertFalse(preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, true));
+        assertEquals(259, fixtureCount());
+        find("recent_hide_allowed").click();
+        await(() -> count() == 2);
+        clickRowControl(uid, R.id.recent_hide_app);
+        await(() -> count() == 0);
+        onMain(() -> assertEquals(context.getString(R.string.recent_traffic_empty_blocked),
+                ((TextView) activity.findViewById(R.id.recent_empty)).getText().toString()));
+    }
+
+    // Test: Both views hide allowed rules while retaining pending/unknown records, and rule changes refresh the combined view.
+    // Why: The usual filter must behave the same before and after a saved rule changes, even without new traffic.
+    @Test public void accessFiltersMatchTheMainListsAfterRuleChanges() {
+        long now = System.currentTimeMillis();
+        for (String name : new String[]{"blocked", "allowed-rule", "pending", "unknown"}) insert(uid, name, now, false);
+        long allowedId = 0, pendingId = 0, unknownId = 0;
+        try (Cursor cursor = db.getAccess(uid)) {
+            while (cursor.moveToNext()) {
+                String address = cursor.getString(cursor.getColumnIndexOrThrow("daddr"));
+                long id = cursor.getLong(cursor.getColumnIndexOrThrow("ID"));
+                if (address.startsWith("allowed-rule.")) allowedId = id;
+                else if (address.startsWith("pending.")) pendingId = id;
+                else if (address.startsWith("unknown.")) unknownId = id;
+            }
+        }
+        assertTrue(allowedId > 0 && pendingId > 0 && unknownId > 0);
+        RuleAllowData allow = new RuleAllowData();
+        allow.allowed = 1; allow.ruletext = "allow host:allowed-rule." + HOST;
+        db.setAccess(allowedId, allow, "Synthetic test rule");
+        db.setAccessPending(Long.toString(pendingId), 1);
+        db.setAccess(unknownId, null, "Synthetic unknown outcome");
+        List<Long> expected = new ArrayList<>(), combined = new ArrayList<>();
+        try (Cursor cursor = db.getAccess(uid, true)) {
+            while (cursor.moveToNext()) expected.add(cursor.getLong(cursor.getColumnIndexOrThrow("ID")));
+        }
+        try (Cursor cursor = db.getRecentAccess(now - 1000, Collections.emptySet(), true, ListSort.RECENT, 100)) {
+            while (cursor.moveToNext()) combined.add(cursor.getLong(cursor.getColumnIndexOrThrow("ID")));
+        }
+        assertEquals(3, expected.size());
+        assertEquals(expected, combined);
+        preferences.edit().putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, true).commit();
+        open(); await(() -> count() == 3);
+        db.setAccess(allowedId, null, "Synthetic rule removed");
+        await(() -> count() == 4);
+        assertFalse(preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, true));
     }
 
     // Test: The real screen defaults to three minutes, follows inserts, hides/restores by app, and extends its window.
@@ -135,25 +202,24 @@ public class RecentTrafficDeviceTest {
         insert(99191, "helper", now, true);
         insert(uid, "older", now - 240000, true);
         open();
-        await(() -> count() == 3);
+        await(() -> count() == 2);
         assertTrue(find("recent_window").getText().contains("3 minutes"));
-        assertTrue(find("recent_recording_status").getText().contains("recording is off"));
         insert(uid, "live", System.currentTimeMillis(), false);
-        await(() -> count() == 4);
+        await(() -> count() == 3);
         clickRowControl(uid, R.id.recent_hide_app);
         await(() -> count() == 1);
         assertFalse(preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, true));
-        assertEquals(5, fixtureCount());
+        assertEquals(4, fixtureCount());
         find("recent_hidden").click();
         UiObject2 restore = device.wait(Until.findObject(By.descStartsWith("Show traffic from ")), 5000);
         assertNotNull(restore); restore.click();
         device.wait(Until.findObject(By.res("android", "button1")), 5000).click();
-        await(() -> count() == 4);
+        await(() -> count() == 3);
         setWindow("5", RuleDelay.Unit.MINUTES);
-        await(() -> count() == 5);
+        await(() -> count() == 4);
         for (boolean dark : new boolean[]{false, true}) {
             preferences.edit().putBoolean("dark_theme", dark).commit();
-            recreate(); await(() -> count() == 5);
+            recreate(); await(() -> count() == 4);
             device.waitForIdle();
             device.takeScreenshot(new File(context.getExternalFilesDir(null), "recent-traffic-" + (dark ? "dark" : "light") + ".png"));
         }
@@ -161,15 +227,15 @@ public class RecentTrafficDeviceTest {
         await(() -> count() == 0);
         insert(uid, "fresh", System.currentTimeMillis(), true);
         await(() -> count() == 1);
-        onMain(() -> assertEquals("1 attempt shown", ((TextView) activity.findViewById(R.id.recent_count)).getText().toString()));
+        onMain(() -> assertEquals("1 access record shown", ((TextView) activity.findViewById(R.id.recent_count)).getText().toString()));
         await(() -> count() == 0);
     }
 
-    // Test: A bounded first page can be expanded without merging repeats or silently dropping the remaining attempts.
+    // Test: A bounded first page can be expanded without silently dropping the remaining attempts.
     // Why: Busy apps must not create an unbounded initial UI load or misleadingly appear to have only 250 attempts.
     @Test public void busyTimelineLoadsAdditionalAttempts() {
         long now = System.currentTimeMillis();
-        for (int i = 0; i < 255; i++) insert(uid, "repeat", now - i, false);
+        for (int i = 0; i < 255; i++) insert(uid, "record" + i, now - i, false);
         open();
         await(() -> count() == 250);
         find("recent_more").click();
@@ -177,25 +243,37 @@ public class RecentTrafficDeviceTest {
         onMain(() -> assertEquals(View.GONE, activity.findViewById(R.id.recent_more).getVisibility()));
     }
 
-    // Test: Revoking logging permission removes displayed history and does not enable recording to populate the view.
-    // Why: The new screen must honor the same existing rule protection as the detailed log.
-    @Test public void recordingPolicyIsNotBypassed() throws Exception {
-        insert(uid, "secret", System.currentTimeMillis(), true);
-        open(); await(() -> count() == 1);
+    // Test: Existing access rows remain available with the detailed logging rule absent and its switch off.
+    // Why: Combining the main app lists must not introduce an extra recording prerequisite or change the user's rules.
+    @Test public void accessRecordsDoNotRequireDetailedLogging() throws Exception {
         List<ContentValues> saved = new ArrayList<>();
-        List<Long> ids = new ArrayList<>();
+        List<Long> ruleIds = new ArrayList<>();
         try (Cursor cursor = db.getRuleMatchingRuletext(FEATURE)) {
             while (cursor.moveToNext()) {
                 ContentValues row = new ContentValues(); DatabaseUtils.cursorRowToContentValues(cursor, row);
-                saved.add(row); ids.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
+                saved.add(row); ruleIds.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
             }
         }
         try {
-            db.removeRulesById(ids.toArray(new Long[0])); reloadRules();
-            await(() -> count() == 0);
-            assertEquals("Open Rules", find("recent_recording_action").getText());
+            db.removeRulesById(ruleIds.toArray(new Long[0])); reloadRules();
+            assertFalse(rules.getPreferenceAllowLogging(context));
+            insert(uid, "available", System.currentTimeMillis(), false);
+            open(); await(() -> count() == 1);
             assertFalse(preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, true));
+            assertFalse(rules.getPreferenceAllowLogging(context));
+            insert(uid, "available", System.currentTimeMillis() + 1, true);
+            await(() -> {
+                boolean[] allowed = new boolean[1];
+                onMain(() -> allowed[0] = ((RecentTrafficAdapter) ((RecyclerView) activity.findViewById(R.id.recent_list))
+                        .getAdapter()).entry(0).access.allowed > 0);
+                return allowed[0];
+            });
+            assertEquals(1, count());
             assertEquals(1, fixtureCount());
+            try (Cursor cursor = db.getAccess(uid)) {
+                assertTrue(cursor.moveToFirst());
+                assertEquals("available." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
+            }
         } finally {
             for (ContentValues row : saved) db.getWritableDatabase().insertOrThrow("rules", null, row);
             reloadRules();
@@ -213,8 +291,8 @@ public class RecentTrafficDeviceTest {
                 public void hide(RecentTrafficAdapter.Entry entry) { clicked[1] = entry; }
             });
             RecentTrafficAdapter.App app = new RecentTrafficAdapter.App("Synthetic app", context.getPackageManager().getDefaultActivityIcon(), new String[0]);
-            RecentTrafficAdapter.Entry first = new RecentTrafficAdapter.Entry(1, 1, uid, "one." + HOST, false, app);
-            RecentTrafficAdapter.Entry second = new RecentTrafficAdapter.Entry(2, 2, 99191, "two." + HOST, true, app);
+            RecentTrafficAdapter.Entry first = fixtureEntry(uid, "one", false, app);
+            RecentTrafficAdapter.Entry second = fixtureEntry(99191, "two", true, app);
             subject.submit(Arrays.asList(first, second));
             RecentTrafficAdapter.Holder holder = subject.onCreateViewHolder(activity.findViewById(R.id.recent_list), 0);
             for (int target = 0; target < 2; target++) {
@@ -282,11 +360,12 @@ public class RecentTrafficDeviceTest {
                     View screen = LayoutInflater.from(themed).inflate(R.layout.recent_traffic, null);
                     ((TextView) screen.findViewById(R.id.recent_window)).setText("Last 3 minutes");
                     measure(screen, CompactUi.dp(themed, 320), CompactUi.dp(themed, 640));
-                    for (int id : new int[]{R.id.recent_window, R.id.recent_sort, R.id.recent_hidden, R.id.recent_help}) {
+                    for (int id : new int[]{R.id.recent_window, R.id.recent_hide_allowed, R.id.recent_sort, R.id.recent_hidden, R.id.recent_help}) {
                         View control = screen.findViewById(id);
                         assertTrue(control.getWidth() >= CompactUi.dp(themed, 48));
                         assertTrue(control.getRight() <= ((View) control.getParent()).getWidth());
                     }
+                    assertTextFits(screen.findViewById(R.id.recent_window));
                     View row = LayoutInflater.from(themed).inflate(R.layout.recent_traffic_row, null);
                     ((TextView) row.findViewById(R.id.recent_app_name)).setText("Example application with a long name");
                     ((TextView) row.findViewById(R.id.recent_domain)).setText("a-very-long-subdomain.for-a-synthetic-application." + HOST);
@@ -397,21 +476,28 @@ public class RecentTrafficDeviceTest {
     private void insert(int appUid, String prefix, long time, boolean allowed) {
         Packet packet = new Packet(); packet.uid = appUid; packet.time = time; packet.allowed = allowed;
         packet.daddr = "192.0.2.91"; packet.version = 4; packet.protocol = 6; packet.dport = 443;
-        db.insertLog(packet, prefix + "." + HOST, 1, true);
+        db.updateAccess(context, packet, prefix + "." + HOST);
     }
     private List<Long> ids(long cutoff, java.util.Set<Integer> hidden, String sort, int limit) {
         List<Long> ids = new ArrayList<>();
-        try (Cursor cursor = db.getRecentTraffic(cutoff, hidden, sort, limit)) {
+        try (Cursor cursor = db.getRecentAccess(cutoff, hidden, false, sort, limit)) {
             while (cursor.moveToNext()) ids.add(cursor.getLong(0));
         }
         return ids;
     }
+    private RecentTrafficAdapter.Entry fixtureEntry(int appUid, String prefix, boolean allowed, RecentTrafficAdapter.App app) {
+        insert(appUid, prefix, System.currentTimeMillis(), allowed);
+        try (Cursor cursor = db.getAccess(appUid)) {
+            assertTrue(cursor.moveToFirst());
+            return new RecentTrafficAdapter.Entry(appUid, new AccessEntry(cursor), app);
+        }
+    }
     private int fixtureCount() {
-        try (Cursor cursor = db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM log WHERE dname LIKE ?", new String[]{"%." + HOST})) {
+        try (Cursor cursor = db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM access WHERE daddr LIKE ?", new String[]{"%." + HOST})) {
             cursor.moveToFirst(); return cursor.getInt(0);
         }
     }
-    private void clearFixtures() { db.getWritableDatabase().delete("log", "dname LIKE ?", new String[]{"%." + HOST}); }
+    private void clearFixtures() { db.getWritableDatabase().delete("access", "daddr LIKE ?", new String[]{"%." + HOST}); }
     private void reloadRules() throws Exception {
         Method method = RulesManager.class.getDeclaredMethod("getAllEnactedRulesFromDb", Context.class);
         method.setAccessible(true); method.invoke(rules, context); barrier();

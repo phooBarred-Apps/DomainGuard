@@ -20,12 +20,8 @@ package heartguard.heartguard.main;
 */
 
 import android.content.Context;
-import android.content.res.TypedArray;
-import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.text.SpannableString;
 import android.text.style.UnderlineSpan;
-import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -33,10 +29,8 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -44,17 +38,12 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
     interface Click { void open(AccessEntry entry); }
     private final Click click;
     private List<AccessEntry> entries = new ArrayList<>();
-    private final int colorText, colorOn, colorOff, colorPending;
+    private final AccessRowStyle rowStyle;
 
     AdapterAccess(Context context, Click click) {
         this.click = click;
         setHasStableIds(true);
-        TypedArray ta = context.getTheme().obtainStyledAttributes(new int[]{android.R.attr.textColorSecondary});
-        try { colorText = ta.getColor(0, 0); } finally { ta.recycle(); }
-        TypedValue tv = new TypedValue();
-        context.getTheme().resolveAttribute(R.attr.colorOn, tv, true); colorOn = tv.data;
-        context.getTheme().resolveAttribute(R.attr.colorOff, tv, true); colorOff = tv.data;
-        context.getTheme().resolveAttribute(R.attr.colorPending, tv, true); colorPending = tv.data;
+        rowStyle = new AccessRowStyle(context);
     }
 
     void submit(List<AccessEntry> next) {
@@ -103,8 +92,8 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
         int version = entry.version, protocol = entry.protocol, dport = entry.port;
         String daddr = entry.address;
         long time = entry.time, sent = entry.sent, received = entry.received;
-        int allowed = entry.allowed, block = entry.block, count = entry.aliases;
-        int connections = entry.connections, pending = entry.pending;
+        int count = entry.aliases;
+        int connections = entry.connections;
         // Get views
         TextView tvTime = view.findViewById(R.id.tvTime);
         ImageView ivBlock = view.findViewById(R.id.ivBlock);
@@ -116,21 +105,7 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
         // Set values
         tvTime.setText(DomainTimestamp.format(context, time));
         tvTime.setContentDescription(DomainTimestamp.full(time));
-        ivBlock.setContentDescription(null);
-        if (entry.globalScope != GlobalRuleIndicators.LOCAL) {
-            boolean globallyBlocked = entry.globalScope == GlobalRuleIndicators.BLOCKED;
-            ivBlock.setImageResource(globallyBlocked ? R.drawable.host_global_blocked : R.drawable.host_global_allowed);
-            ivBlock.setContentDescription(context.getString(globallyBlocked
-                    ? R.string.domain_globally_blocked : R.string.domain_globally_allowed));
-        } else if (block < 0)
-            ivBlock.setImageDrawable(null);
-        else {
-            ivBlock.setImageResource(block > 0 ? R.drawable.host_blocked : R.drawable.host_allowed);
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-                Drawable wrap = DrawableCompat.wrap(ivBlock.getDrawable());
-                DrawableCompat.setTint(wrap, block > 0 ? colorOff : colorOn);
-            }
-        }
+        rowStyle.bind(entry, ivBlock, tvDest);
 
         String dest = Util.getProtocolName(protocol, version, true) +
                 " " + daddr + (dport > 0 ? "/" + dport : "") + (count > 1 ? " ?" + count : "");
@@ -138,15 +113,6 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
         span.setSpan(new UnderlineSpan(), 0, dest.length(), 0);
         tvDest.setText(daddr);
         tvDest.setContentDescription(dest);
-
-        if (allowed < 0)
-            tvDest.setTextColor(colorText);
-        else if (allowed > 0)
-            tvDest.setTextColor(colorOn);
-        else if (pending > 0)
-            tvDest.setTextColor(colorPending);
-        else
-            tvDest.setTextColor(colorOff);
 
         llTraffic.setVisibility(connections > 0 || sent > 0 || received > 0 ? View.VISIBLE : View.GONE);
         if (connections > 0)
