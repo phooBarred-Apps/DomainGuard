@@ -1,6 +1,6 @@
 # Changes since HeartGuard
 
-Current in DomainGuard 2.86. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
+Current in DomainGuard 2.87. This combines the work since the fork, groups related refinements, and leaves out replaced designs and features inherited unchanged from HeartGuard.
 
 ## 1. Allowing and blocking internet access
 
@@ -93,7 +93,9 @@ Current in DomainGuard 2.86. This combines the work since the fork, groups relat
 
 ## 5. Notifications
 
+- **One notification group and Clear all** — Status and alerts share an expandable DomainGuard group on Android 7 and newer. Clear all dismisses alerts without stopping protection, clearing history or canceling active work; new attempts can notify again.
 - **Allow from a notification** — A blocked-domain notification can queue an allow for its specific app and domain, honoring the delay and requiring in-app review where an explicit block prevents it.
+- **Notification allow options** — The two buttons are Allow for [app name] and Allow options. Options opens the usual parent-domain, global and temporary controls above your current app, preserving rule delays.
 - **Optional global-block alerts** — Notify on global blocks controls whether global blacklist matches appear in access notifications and is off by default.
 
 ## 6. Backup

@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.os.Build;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 import androidx.preference.PreferenceManager;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -45,6 +46,7 @@ public class AccessNotificationDeviceTest {
     private String pkg;
     private SharedPreferences prefs;
     private Boolean previousNotify;
+    private Boolean previousDark;
     private Activity settings;
     private final List<String> owned = new ArrayList<>();
 
@@ -59,6 +61,7 @@ public class AccessNotificationDeviceTest {
         prefs = PreferenceManager.getDefaultSharedPreferences(context);
         previousNotify = prefs.contains(AccessNotification.NOTIFY_GLOBAL_BLOCKS)
                 ? prefs.getBoolean(AccessNotification.NOTIFY_GLOBAL_BLOCKS, false) : null;
+        previousDark = prefs.contains("dark_theme") ? prefs.getBoolean("dark_theme", false) : null;
         prefs.edit().remove(AccessNotification.NOTIFY_GLOBAL_BLOCKS).commit();
         assertEquals(0, RuleDelay.read(context).seconds);
         assertFalse(exists(allow(FIRST)));
@@ -72,11 +75,14 @@ public class AccessNotificationDeviceTest {
         if (settings != null) InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> settings.finish());
         if (previousNotify == null) prefs.edit().remove(AccessNotification.NOTIFY_GLOBAL_BLOCKS).commit();
         else prefs.edit().putBoolean(AccessNotification.NOTIFY_GLOBAL_BLOCKS, previousNotify).commit();
+        if (previousDark == null) prefs.edit().remove("dark_theme").commit();
+        else prefs.edit().putBoolean("dark_theme", previousDark).commit();
         notifications.cancel(AccessNotification.tag(uid, pkg, FIRST), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(uid, pkg, SECOND), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(uid, pkg, SUBDOMAIN), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(uid, pkg, LOOKALIKE), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(99195, "", FIRST), AccessNotification.ID);
+        NotificationGroup.refresh(context);
         List<Long> ids = new ArrayList<>();
         try (Cursor cursor = db.getAllRules()) {
             while (cursor.moveToNext())
@@ -95,8 +101,11 @@ public class AccessNotificationDeviceTest {
         Notification first = notification(FIRST);
         AccessNotification.show(context, uid, SECOND, SECOND);
         Notification second = notification(SECOND);
-        assertEquals(context.getString(R.string.notification_allow_app), first.actions[0].title.toString());
+        assertEquals(quickAllowLabel(), first.actions[0].title.toString());
+        assertEquals(2, first.actions.length);
+        assertEquals(context.getString(R.string.notification_allow_options), first.actions[1].title.toString());
         assertNotEquals(first.actions[0].actionIntent, second.actions[0].actionIntent);
+        assertNotEquals(first.actions[1].actionIntent, second.actions[1].actionIntent);
         assertFalse(context.getPackageManager().getReceiverInfo(new ComponentName(context, ReceiverAllowDomain.class), 0).exported);
         first.actions[0].actionIntent.send(context, 0, new Intent().putExtra("host", SECOND));
         await(() -> exists(allow(FIRST)));
@@ -118,15 +127,7 @@ public class AccessNotificationDeviceTest {
         device.pressHome();
         assertTrue(device.openNotification());
         assertTrue(device.wait(Until.hasObject(By.textContains(FIRST)), 5000));
-        java.util.regex.Pattern buttonText = java.util.regex.Pattern.compile(
-                java.util.regex.Pattern.quote(context.getString(R.string.notification_allow_app)),
-                java.util.regex.Pattern.CASE_INSENSITIVE);
-        if (!device.hasObject(By.text(buttonText))) {
-            UiObject2 expand = device.wait(Until.findObject(By.res("android", "expand_button")), 3000);
-            assertNotNull("Notification must be expandable", expand);
-            expand.click();
-        }
-        UiObject2 action = device.wait(Until.findObject(By.text(buttonText)), 5000);
+        UiObject2 action = NotificationShade.action(device, quickAllowLabel());
         assertNotNull("Allow button must be visible in the notification shade", action);
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "domain-notifications.png"));
         action.click();
@@ -148,7 +149,7 @@ public class AccessNotificationDeviceTest {
         await(() -> WhitelistManager.getInstance(context).getExplicitBlock(context, FIRST, uid) != null);
         AccessNotification.show(context, uid, FIRST, FIRST);
         notification(FIRST).actions[0].actionIntent.send();
-        await(() -> hasNoActions(FIRST));
+        await(() -> hasOnlyOptions(FIRST));
         assertFalse(exists(allow(FIRST)));
         assertTrue(exists(block));
         prefs.edit().putBoolean(AccessNotification.NOTIFY_GLOBAL_BLOCKS, true).commit();
@@ -158,7 +159,7 @@ public class AccessNotificationDeviceTest {
         await(() -> rules.getBlockedDomains().contains(SECOND));
         AccessNotification.show(context, uid, SECOND, SECOND);
         notification(SECOND).actions[0].actionIntent.send();
-        await(() -> hasNoActions(SECOND));
+        await(() -> hasOnlyOptions(SECOND));
         assertFalse(exists(allow(SECOND)));
         assertTrue(exists(globalBlock));
         AccessNotification.show(context, 99195, FIRST, FIRST);
@@ -168,10 +169,101 @@ public class AccessNotificationDeviceTest {
         assertTrue(unknown.actions == null || unknown.actions.length == 0);
     }
 
-    private boolean hasNoActions(String host) {
+    private boolean hasOnlyOptions(String host) {
         // Inspect one snapshot: the receiver can replace the notification between reads.
         Notification notification = notification(host);
-        return notification.actions == null || notification.actions.length == 0;
+        return notification.actions != null && notification.actions.length == 1
+                && context.getString(R.string.notification_allow_options).contentEquals(notification.actions[0].title);
+    }
+
+    // Test: The second real shade action opens the shared dialog over the previous app and Cancel/Back save nothing.
+    // Why: Reviewing a rule must not enable access or leave the user in DomainGuard's main screen.
+    @Test public void optionsCancelReturnsToPreviousAppWithoutChanges() throws Exception {
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        assertFalse(context.getPackageManager().getActivityInfo(new ComponentName(context, ActivityAllowDomain.class), 0).exported);
+        device.pressHome();
+        context.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        assertTrue(device.wait(Until.hasObject(By.pkg("com.android.settings").depth(0)), 5000));
+        List<String> previousRules = ruleValues();
+        for (boolean back : new boolean[]{false, true}) {
+            prefs.edit().putBoolean("dark_theme", back).commit();
+            openOptions(device);
+            assertEquals(FIRST, find(device, "allow_new_access_daddr").getText());
+            assertEquals(context.getString(R.string.scope_off), find(device, "allow_new_access_global").getContentDescription());
+            assertFalse(find(device, "temporary_rule_enabled").isChecked());
+            assertFalse(device.hasObject(By.pkg("com.google.android.inputmethod.latin")));
+            device.takeScreenshot(new File(context.getExternalFilesDir(null), "notification-allow-options-" + (back ? "dark" : "light") + ".png"));
+            if (back) device.pressBack();
+            else device.wait(Until.findObject(By.res("android", "button2")), 5000).click();
+            assertTrue(device.wait(Until.gone(By.res(pkg, "allow_new_access_daddr")), 5000));
+            await(() -> "com.android.settings".equals(device.getCurrentPackageName()));
+            assertEquals(previousRules, ruleValues());
+        }
+    }
+
+    // Test: Options can choose a parent and queue a temporary global allow using the existing delay.
+    // Why: The notification entry point must preserve domain identity, scope defaults, timing and duration.
+    @Test public void optionsQueuesParentGlobalTemporaryRuleAfterDelay() throws Exception {
+        owned.add("delay 60");
+        rules.queueRuleText(context, "delay 60");
+        await(() -> RuleDelay.read(context).seconds == 60);
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.pressHome();
+        openOptions(device);
+        AccessNotification.show(context, uid, SECOND, SECOND);
+        assertEquals("Later traffic cannot retarget the dialog", FIRST, find(device, "allow_new_access_daddr").getText());
+        find(device, "domain_parent_choices").click();
+        UiObject2 parent = device.wait(Until.findObject(By.text("mw-notification-test.invalid")), 5000);
+        assertNotNull(parent); parent.click();
+        find(device, "allow_new_access_global").click();
+        assertEquals(context.getString(R.string.scope_on), find(device, "allow_new_access_global").getContentDescription());
+        assertEquals(context.getString(R.string.domain_delay, RuleDelay.duration(context, 60)),
+                find(device, "domain_action_delay").getText());
+        find(device, "temporary_rule_enabled").click();
+        assertEquals("5", find(device, "temporary_rule_amount").getText());
+        String text = TemporaryRuleText.text("allow host:mw-notification-test.invalid", 300);
+        owned.add(text);
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "notification-allow-options-global.png"));
+        device.wait(Until.findObject(By.res("android", "button1")), 5000).click();
+        await(() -> exists(text));
+        try (Cursor cursor = db.getRuleMatchingRuletext(text)) {
+            assertTrue(cursor.moveToFirst());
+            assertEquals(0, cursor.getInt(cursor.getColumnIndexOrThrow("enacted")));
+            assertTrue(cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) > System.currentTimeMillis() + 30000);
+        }
+        assertFalse(exists(allow(FIRST)));
+        assertFalse(exists(allow(SECOND)));
+        assertFalse(rules.isTemporaryRuleActive(text));
+    }
+
+    private void openOptions(UiDevice device) throws Exception {
+        AccessNotification.show(context, uid, FIRST, FIRST);
+        notification(FIRST);
+        assertTrue(device.openNotification());
+        UiObject2 options = NotificationShade.action(device, context.getString(R.string.notification_allow_options));
+        assertNotNull("Allow options must be reachable beside quick Allow", options);
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "notification-two-buttons.png"));
+        options.click();
+        find(device, "allow_new_access_daddr");
+    }
+
+    private UiObject2 find(UiDevice device, String id) {
+        UiObject2 view = device.wait(Until.findObject(By.res(pkg, id)), 5000);
+        assertNotNull(id, view);
+        return view;
+    }
+
+    private String quickAllowLabel() {
+        return context.getString(R.string.notification_allow_app, DomainRuleDialog.appName(context, pkg));
+    }
+
+    private List<String> ruleValues() {
+        List<String> values = new ArrayList<>();
+        try (Cursor cursor = db.getAllRules()) {
+            while (cursor.moveToNext())
+                for (int column = 0; column < cursor.getColumnCount(); column++) values.add(cursor.getString(column));
+        }
+        return values;
     }
 
     // Test: Global blocks are quiet by default, can be included, and are removed immediately when disabled.
@@ -189,8 +281,12 @@ public class AccessNotificationDeviceTest {
         assertNull(find(AccessNotification.tag(uid,pkg,SUBDOMAIN)));
         notification(SECOND); notification(LOOKALIKE);
         UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.pressHome();
         settings=InstrumentationRegistry.getInstrumentation().startActivitySync(new Intent(context,ActivitySettings.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        device.wait(Until.findObject(By.text(context.getString(R.string.setting_options))),5000).click();
+        UiObject2 options = device.wait(Until.findObject(By.res("android", "title")
+                .text(context.getString(R.string.setting_options))),10000);
+        assertNotNull("Settings categories must be visible", options);
+        options.click();
         String title=context.getString(R.string.notification_global_blocks);
         if (device.wait(Until.hasObject(By.text(title)), 2000) != Boolean.TRUE)
             new UiScrollable(new UiSelector().scrollable(true)).scrollIntoView(new UiSelector().text(title));

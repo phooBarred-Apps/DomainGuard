@@ -2,7 +2,18 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: October 26, 2026.
+Latest changes: October 27, 2026.
+
+Version `2.87`: **Grouped notifications** put DomainGuard status and alerts in one
+expandable group on Android 7 and newer. Expand the status notification to use
+**Clear all**, which dismisses alerts while preserving protection, rules, traffic
+history and active downloads. New activity can create new alerts. Each domain's
+Allow action still refers to that specific app and domain. Older Android versions
+retain individual notifications. Domain alerts have **Allow for [app name]** for
+the existing quick action and **Allow options** for the full rule dialog over your
+current app. Options starts with global scope and Temporary off; you can choose a
+parent domain, enable either option, and confirm using the same delay policy as
+the in-app dialog. Cancel or Back closes the dialog without changing rules.
 
 Version `2.86`: **Recent traffic filters** use the main screen's dialog with Access, App type and Include disabled apps. Apply lasts for the session; Set as default saves separate Recent traffic defaults, and Reset restores those defaults without changing sorting, the time window or hidden apps. With/without attempts and internet-permission filters are omitted.
 

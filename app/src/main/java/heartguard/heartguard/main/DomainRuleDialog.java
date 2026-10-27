@@ -20,9 +20,15 @@ import java.util.Collections;
 import java.util.List;
 
 final class DomainRuleDialog {
+    interface SaveGuard { boolean canSave(); }
     private static ParentDomains parentDomains;
 
     static void show(Context context, String packageName, String address, boolean blocked) {
+        show(context, packageName, address, blocked, () -> true, () -> { });
+    }
+
+    static AlertDialog show(Context context, String packageName, String address, boolean blocked,
+                            SaveGuard guard, Runnable onDismiss) {
         View view = LayoutInflater.from(context).inflate(R.layout.allowhost, null, false);
         EditText input = view.findViewById(R.id.allow_new_access_daddr);
         TextView title = view.findViewById(R.id.allow_new_access_title);
@@ -84,8 +90,12 @@ final class DomainRuleDialog {
                 .setPositiveButton(blocked ? R.string.title_block : R.string.title_allow, null)
                 .setNegativeButton(android.R.string.cancel, null).create();
         DatabaseHelper.RuleChangedListener listener = () -> view.post(refresh);
-        dialog.setOnDismissListener(ignored -> DatabaseHelper.getInstance(context).removeRuleChangedListener(listener));
+        dialog.setOnDismissListener(ignored -> {
+            DatabaseHelper.getInstance(context).removeRuleChangedListener(listener);
+            onDismiss.run();
+        });
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+            if (!guard.canSave()) { dialog.dismiss(); return; }
             try {
                 String host = DomainInput.normalize(input.getText().toString());
                 String text = temporary.apply(rule(packageName, host, blocked, applyGlobally[0]));
@@ -102,6 +112,7 @@ final class DomainRuleDialog {
         DialogSurface.apply(dialog);
         DatabaseHelper.getInstance(context).addRuleChangedListener(listener);
         refresh.run();
+        return dialog;
     }
 
     private static synchronized List<String> parents(Context context, String input) {
@@ -121,7 +132,7 @@ final class DomainRuleDialog {
         return (blocked ? "block " : "allow ") + (global ? "" : "package:" + packageName + " ") + DomainInput.destination(host);
     }
 
-    private static String appName(Context context, String packageName) {
+    static String appName(Context context, String packageName) {
         try {
             android.content.pm.PackageManager packages = context.getPackageManager();
             return packages.getApplicationLabel(packages.getApplicationInfo(packageName, 0)).toString();

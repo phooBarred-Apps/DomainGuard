@@ -66,7 +66,6 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.TooltipCompat;
-import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.widget.CompoundButtonCompat;
@@ -1394,7 +1393,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
 
         if (root) {
             notifyDataSetChanged();
-            NotificationManagerCompat.from(context).cancel(rule.uid);
+            NotificationGroup.cancel(context, rule.uid);
             ServiceSinkhole.reload("rule changed", context, false);
         }
     }

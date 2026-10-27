@@ -116,6 +116,7 @@ public class ActivityUpdates extends AppCompatActivity {
 
     @Override protected void onResume() {
         super.onResume();
+        NotificationGroup.refresh(this);
         if (waitingForPermission) {
             waitingForPermission = false;
             install();
