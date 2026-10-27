@@ -115,5 +115,5 @@ Android controls backup timing and restoration; this does not create Google Driv
 ### Availability and maintenance
 
 - **Free fork features** — Remaining inherited purchase checks, billing screens and Pro gates were removed from the available fork features.
-- **Direct APK and source downloads** — Public releases provide a phone-downloadable APK, its corresponding GPL source archive and checksums while development remains in the private repository.
+- **Direct APK and source downloads** — Public releases provide a phone-downloadable APK, its corresponding GPL source archive and checksums. The [source repository and development history](https://github.com/phooBarred-Apps/DomainGuard) are also public.
 - **Release and timer safeguards** — Release-build command handling, APK integrity/signature checks and timed-connection enforcement have dedicated fixes and verification coverage.

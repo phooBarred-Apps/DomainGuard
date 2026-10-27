@@ -24,9 +24,10 @@ It checks again after building and immediately before uploading.
 
 Use Python 3.11 or newer (standard library only), Git, Git Credential Manager,
 JDK 17 and the Android build dependencies in [Build](../README-DomainGuard.md#build).
-The signed-in GitHub account needs access to the private source repository and
-permission to publish in the public downloads repository. Credentials are read
-from Git Credential Manager without an interactive prompt or printing the token.
+The signed-in GitHub account needs permission to publish in the public downloads
+repository. Source is read from the public `phooBarred-Apps/DomainGuard` repository.
+Credentials are read from Git Credential Manager without an interactive prompt
+or printing the token.
 
 Set these environment variables in the release shell:
 
