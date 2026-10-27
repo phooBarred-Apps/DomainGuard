@@ -67,6 +67,9 @@
 
         <activity android:name=".ActivityDeviceBackup" android:exported="false" android:label="@string/settings_backup_title" />
         <activity android:name=".ActivityDomainListPreview" android:exported="false" android:label="@string/compact_domains_preview" />
+        <activity android:name=".ActivityAllowDomain" android:exported="false"
+            android:theme="@style/NotificationDialogWindow" android:taskAffinity=""
+            android:excludeFromRecents="true" android:configChanges="orientation|screenSize" />
         <activity
             android:name="heartguard.heartguard.main.ActivityMain"
             android:configChanges="orientation|screenSize"
@@ -202,6 +205,7 @@
         </service>
 
         <receiver android:name=".ReceiverAllowDomain" android:exported="false" />
+        <receiver android:name=".ReceiverNotificationGroup" android:exported="false" />
 
         <receiver
             android:name="heartguard.heartguard.main.ReceiverAutostart"

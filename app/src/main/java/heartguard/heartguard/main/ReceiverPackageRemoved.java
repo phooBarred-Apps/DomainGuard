@@ -24,7 +24,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
-import androidx.core.app.NotificationManagerCompat;
 
 public class ReceiverPackageRemoved extends BroadcastReceiver {
     private static final String TAG = "NetGuard.Receiver";
@@ -42,8 +41,8 @@ public class ReceiverPackageRemoved extends BroadcastReceiver {
                 dh.clearLog(uid);
                 dh.clearAccess(uid, false);
 
-                NotificationManagerCompat.from(context).cancel(uid); // installed notification
-                NotificationManagerCompat.from(context).cancel(uid + 10000); // access notification
+                NotificationGroup.cancel(context, uid); // installed notification
+                NotificationGroup.cancel(context, uid + 10000); // access notification
             }
         }
     }

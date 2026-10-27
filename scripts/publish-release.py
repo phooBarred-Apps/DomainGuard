@@ -40,7 +40,7 @@ def require_merged_source(root, github):
     require(not git(root, "status", "--porcelain"), "Commit all source changes before releasing.")
     commit = git(root, "rev-parse", "HEAD")
     source = github.request(f"/repos/{SOURCE}")
-    require(source["full_name"] == SOURCE and source["private"], "Unexpected source repository.")
+    require(source["full_name"] == SOURCE and not source["private"], "Unexpected source repository.")
     main = github.request(f"/repos/{SOURCE}/branches/main")
     require(main["commit"]["sha"] == commit, "Check out the merged main revision before releasing.")
     pulls = github.request(f"/repos/{SOURCE}/commits/{commit}/pulls?per_page=100")

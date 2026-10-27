@@ -22,7 +22,6 @@ package heartguard.heartguard.main;
 import android.annotation.TargetApi;
 import android.app.AlarmManager;
 import android.app.Notification;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -66,7 +65,6 @@ import android.util.TypedValue;
 import android.widget.RemoteViews;
 
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.preference.PreferenceManager;
@@ -469,7 +467,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                         !commandHandler.hasMessages(Command.reload.ordinal()) &&
                         !RulesManager.getInstance(ServiceSinkhole.this).getPreferenceEnabled(ServiceSinkhole.this) &&
                         !prefs.getBoolean("show_stats", false))
-                    stopForeground(true);
+                    stopGroupedForeground(true);
 
                 // Request garbage collection
                 System.gc();
@@ -502,9 +500,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             if (vpn == null) {
                 if (state != State.none) {
                     Log.d(TAG, "Stop foreground state=" + state.toString());
-                    stopForeground(true);
+                    stopGroupedForeground(true);
                 }
-                startForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
+                startGroupedForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
                 state = State.enforcing;
                 Log.d(TAG, "Start foreground state=" + state.toString());
 
@@ -548,9 +546,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             if (state != State.enforcing) {
                 if (state != State.none) {
                     Log.d(TAG, "Stop foreground state=" + state.toString());
-                    stopForeground(true);
+                    stopGroupedForeground(true);
                 }
-                startForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
+                startGroupedForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
                 state = State.enforcing;
                 Log.d(TAG, "Start foreground state=" + state.toString());
             }
@@ -642,11 +640,11 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                 last_blocked = -1;
                 last_hosts = -1;
 
-                stopForeground(true);
+                stopGroupedForeground(true);
 
                 SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ServiceSinkhole.this);
                 if (prefs.getBoolean("show_stats", false)) {
-                    startForeground(NOTIFY_WAITING, getWaitingNotification());
+                    startGroupedForeground(NOTIFY_WAITING, getWaitingNotification());
                     state = State.waiting;
                     Log.d(TAG, "Start foreground state=" + state.toString());
                 } else {
@@ -920,10 +918,10 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             this.removeMessages(MSG_STATS_UPDATE);
             if (state == State.stats) {
                 Log.d(TAG, "Stop foreground state=" + state.toString());
-                stopForeground(true);
+                stopGroupedForeground(true);
                 state = State.none;
             } else
-                NotificationManagerCompat.from(ServiceSinkhole.this).cancel(NOTIFY_TRAFFIC);
+                NotificationGroup.cancel(ServiceSinkhole.this, NOTIFY_TRAFFIC);
         }
 
         private void updateStats() {
@@ -1112,7 +1110,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
             TypedValue tv = new TypedValue();
             getTheme().resolveAttribute(R.attr.colorPrimary, tv, true);
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(ServiceSinkhole.this, "notify");
+            NotificationCompat.Builder builder = NotificationGroup.statusBuilder(ServiceSinkhole.this, "notify");
             builder.setWhen(when)
                     .setSmallIcon(R.drawable.ic_equalizer_white_24dp)
                     .setContent(remoteViews)
@@ -1128,13 +1126,13 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             if (state == State.none || state == State.waiting) {
                 if (state != State.none) {
                     Log.d(TAG, "Stop foreground state=" + state.toString());
-                    stopForeground(true);
+                    stopGroupedForeground(true);
                 }
-                startForeground(NOTIFY_TRAFFIC, builder.build());
+                startGroupedForeground(NOTIFY_TRAFFIC, builder.build());
                 state = State.stats;
                 Log.d(TAG, "Start foreground state=" + state.toString());
             } else
-                NotificationManagerCompat.from(ServiceSinkhole.this).notify(NOTIFY_TRAFFIC, builder.build());
+                NotificationGroup.notify(ServiceSinkhole.this, NOTIFY_TRAFFIC, builder.build());
         }
     }
 
@@ -2407,8 +2405,8 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                             dh.clearLog(uid);
                             dh.clearAccess(uid, false);
 
-                            NotificationManagerCompat.from(context).cancel(uid); // installed notification
-                            NotificationManagerCompat.from(context).cancel(uid + 10000); // access notification
+                            NotificationGroup.cancel(context, uid); // installed notification
+                            NotificationGroup.cancel(context, uid + 10000); // access notification
                         }
                     }
 
@@ -2444,7 +2442,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
             TypedValue tv = new TypedValue();
             getTheme().resolveAttribute(R.attr.colorPrimary, tv, true);
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "notify");
+            NotificationCompat.Builder builder = NotificationGroup.builder(this, "notify");
             builder.setSmallIcon(R.drawable.ic_security_white_24dp)
                     .setContentIntent(pi)
                     .setColor(tv.data)
@@ -2501,7 +2499,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
             // Show notification
             if (internet)
-                NotificationManagerCompat.from(this).notify(uid, builder.build());
+                NotificationGroup.notify(this, uid, builder.build());
             else {
                 NotificationCompat.BigTextStyle expanded = new NotificationCompat.BigTextStyle(builder);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
@@ -2509,7 +2507,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                 else
                     expanded.bigText(getString(R.string.msg_installed, name));
                 expanded.setSummaryText(getString(R.string.title_internet));
-                NotificationManagerCompat.from(this).notify(uid, expanded.build());
+                NotificationGroup.notify(this, uid, expanded.build());
             }
 
         } catch (PackageManager.NameNotFoundException ex) {
@@ -2520,7 +2518,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
     @Override
     public void onCreate() {
         Log.i(TAG, "Create version=" + Util.getSelfVersionName(this) + "/" + Util.getSelfVersionCode(this));
-        startForeground(NOTIFY_WAITING, getWaitingNotification());
+        startGroupedForeground(NOTIFY_WAITING, getWaitingNotification());
 
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
 
@@ -2736,12 +2734,12 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             Util.setTheme(this);
             if (state != State.none) {
                 Log.d(TAG, "Stop foreground state=" + state.toString());
-                stopForeground(true);
+                stopGroupedForeground(true);
             }
             if (state == State.enforcing)
-                startForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
+                startGroupedForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
             else if (state != State.none)
-                startForeground(NOTIFY_WAITING, getWaitingNotification());
+                startGroupedForeground(NOTIFY_WAITING, getWaitingNotification());
             Log.d(TAG, "Start foreground state=" + state.toString());
         }
     }
@@ -2749,9 +2747,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (state == State.enforcing)
-            startForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
+            startGroupedForeground(NOTIFY_ENFORCING, getEnforcingNotification(-1, -1, -1, 0));
         else
-            startForeground(NOTIFY_WAITING, getWaitingNotification());
+            startGroupedForeground(NOTIFY_WAITING, getWaitingNotification());
 
         Log.i(TAG, "Received " + intent);
         Util.logExtras(intent);
@@ -2928,6 +2926,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         }
 
         super.onDestroy();
+        NotificationGroup.refresh(this);
     }
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
@@ -2936,13 +2935,23 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         cm.unregisterNetworkCallback((ConnectivityManager.NetworkCallback) networkCallback);
     }
 
+    private void startGroupedForeground(int id, Notification notification) {
+        startForeground(id, notification);
+        NotificationGroup.refresh(this);
+    }
+
+    private void stopGroupedForeground(boolean removeNotification) {
+        stopForeground(removeNotification);
+        NotificationGroup.refresh(this);
+    }
+
     private Notification getEnforcingNotification(int allowed, int blocked, int hosts, long time) {
         Intent main = new Intent(this, ActivityMain.class);
         PendingIntent pi = PendingIntent.getActivity(this, 0, main, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorPrimary, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "foreground");
+        NotificationCompat.Builder builder = NotificationGroup.statusBuilder(this, "foreground");
         builder.setSmallIcon(isLockedDown(last_metered) ? R.drawable.ic_lock_outline_white_24dp : R.drawable.ic_security_white_24dp)
                 .setContentIntent(pi)
                 .setColor(tv.data)
@@ -3018,15 +3027,13 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
     private void updateEnforcingNotification(int allowed, int total) {
         // Update notification
         Notification notification = getEnforcingNotification(allowed, total - allowed, mapHostsBlocked.size(), 0);
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        nm.notify(NOTIFY_ENFORCING, notification);
+        NotificationGroup.notify(this, NOTIFY_ENFORCING, notification);
     }
 
     private void updateEnforcingNotificationWithTime(long time) {
         // Update notification
         Notification notification = getEnforcingNotification(0, 0, 0, time);
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        nm.notify(NOTIFY_ENFORCING, notification);
+        NotificationGroup.notify(this, NOTIFY_ENFORCING, notification);
     }
 
     private Notification getWaitingNotification() {
@@ -3035,7 +3042,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorPrimary, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "foreground");
+        NotificationCompat.Builder builder = NotificationGroup.statusBuilder(this, "foreground");
         builder.setSmallIcon(R.drawable.ic_security_white_24dp)
                 .setContentIntent(pi)
                 .setColor(tv.data)
@@ -3062,7 +3069,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorOff, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "notify");
+        NotificationCompat.Builder builder = NotificationGroup.builder(this, "notify");
         builder.setSmallIcon(R.drawable.ic_error_white_24dp)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(getString(R.string.msg_revoked))
@@ -3078,7 +3085,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         NotificationCompat.BigTextStyle notification = new NotificationCompat.BigTextStyle(builder);
         notification.bigText(getString(R.string.msg_revoked));
 
-        NotificationManagerCompat.from(this).notify(NOTIFY_DISABLED, notification.build());
+        NotificationGroup.notify(this, NOTIFY_DISABLED, notification.build());
     }
 
     private void showLockdownNotification() {
@@ -3087,7 +3094,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorOff, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "notify");
+        NotificationCompat.Builder builder = NotificationGroup.builder(this, "notify");
         builder.setSmallIcon(R.drawable.ic_error_white_24dp)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(getString(R.string.msg_always_on_lockdown))
@@ -3104,11 +3111,11 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         NotificationCompat.BigTextStyle notification = new NotificationCompat.BigTextStyle(builder);
         notification.bigText(getString(R.string.msg_always_on_lockdown));
 
-        NotificationManagerCompat.from(this).notify(NOTIFY_LOCKDOWN, notification.build());
+        NotificationGroup.notify(this, NOTIFY_LOCKDOWN, notification.build());
     }
 
     private void removeLockdownNotification() {
-        NotificationManagerCompat.from(this).cancel(NOTIFY_LOCKDOWN);
+        NotificationGroup.cancel(this, NOTIFY_LOCKDOWN);
     }
 
     private void showAutoStartNotification() {
@@ -3118,7 +3125,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorOff, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "notify");
+        NotificationCompat.Builder builder = NotificationGroup.builder(this, "notify");
         builder.setSmallIcon(R.drawable.ic_error_white_24dp)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(getString(R.string.msg_autostart))
@@ -3134,7 +3141,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         NotificationCompat.BigTextStyle notification = new NotificationCompat.BigTextStyle(builder);
         notification.bigText(getString(R.string.msg_autostart));
 
-        NotificationManagerCompat.from(this).notify(NOTIFY_AUTOSTART, notification.build());
+        NotificationGroup.notify(this, NOTIFY_AUTOSTART, notification.build());
     }
 
     private void showErrorNotification(String message) {
@@ -3143,7 +3150,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorOff, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "notify");
+        NotificationCompat.Builder builder = NotificationGroup.builder(this, "notify");
         builder.setSmallIcon(R.drawable.ic_error_white_24dp)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(getString(R.string.msg_error, message))
@@ -3160,7 +3167,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         notification.bigText(getString(R.string.msg_error, message));
         notification.setSummaryText(message);
 
-        NotificationManagerCompat.from(this).notify(NOTIFY_ERROR, notification.build());
+        NotificationGroup.notify(this, NOTIFY_ERROR, notification.build());
     }
 
     private void showUpdateNotification(String name) {
@@ -3172,7 +3179,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         TypedValue tv = new TypedValue();
         getTheme().resolveAttribute(R.attr.colorPrimary, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "notify");
+        NotificationCompat.Builder builder = NotificationGroup.builder(this, "notify");
         builder.setSmallIcon(R.drawable.ic_security_white_24dp)
                 .setContentTitle(name)
                 .setContentText(getString(R.string.msg_update))
@@ -3185,13 +3192,13 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             builder.setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setVisibility(NotificationCompat.VISIBILITY_SECRET);
 
-        NotificationManagerCompat.from(this).notify(NOTIFY_UPDATE, builder.build());
+        NotificationGroup.notify(this, NOTIFY_UPDATE, builder.build());
     }
 
     private void removeWarningNotifications() {
-        NotificationManagerCompat.from(this).cancel(NOTIFY_DISABLED);
-        NotificationManagerCompat.from(this).cancel(NOTIFY_AUTOSTART);
-        NotificationManagerCompat.from(this).cancel(NOTIFY_ERROR);
+        NotificationGroup.cancel(this, NOTIFY_DISABLED);
+        NotificationGroup.cancel(this, NOTIFY_AUTOSTART);
+        NotificationGroup.cancel(this, NOTIFY_ERROR);
     }
 
     private class Builder extends VpnService.Builder {

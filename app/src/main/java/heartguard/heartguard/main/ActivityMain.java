@@ -437,6 +437,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     @Override
     protected void onResume() {
         Log.i(TAG, "Resume");
+        NotificationGroup.refresh(this);
 
         if (Build.VERSION.SDK_INT < MIN_SDK || Util.hasXposed(this)) {
             super.onResume();

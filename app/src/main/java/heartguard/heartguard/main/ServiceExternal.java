@@ -56,6 +56,7 @@ public class ServiceExternal extends IntentService {
     protected void onHandleIntent(Intent intent) {
         try {
             startForeground(ServiceSinkhole.NOTIFY_EXTERNAL, getForegroundNotification(this));
+            NotificationGroup.refresh(this);
 
             Log.i(TAG, "Received " + intent);
             Util.logExtras(intent);
@@ -133,11 +134,12 @@ public class ServiceExternal extends IntentService {
             }
         } finally {
             stopForeground(true);
+            NotificationGroup.refresh(this);
         }
     }
 
     private static Notification getForegroundNotification(Context context) {
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "foreground");
+        NotificationCompat.Builder builder = NotificationGroup.builder(context, "foreground");
         builder.setSmallIcon(R.drawable.ic_hourglass_empty_white_24dp);
         builder.setPriority(NotificationCompat.PRIORITY_MIN);
         builder.setCategory(NotificationCompat.CATEGORY_STATUS);

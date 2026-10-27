@@ -14,6 +14,17 @@
     <attr name="colorActionPositive" format="color" />
     <attr name="colorActionDestructive" format="color" />
 
+    <!-- Applied over the user's selected theme; only the activity behind the rule dialog is transparent. -->
+    <style name="NotificationDialogWindow" parent="">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
     <style name="ActionButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
         <item name="android:textColor">?attr/colorActionPositive</item>
         <item name="android:background">?attr/selectableItemBackgroundBorderless</item>

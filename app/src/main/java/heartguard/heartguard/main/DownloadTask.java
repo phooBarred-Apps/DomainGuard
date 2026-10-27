@@ -31,7 +31,6 @@ import android.util.TypedValue;
 import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -147,7 +146,7 @@ public class DownloadTask extends AsyncTask<Object, Integer, Object> {
     @Override
     protected void onPostExecute(Object result) {
         wakeLock.release();
-        NotificationManagerCompat.from(context).cancel(ServiceSinkhole.NOTIFY_DOWNLOAD);
+        NotificationGroup.cancel(context, ServiceSinkhole.NOTIFY_DOWNLOAD);
         if (result instanceof Throwable) {
             Log.e(TAG, result.toString() + "\n" + Log.getStackTraceString((Throwable) result));
             listener.onException((Throwable) result);
@@ -161,7 +160,7 @@ public class DownloadTask extends AsyncTask<Object, Integer, Object> {
 
         TypedValue tv = new TypedValue();
         context.getTheme().resolveAttribute(R.attr.colorOff, tv, true);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "notify");
+        NotificationCompat.Builder builder = NotificationGroup.builder(context, "notify");
         builder.setSmallIcon(R.drawable.ic_file_download_white_24dp)
                 .setContentTitle(context.getString(R.string.app_name))
                 .setContentText(context.getString(R.string.msg_downloading, url.toString()))
@@ -175,7 +174,7 @@ public class DownloadTask extends AsyncTask<Object, Integer, Object> {
             builder.setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setVisibility(NotificationCompat.VISIBILITY_SECRET);
 
-        NotificationManagerCompat.from(context).notify(ServiceSinkhole.NOTIFY_DOWNLOAD, builder.build());
+        NotificationGroup.notify(context, ServiceSinkhole.NOTIFY_DOWNLOAD, builder.build());
     }
 
 }

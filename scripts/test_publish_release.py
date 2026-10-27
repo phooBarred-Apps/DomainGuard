@@ -21,6 +21,7 @@ SPEC.loader.exec_module(publisher)
 class GitHubFixture:
     def __init__(self, commit):
         self.main = commit
+        self.source_private = False
         self.pulls = [{"merged_at": "2026-10-25", "merge_commit_sha": commit,
                        "base": {"ref": "main", "repo": {"id": 123}}}]
         self.existing = None
@@ -36,7 +37,7 @@ class GitHubFixture:
         source = f"/repos/{publisher.SOURCE}"
         downloads = f"/repos/{publisher.DOWNLOADS}"
         if route == source:
-            return {"id": 123, "full_name": publisher.SOURCE, "private": True}
+            return {"id": 123, "full_name": publisher.SOURCE, "private": self.source_private}
         if route == source + "/branches/main":
             return {"commit": {"sha": self.main}}
         if route.startswith(source + "/commits/"):
@@ -159,6 +160,14 @@ class ReleaseTests(unittest.TestCase):
             with self.subTest(pulls=pulls):
                 self.github.pulls = pulls
                 self.reject("merged through a pull request")
+        self.build.assert_not_called()
+
+    def test_private_source_prevents_build_and_publication(self):
+        """Test: Publication rejects a source repository that is no longer public.
+        Why: APK releases must continue to provide openly accessible source.
+        """
+        self.github.source_private = True
+        self.reject("Unexpected source repository")
         self.build.assert_not_called()
 
     def test_unmerged_head_is_rejected(self):
