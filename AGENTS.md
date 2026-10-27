@@ -8,7 +8,7 @@ Read these contribution and product rules before making changes in this reposito
 - Use one pull request per coherent change and a descriptive branch name. Never create or rename a branch with the `codex/` prefix.
 - The source repository is `phooBarred-Apps/DomainGuard` (local remote `origin`). Remote `upstream` is the original HeartGuard repository; do not push or create upstream pull requests without a specific request.
 - Use a squash merge and verify the pull request's current head before merging. Wait for applicable checks and stop on failures, conflicts, unresolved review concerns, or unexpected changes.
-- GitHub's native auto-merge and enforced private-repository reviews are unavailable on the current free organization plan. Perform the authorized merge through GitHub; do not present this workflow as a server-enforced protection or submit a self-approval.
+- Perform the authorized merge through GitHub, respecting the repository's configured checks and review requirements. Do not present this workflow as a server-enforced protection or submit a self-approval.
 - Report the pull request link and verification result after merging.
 - APK publication requires release authorization. Publish from the merged source revision, preserve the existing Android application ID and signing key, and include the corresponding source archive. Merging a workflow or documentation change does not require a new APK.
 - Use `scripts/publish-release.py` for APK publication and follow `docs/releases.md`. Maintain this reusable publisher instead of creating a script for each version. It must never push source changes directly to `main`.
