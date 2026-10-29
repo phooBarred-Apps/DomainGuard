@@ -575,6 +575,7 @@ public class RulesManager {
             return rule.getActionsAfterRemove(context);
         } else {
             MyRule rule = MyRule.getRuleFromText(context, ruletext);
+            AccessNotification.dismissForBlock(context, rule);
             return rule.getActionsAfterAdd(context);
         }
     }
@@ -1330,6 +1331,8 @@ public class RulesManager {
                     activateRulesUpTo(context, realTime, false);
                     expireTemporaryRules(context, System.currentTimeMillis());
                     setAlarmForPending(context, realTime, systemTime);
+
+                    AccessNotification.refresh(context);
 
                     // That was successful, now quit
                     return;

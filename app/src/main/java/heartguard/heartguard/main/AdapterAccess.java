@@ -106,6 +106,7 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
         tvTime.setText(DomainTimestamp.format(context, time));
         tvTime.setContentDescription(DomainTimestamp.full(time));
         rowStyle.bind(entry, ivBlock, tvDest);
+        rowStyle.bindHistory(entry, tvTime);
 
         String dest = Util.getProtocolName(protocol, version, true) +
                 " " + daddr + (dport > 0 ? "/" + dport : "") + (count > 1 ? " ?" + count : "");

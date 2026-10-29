@@ -136,6 +136,7 @@ final class RecentTrafficAdapter extends RecyclerView.Adapter<RecentTrafficAdapt
             refreshTime();
             time.setContentDescription(DomainTimestamp.full(entry.time));
             rowStyle.bind(entry.access, outcome, domain);
+            rowStyle.bindHistory(entry.access, time);
             hide.setContentDescription(itemView.getContext().getString(R.string.recent_traffic_hide, entry.app.name));
             TooltipCompat.setTooltipText(hide, hide.getContentDescription());
         }

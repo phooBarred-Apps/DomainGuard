@@ -573,7 +573,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     Cursor getRecentAccess(long since, Set<Integer> hiddenUids, Set<Integer> includedUids,
-                           boolean hideAllowed, String sort, int limit) {
+                           DomainFilters filters, String sort, int limit) {
+        GlobalRuleIndicators indicators = filters.needsGlobalScope() ? getGlobalRuleIndicators() : null;
         lock.readLock().lock();
         try {
             StringBuilder where = new StringBuilder("a.time >= ?");
@@ -599,9 +600,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 }
                 where.append(')');
             }
-            if (hideAllowed) where.append(HIDE_ALLOWED_ACCESS);
-            return getReadableDatabase().rawQuery(ACCESS_SELECT + " WHERE " + where
-                    + " ORDER BY " + accessOrder(sort) + " LIMIT " + Math.max(1, limit), args.toArray(new String[0]));
+            where.append(filters.sqlCondition());
+            Cursor rows = getReadableDatabase().rawQuery(ACCESS_SELECT + " WHERE " + where
+                    + " ORDER BY " + accessOrder(sort) + (filters.needsGlobalScope() ? "" : " LIMIT " + Math.max(1, limit)), args.toArray(new String[0]));
+            return filterGlobalAccess(rows, filters, Math.max(1, limit), indicators);
         } finally {
             lock.readLock().unlock();
         }
@@ -766,7 +768,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 } else {
                     cv.put("block", 1);
                 }
-                cv.put("allowed", -1);
+                // A rule change updates current policy, not the outcome of the recorded request.
                 cv.put("comment", comment);
 
                 if (db.update("access", cv, "ID = ?", new String[]{Long.toString(id)}) != 1)
@@ -856,8 +858,31 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String ACCESS_SELECT = "SELECT a.ID AS _id, a.*"
             + ", (SELECT COUNT(DISTINCT d.qname) FROM dns d WHERE d.resource IN"
             + " (SELECT d1.resource FROM dns d1 WHERE d1.qname = a.daddr)) count FROM access a";
-    // Keep blocked, unknown and pending entries visible in both access-list views.
-    private static final String HIDE_ALLOWED_ACCESS = " AND COALESCE(a.allowed, -1) <= 0 AND COALESCE(a.block, -1) <> 0";
+    private Cursor filterGlobalAccess(Cursor rows, DomainFilters filters, int limit, GlobalRuleIndicators indicators) {
+        if (!filters.needsGlobalScope()) return rows;
+        android.database.MatrixCursor visible = new android.database.MatrixCursor(rows.getColumnNames());
+        try (Cursor source = rows) {
+            while (visible.getCount() < limit && source.moveToNext()) {
+                int scope = indicators.scope(source.getInt(source.getColumnIndexOrThrow("block")),
+                        source.getString(source.getColumnIndexOrThrow("ruletext")), source.getString(source.getColumnIndexOrThrow("daddr")));
+                if (!filters.includes(DomainFilters.category(source.getInt(source.getColumnIndexOrThrow("allowed")),
+                        source.getInt(source.getColumnIndexOrThrow("block")), scope))) continue;
+                Object[] values = new Object[source.getColumnCount()];
+                for (int column = 0; column < values.length; column++) {
+                    switch (source.getType(column)) {
+                        case Cursor.FIELD_TYPE_INTEGER: values[column] = source.getLong(column); break;
+                        case Cursor.FIELD_TYPE_FLOAT: values[column] = source.getDouble(column); break;
+                        case Cursor.FIELD_TYPE_STRING: values[column] = source.getString(column); break;
+                        case Cursor.FIELD_TYPE_BLOB: values[column] = source.getBlob(column); break;
+                        case Cursor.FIELD_TYPE_NULL: values[column] = null; break;
+                        default: values[column] = null;
+                    }
+                }
+                visible.addRow(values);
+            }
+        }
+        return visible;
+    }
 
     private static String accessOrder(String sort) {
         String order = "a.time DESC";
@@ -882,13 +907,19 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     public Cursor getAccess(int uid, boolean hideAllowed, String search, String sort, String mainSearch) {
+        return getAccess(uid, new DomainFilters(hideAllowed ? DomainFilters.HIDE_ALL : DomainFilters.SHOW,
+                DomainFilters.SHOW), search, sort, mainSearch);
+    }
+
+    Cursor getAccess(int uid, DomainFilters filters, String search, String sort, String mainSearch) {
+        GlobalRuleIndicators indicators = filters.needsGlobalScope() ? getGlobalRuleIndicators() : null;
         lock.readLock().lock();
         try {
             SQLiteDatabase db = this.getReadableDatabase();
             // There is a segmented index on uid
             // There is no index on time for write performance
             String query = ACCESS_SELECT + " WHERE a.uid = ?";
-            if (hideAllowed) query += HIDE_ALLOWED_ACCESS;
+            query += filters.sqlCondition();
             List<String> args = new ArrayList<>();
             args.add(Integer.toString(uid));
             if (search != null && !search.trim().isEmpty()) {
@@ -899,8 +930,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 query += " AND a.daddr LIKE ? ESCAPE '\\'";
                 args.add(new DomainSearchQuery(mainSearch).sqlContains());
             }
-            query += " ORDER BY " + accessOrder(sort) + " LIMIT 250";
-            return db.rawQuery(query, args.toArray(new String[0]));
+            query += " ORDER BY " + accessOrder(sort) + (filters.needsGlobalScope() ? "" : " LIMIT 250");
+            return filterGlobalAccess(db.rawQuery(query, args.toArray(new String[0])), filters, 250, indicators);
         } finally {
             lock.readLock().unlock();
         }
@@ -918,7 +949,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             // Search all recorded apps before grouping, independent of app filters and the per-app limit.
             return getReadableDatabase().rawQuery(
-                    "SELECT uid, daddr, time, allowed, pending_allow, COALESCE(block, -1) FROM access"
+                    "SELECT uid, daddr, time, allowed, pending_allow, COALESCE(block, -1), ruletext FROM access"
                             + " WHERE daddr LIKE ? ESCAPE '\\'"
                             + " ORDER BY uid, daddr COLLATE NOCASE, time DESC, ID DESC",
                     new String[]{search.sqlContains()});

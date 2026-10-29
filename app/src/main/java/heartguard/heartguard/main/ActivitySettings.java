@@ -112,6 +112,10 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         updateMainUi();
         setupGoogleBackup(screen);
         setupListControls(screen);
+        screen.findPreference("domain_filters").setOnPreferenceClickListener(preference -> {
+            DomainFilterDialog.show(this, DomainFilters.defaults(prefs), selection -> selection.saveDefaults(prefs));
+            return true;
+        });
         screen.findPreference(CompactDomainLists.ENABLED).setOnPreferenceClickListener(preference -> {
             if (getSupportFragmentManager().findFragmentByTag(CompactDomainLists.ENABLED) == null)
                 new CompactDomainListDialog().show(getSupportFragmentManager(), CompactDomainLists.ENABLED);

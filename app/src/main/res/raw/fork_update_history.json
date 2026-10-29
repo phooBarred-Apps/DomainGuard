@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.89",
+    "name": "DomainGuard 2.89",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-29",
+    "body": "DomainGuard 2.89\n\n- Existing domain alerts now clear when an Allow takes effect or a matching explicit Block is added. Global and parent-domain changes address matching alerts across apps; delayed allows remain marked pending until activation. Future attempts can still notify according to your settings.\n- Domain filters replace the Hide allowed button. Choose Show all, Hide globally allowed, or Hide all allowed, and independently Show all, Hide globally blocked, or Hide all blocked. Save defaults in Display settings or from the dialog; per-app changes can remain temporary.\n- Allowed and blocked filters follow the recorded traffic result. A small result icon beside the timestamp appears only when it differs from the current rule; tap for an explanation. Rule edits preserve the recorded result.\n- Copy respects the displayed domain filters, and active filters highlight their icon.\n- Scrolling a compact domain list stays inside it at both ends. The side gutters still scroll the app list.\n- Global Block selection and its confirmation now use the theme's red action color.\n\nInstall DomainGuard.apk from the assets below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.88",
     "name": "DomainGuard 2.88",
     "draft": false,

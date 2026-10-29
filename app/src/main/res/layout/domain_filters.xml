@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:fadeScrollbars="false">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/domain_allowed_label" android:labelFor="@+id/domain_filter_allowed" />
+        <Spinner android:id="@id/domain_filter_allowed" android:layout_width="match_parent" android:layout_height="48dp" android:entries="@array/domain_allowed_choices" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/domain_blocked_label" android:labelFor="@+id/domain_filter_blocked" />
+        <Spinner android:id="@id/domain_filter_blocked" android:layout_width="match_parent" android:layout_height="48dp" android:entries="@array/domain_blocked_choices" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="8dp" android:paddingBottom="8dp" android:text="@string/domain_filters_explanation" android:textAppearance="@style/TextSmall" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <Button android:id="@+id/domain_filter_default" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/list_set_default" android:textAllCaps="false" android:background="?attr/selectableItemBackgroundBorderless" />
+            <Button android:id="@+id/domain_filter_reset" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/domain_filters_reset" android:textAllCaps="false" android:background="?attr/selectableItemBackgroundBorderless" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

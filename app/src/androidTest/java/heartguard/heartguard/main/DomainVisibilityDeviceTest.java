@@ -84,8 +84,10 @@ public class DomainVisibilityDeviceTest {
         for (int i = 0; i < 260; i++)
             insert(FIRST_UID, "permitted-" + i, 500 + i, 1, -1, 0);
         try (Cursor cursor = db.getAccess(FIRST_UID, true)) {
-            assertEquals(3, cursor.getCount());
+            assertEquals(4, cursor.getCount());
             assertTrue(cursor.moveToFirst());
+            assertEquals("active-allow.mw-visibility-test.invalid", cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
+            assertTrue(cursor.moveToNext());
             assertEquals("unknown.mw-visibility-test.invalid", cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
             assertTrue(cursor.moveToNext());
             assertEquals("pending.mw-visibility-test.invalid", cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
@@ -99,7 +101,7 @@ public class DomainVisibilityDeviceTest {
 
     // Test: Each app's single toggle overrides the saved default for this adapter session only.
     // Why: RecyclerView recycling and traffic refreshes must not reset overrides or apply them to another app.
-    @Test public void singleToggleIsIndependentSurvivesRefreshAndResetsNextSession() {
+    @Test public void domainFiltersAreIndependentSurviveRefreshAndResetNextSession() {
         for (int uid : new int[]{FIRST_UID, SECOND_UID}) {
             insert(uid, "allowed", 100, 1, 0, 0);
             insert(uid, "blocked", 200, 0, 1, 0);
@@ -119,7 +121,8 @@ public class DomainVisibilityDeviceTest {
             newSession();
         });
         assertRow(0, true, 1);
-        onMain(() -> holder(0).cbHideAllowedDomains.performClick());
+        onMain(() -> holder(0).domainFilterButton.performClick());
+        DomainFilterTestUi.choose(DomainFilters.SHOW, DomainFilters.SHOW);
         assertRow(0, false, 2);
         assertRow(1, true, 1);
         onMain(() -> adapter.set(new ArrayList<>(apps)));
@@ -132,7 +135,8 @@ public class DomainVisibilityDeviceTest {
             adapter.notifyDataSetChanged();
         });
         assertRow(0, false, 2);
-        onMain(() -> holder(0).cbHideAllowedDomains.performClick());
+        onMain(() -> holder(0).domainFilterButton.performClick());
+        DomainFilterTestUi.choose(DomainFilters.HIDE_ALL, DomainFilters.SHOW);
         assertRow(0, true, 1);
         assertRow(1, false, 2);
         onMain(this::newSession);
@@ -166,7 +170,7 @@ public class DomainVisibilityDeviceTest {
             AdapterRule.ViewHolder first = holder(0);
             assertEquals(View.GONE, first.domainSearch.getVisibility());
             assertEquals(View.VISIBLE, first.domainSearchButton.getVisibility());
-            assertEquals(first.cbHideAllowedDomains.getParent(), first.domainSearchButton.getParent());
+            assertEquals(first.domainFilterButton.getParent(), first.domainSearchButton.getParent());
             assertEquals(first.domainSearchButton.getParent(), first.domainSortButton.getParent());
             first.domainSearchButton.performClick();
             assertEquals(View.VISIBLE, first.domainSearch.getVisibility());
@@ -241,6 +245,127 @@ public class DomainVisibilityDeviceTest {
         adapter.set(new ArrayList<>(apps));
     }
 
+    // Test: Only disagreement adds a historical icon; tapping it explains both states, and recycling removes it.
+    // Why: A red current-rule X beside green historical text must be understandable without adding words to every row.
+    @Test public void timestampExplainsOnlyDifferentRecordedResults() throws Exception {
+        insert(FIRST_UID, "allowed-before-block", 100, 1, 1, 0);
+        insert(FIRST_UID, "blocked-before-allow", 200, 0, 0, 0);
+        insert(FIRST_UID, "agrees", 300, 0, 1, 0);
+        List<AccessEntry> entries = new ArrayList<>();
+        try (Cursor rows = db.getAccess(FIRST_UID)) {
+            while (rows.moveToNext()) entries.add(new AccessEntry(rows));
+        }
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        android.widget.TextView[] timestamp = new android.widget.TextView[1];
+        AdapterAccess.Holder[] row = new AdapterAccess.Holder[1];
+        AdapterAccess access = new AdapterAccess(context, selected -> fail("Timestamp must not open domain actions"));
+        onMain(() -> {
+            access.submit(entries);
+            android.widget.LinearLayout parent = new android.widget.LinearLayout(activity);
+            row[0] = access.onCreateViewHolder(parent, 0);
+            parent.addView(row[0].itemView);
+            activity.setContentView(parent);
+            access.onBindViewHolder(row[0], 2);
+            timestamp[0] = row[0].itemView.findViewById(R.id.tvTime);
+            assertNotNull(timestamp[0].getCompoundDrawablesRelative()[2]);
+            timestamp[0].performClick();
+        });
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        boolean shown = device.wait(Until.hasObject(By.text(java.util.regex.Pattern.compile(
+                ".*" + java.util.regex.Pattern.quote(context.getString(R.string.domain_allowed_then)) + ".*",
+                java.util.regex.Pattern.DOTALL))), 5000);
+        device.dumpWindowHierarchy(new java.io.File(context.getExternalFilesDir(null), "history-result.xml"));
+        device.takeScreenshot(new java.io.File(context.getExternalFilesDir(null), "history-result.png"));
+        assertTrue(shown);
+        device.findObject(By.res("android", "button1")).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        onMain(() -> {
+            access.onBindViewHolder(row[0], 1);
+            assertNotNull(timestamp[0].getCompoundDrawablesRelative()[2]);
+            assertTrue(timestamp[0].getContentDescription().toString().contains("was blocked"));
+            access.onBindViewHolder(row[0], 0);
+            assertNull(timestamp[0].getCompoundDrawablesRelative()[2]);
+            assertFalse(timestamp[0].isClickable());
+        });
+    }
+
+    // Test: Global-only filtering runs before the row limit and preserves local exceptions and recorded results.
+    // Why: Hiding busy global domains must not crowd out older visible rows or reclassify past traffic.
+    @Test public void globalFiltersUseSharedIndicatorsBeforeLimiting() {
+        String allow = "allow host:global.mw-visibility-test.invalid";
+        String block = "blockdomain blocked.mw-visibility-test.invalid";
+        List<Long> ruleIds = new ArrayList<>();
+        try {
+            for (String text : new String[]{allow, block}) {
+                db.addNewRule(text, 1, 1, 1, 0, 0);
+                try (Cursor row = db.getRuleMatchingRuletext(text)) {
+                    assertTrue(row.moveToFirst()); ruleIds.add(row.getLong(row.getColumnIndexOrThrow("_id")));
+                }
+            }
+            for (int i = 0; i < 260; i++) insert(FIRST_UID, i + ".global", 1000 + i, 1, 0, 0);
+            ContentValues rule = new ContentValues(); rule.put("ruletext", allow);
+            db.getWritableDatabase().update("access", rule, "uid = ?", new String[]{Integer.toString(FIRST_UID)});
+            insert(FIRST_UID, "local-allow", 30, 1, 0, 0);
+            insert(FIRST_UID, "blocked", 20, 0, 1, 0);
+            insert(FIRST_UID, "local-block", 10, 0, 1, 0);
+            insert(FIRST_UID, "was-allowed", 5, 1, 1, 0);
+            DomainFilters filters = new DomainFilters(DomainFilters.HIDE_GLOBAL, DomainFilters.HIDE_GLOBAL);
+            try (Cursor rows = db.getAccess(FIRST_UID, filters, "", ListSort.RECENT, "")) {
+                assertEquals(3, rows.getCount());
+            }
+            try (Cursor rows = db.getRecentAccess(0, java.util.Collections.emptySet(),
+                    java.util.Collections.singleton(FIRST_UID), filters, ListSort.RECENT, 1)) {
+                assertTrue(rows.moveToFirst());
+                assertEquals("local-allow.mw-visibility-test.invalid", rows.getString(rows.getColumnIndexOrThrow("daddr")));
+                assertFalse(rows.moveToNext());
+            }
+            long id;
+            try (Cursor rows = db.getAccess(FIRST_UID, new DomainFilters(0, 0), "local-block", ListSort.RECENT, "")) {
+                assertTrue(rows.moveToFirst()); id = rows.getLong(rows.getColumnIndexOrThrow("ID"));
+            }
+            RuleAllowData granted = new RuleAllowData(); granted.allowed = 1; granted.ruletext = allow;
+            db.setAccess(id, granted, "Synthetic rule change");
+            try (Cursor rows = db.getAccess(FIRST_UID, new DomainFilters(DomainFilters.HIDE_ALL, 0), "local-block", ListSort.RECENT, "")) {
+                assertTrue(rows.moveToFirst());
+                assertEquals(0, rows.getInt(rows.getColumnIndexOrThrow("allowed")));
+                assertEquals(0, rows.getInt(rows.getColumnIndexOrThrow("block")));
+                assertEquals(10, rows.getLong(rows.getColumnIndexOrThrow("time")));
+            }
+        } finally { db.removeRulesById(ruleIds.toArray(new Long[0])); }
+    }
+
+    // Test: The dialog saves both defaults, while Reset followed by Cancel preserves its caller's session choice.
+    // Why: Global block hiding must be a saved default without turning a cancelled edit into an applied filter.
+    @Test public void savedGlobalDefaultsAndCancelledResetRemainSeparate() {
+        Integer oldAllowed = prefs.contains(DomainFilters.ALLOWED_KEY) ? prefs.getInt(DomainFilters.ALLOWED_KEY, 0) : null;
+        Integer oldBlocked = prefs.contains(DomainFilters.BLOCKED_KEY) ? prefs.getInt(DomainFilters.BLOCKED_KEY, 0) : null;
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        DomainFilters[] applied = {new DomainFilters(0, 0)};
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        try {
+            onMain(() -> DomainFilterDialog.show(activity, applied[0], changed -> applied[0] = changed));
+            DomainFilterTestUi.select("domain_filter_allowed", R.array.domain_allowed_choices, DomainFilters.HIDE_GLOBAL);
+            DomainFilterTestUi.select("domain_filter_blocked", R.array.domain_blocked_choices, DomainFilters.HIDE_GLOBAL);
+            device.wait(Until.findObject(By.res(context.getPackageName(), "domain_filter_default")), 5000).click();
+            assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+            assertEquals(4, DomainFilters.defaults(prefs).encode());
+            applied[0] = new DomainFilters(0, 0);
+            onMain(() -> DomainFilterDialog.show(activity, applied[0], changed -> applied[0] = changed));
+            device.wait(Until.findObject(By.res(context.getPackageName(), "domain_filter_reset")), 5000).click();
+            device.findObject(By.res("android", "button2")).click();
+            assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+            assertEquals(0, applied[0].encode());
+            assertEquals(4, DomainFilters.defaults(prefs).encode());
+        } finally {
+            SharedPreferences.Editor restore = prefs.edit();
+            if (oldAllowed == null) restore.remove(DomainFilters.ALLOWED_KEY); else restore.putInt(DomainFilters.ALLOWED_KEY, oldAllowed);
+            if (oldBlocked == null) restore.remove(DomainFilters.BLOCKED_KEY); else restore.putInt(DomainFilters.BLOCKED_KEY, oldBlocked);
+            restore.commit();
+        }
+    }
+
     private AdapterRule.ViewHolder holder(int position) {
         return (AdapterRule.ViewHolder) list.findViewHolderForAdapterPosition(position);
     }
@@ -252,7 +377,7 @@ public class DomainVisibilityDeviceTest {
         do {
             onMain(() -> {
                 AdapterRule.ViewHolder row = holder(position);
-                matches[0] = row != null && row.cbHideAllowedDomains.isSelected() == hidden
+                matches[0] = row != null && row.domainFilterButton.isSelected() == hidden
                         && row.lvAccess.getAdapter() != null && row.lvAccess.getAdapter().getItemCount() == count;
             });
             if (!matches[0]) SystemClock.sleep(50);

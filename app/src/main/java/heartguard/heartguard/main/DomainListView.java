@@ -5,19 +5,16 @@ import android.graphics.Color;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.core.graphics.ColorUtils;
 
 /** Optional height limit; gestures inside an overflowing list belong to its domains. */
 public class DomainListView extends RecyclerView {
     private int maximumRows;
-    private float touchY;
-    private final int touchSlop;
+    private boolean ownsGesture;
 
     public DomainListView(Context context, AttributeSet attributes) {
         super(context, attributes);
-        touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         setNestedScrollingEnabled(false);
         setScrollbarFadingEnabled(false);
         setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
@@ -56,25 +53,17 @@ public class DomainListView extends RecyclerView {
     }
 
     @Override public boolean dispatchTouchEvent(MotionEvent event) {
-        if (maximumRows > 0 && getParent() != null) {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    touchY = event.getY();
-                    getParent().requestDisallowInterceptTouchEvent(canScrollVertically(-1) || canScrollVertically(1));
-                    break;
-                case MotionEvent.ACTION_MOVE:
-                    float distance = touchY - event.getY();
-                    if (Math.abs(distance) > touchSlop) {
-                        getParent().requestDisallowInterceptTouchEvent(canScrollVertically(distance > 0 ? 1 : -1));
-                        touchY = event.getY();
-                    }
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    getParent().requestDisallowInterceptTouchEvent(false);
-                    break;
-            }
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN)
+            ownsGesture = maximumRows > 0 && (canScrollVertically(-1) || canScrollVertically(1));
+        // Keep an overflowing list's whole gesture, including at either edge. Side gutters remain outside this view.
+        if (ownsGesture && getParent() != null)
+            getParent().requestDisallowInterceptTouchEvent(true);
+        boolean handled = super.dispatchTouchEvent(event);
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            ownsGesture = false;
+            if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
         }
-        return super.dispatchTouchEvent(event);
+        return handled;
     }
 }

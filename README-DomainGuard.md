@@ -2,7 +2,25 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: October 28, 2026.
+Latest changes: October 29, 2026.
+
+Version `2.89` clears addressed domain notifications after rules activate, including
+matching alerts across apps for global rules. Delayed allows stay pending until
+they take effect. New attempts can notify again according to your preferences.
+
+**Domain filters** replace Hide allowed in app lists and Recent traffic. Hide all
+allowed or blocked requests, or just those with the corresponding global-rule
+indicator. Save global display defaults in **Display settings > Default domain
+filters**, or use **Set as default** in a domain filter dialog. **Apply** in an app
+list or Recent traffic changes that session only; **Reset to default** loads the
+saved choices into the dialog. The icon stays highlighted while filters are active.
+Copy uses the same filters and visible row limit.
+
+Allowed/blocked filtering uses the result when traffic was recorded. Rule changes
+preserve that result. If it differs from the current rule, a small check or X after
+the timestamp explains the difference when tapped. Compact domain lists keep
+scrolling inside their boundaries; their side gutters still scroll the apps. Global
+Block selection and confirmation use the theme's red action color.
 
 Version `2.88` fixes stale per-app destination counts after clearing access history,
 including when live updates are paused. Counts follow new traffic without resetting
@@ -37,7 +55,7 @@ Version `2.82` fixes:
 Version `2.81` adds:
 
 - **Restore saved filters:** the circular arrow clears the search and restores saved filter defaults. A saved User apps choice stays selected; sorting is preserved.
-- **Copy the filtered domains:** cross-app Copy uses both the main search and each app's own domain search, plus Hide allowed and the displayed row limit. Duplicate domains are copied once. Each app also has a Copy domains icon beside its domain tools.
+- **Copy the filtered domains:** cross-app Copy uses both the main search and each app's own domain search, plus Domain filters and the displayed row limit. Duplicate domains are copied once. Each app also has a Copy domains icon beside its domain tools.
 - **Clear empty results:** a cross-app domain search with no results says "No matching domains logged in any apps."
 - **Compact-list switch in settings:** enable or disable Compact domain lists directly in Display settings. Tap the setting's name to choose its height or open the full-screen example. Saving a height does not change the switch.
 
@@ -46,7 +64,7 @@ Version `2.8` adds:
 - **Raw Rules filters:** tap the toolbar title to select All rules or Global rules. Each header has a separate caret opening Block, Allow and Other toggles, all on initially. Choices apply immediately and stay separate for each scope during the session. Temporary rules and pending removals follow their underlying rule type. The plain globe marks Global other rules.
 - **Find and scroll raw rules:** the Rules list now has the raw editor's Find, previous/next match controls and draggable scrollbar. Find searches displayed rules without hiding them or revealing partner secrets. Copy all and export continue to include every rule.
 - **Compact duration inputs:** rule delays, global/app pauses and temporary domain rules share a fixed-width decimal field and an adjacent unit picker. Enter up to three digits before the decimal and two after it; values round automatically to the nearest second, with halves rounded up. Readable durations run from days down to seconds. Existing rule delays and the seven-day limit still apply.
-- **Smaller icon feedback:** icon buttons retain their touch targets, with 36dp press feedback and a borderless 32dp selected state. Per-app search and Hide allowed show when they are on. Domain rows have balanced left/right padding.
+- **Smaller icon feedback:** icon buttons retain their touch targets, with 36dp press feedback and a borderless 32dp selected state. Per-app search and Domain filters show when they are on. Domain rows have balanced left/right padding.
 - **Independent domain searches:** an app matching the main domain search stays visible when its own search has no results, with a message naming the local search.
 
 These filters only change the display. They do not edit rules, affect protection, or change delays.
@@ -97,7 +115,7 @@ Version `2.4` (DomainGuard) adds:
 - **Main-screen domain search:** hold Search to choose apps or domains. Domain mode uses the normal app layout, expands matching apps, and copies every distinct matching domain. Switching modes retains separate queries. Restoring a query does not summon the keyboard.
 - **Central global lists:** an icon-labelled Blacklist/Whitelist chooser, search and add controls, separate bulk-add dialogs, consistent pending timers, and Back/Done navigation to the chooser.
 - **Allow/Block dialogs:** a plain globe toggles Apply globally off/on. The parent-domain dropdown is connected to the input and lists every parent down to the registrable domain, using an offline Public Suffix List. Delay notices reflect the selected action and scope.
-- **Display settings:** consolidated appearance and domain-list controls, the approved Hide allowed icon, and exact timestamps with day-of-month and seconds or optional elapsed time. Per-app domain search starts hidden; tap the magnifying glass to open it, or enable Always show domain search per app.
+- **Display settings:** consolidated appearance and domain-list controls, Domain filters, and exact timestamps with day-of-month and seconds or optional elapsed time. Per-app domain search starts hidden; tap the magnifying glass to open it, or enable Always show domain search per app.
 - **Pause DomainGuard for an app:** choose seconds, minutes, hours or days, up to seven days. The normal rule delay applies before the pause begins. While paused, all of that app's traffic is allowed, including global and app-specific blocks; existing rules are retained and restored automatically afterward. Pending pauses show their duration and start time, with Cancel pending pause directly below. Active pauses offer a green Resume now button below the end time. Android apps sharing a network UID pause together, with a notice in the dialog. The red pause icon is explained in the Legend.
 - **Filter and sort defaults:** Set as default stays separate from confirmation buttons; Filter has Reset on the right, and applicable sort directions share the selected criterion's row.
 - **Rule delay:** units and readable duration, with help in the top-right corner.
@@ -167,8 +185,9 @@ Version `2.317-mw.4` added:
   optional recent-activity/access/UID ordering, combined app filters, a result
   count and reset. Domain lists have search and sort controls. **Set as default**
   explicitly saves a chosen sort; temporary choices last for the current session.
-- **Hide allowed domains** has a saved global default and one temporary override
-  toggle in each expanded app.
+- **Domain filters** have saved global defaults and session overrides in each
+  expanded app and Recent traffic. Filter allowed and blocked recorded results
+  independently, either all or just those with matching global-rule indicators.
 - **Rule change delay** in Settings accepts seconds and displays the equivalent
   hours/minutes/seconds. It shows pending changes and uses the existing delay
   rules, including the delay before a reduction takes effect.

@@ -11,7 +11,7 @@
     <string name="notification_allow_options">Allow options</string>
     <string name="notification_app_unavailable">This app is no longer available. Open DomainGuard to review.</string>
     <string name="notification_domain_blocked">Blocked: %1$s</string>
-    <string name="notification_allow_queued">Allow requested: %1$s\nYour existing rule delay applies. Tap to review.</string>
+    <string name="notification_allow_queued">Allow pending: %1$s\nWaiting for the rule delay. Tap to review.</string>
     <string name="notification_review_block">An explicit block applies to %1$s. Tap to review the blocking rule.</string>
     <string name="notification_shared_uid">This connection cannot be attributed to one app. Tap to review before allowing access.</string>
 </resources>

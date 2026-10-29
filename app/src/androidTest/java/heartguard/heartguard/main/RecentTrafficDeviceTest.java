@@ -61,10 +61,16 @@ public class RecentTrafficDeviceTest {
     private Boolean originalDark, originalHideAllowed;
     private int uid;
     private final Map<String, Object> savedFilters = new HashMap<>();
+    private final List<ContentValues> priorTraffic = new ArrayList<>();
+    private boolean hadVpn;
 
     @Before public void setup() throws Exception {
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        hadVpn = vpnRunning();
+        // This screen reads every app. Isolate its synthetic records from emulator DNS/background traffic.
+        context.stopService(new Intent(context, ServiceSinkhole.class));
+        await(() -> !vpnRunning());
         db = DatabaseHelper.getInstance(context);
         rules = RulesManager.getInstance(context);
         preferences = PreferenceManager.getDefaultSharedPreferences(context);
@@ -82,6 +88,13 @@ public class RecentTrafficDeviceTest {
         device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         uid = context.getApplicationInfo().uid;
         clearFixtures();
+        try (Cursor rows = db.getAllAccess()) {
+            while (rows.moveToNext()) {
+                ContentValues record = new ContentValues(); DatabaseUtils.cursorRowToContentValues(rows, record);
+                priorTraffic.add(record);
+            }
+        }
+        db.getWritableDatabase().delete("access", null, null);
         preferences.edit().putBoolean(Rule.PREFERENCE_STRING_LOG, false)
                 .putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false).commit();
     }
@@ -89,6 +102,8 @@ public class RecentTrafficDeviceTest {
     @After public void cleanup() throws Exception {
         if (activity != null) onMain(() -> activity.finish());
         clearFixtures();
+        for (ContentValues record : priorTraffic)
+            db.getWritableDatabase().insertWithOnConflict("access", null, record, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE);
         SharedPreferences.Editor restore = preferences.edit().putBoolean(Rule.PREFERENCE_STRING_LOG, originalLogging);
         if (originalDark == null) restore.remove("dark_theme"); else restore.putBoolean("dark_theme", originalDark);
         if (originalHideAllowed == null) restore.remove(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS);
@@ -100,6 +115,16 @@ public class RecentTrafficDeviceTest {
             else restore.putBoolean(entry.getKey(), (Boolean) entry.getValue());
         }
         restore.commit();
+        if (hadVpn) ServiceSinkhole.reload("restore emulator after traffic tests", context, false);
+    }
+
+    private boolean vpnRunning() {
+        android.net.ConnectivityManager manager = (android.net.ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        for (android.net.Network network : manager.getAllNetworks()) {
+            android.net.NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
+            if (capabilities != null && capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) return true;
+        }
+        return false;
     }
 
     // Test: App filters apply before paging and combine with Hide allowed and hidden apps.
@@ -112,14 +137,14 @@ public class RecentTrafficDeviceTest {
         java.util.Set<Integer> included = new HashSet<>();
         for (int i = 0; i < 1200; i++) included.add(80000 + i);
         included.add(uid);
-        try (Cursor cursor = db.getRecentAccess(now - 10000, Collections.emptySet(), included, true, ListSort.RECENT, 1)) {
+        try (Cursor cursor = db.getRecentAccess(now - 10000, Collections.emptySet(), included, new DomainFilters(DomainFilters.HIDE_ALL, DomainFilters.SHOW), ListSort.RECENT, 1)) {
             assertTrue(cursor.moveToFirst());
             assertEquals("included." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
             assertFalse(cursor.moveToNext());
         }
         for (java.util.Set<Integer> hidden : Arrays.asList(Collections.<Integer>emptySet(), Collections.singleton(uid)))
             try (Cursor cursor = db.getRecentAccess(now - 10000, hidden,
-                    hidden.isEmpty() ? Collections.emptySet() : included, false, ListSort.RECENT, 10)) {
+                    hidden.isEmpty() ? Collections.emptySet() : included, new DomainFilters(DomainFilters.SHOW, DomainFilters.SHOW), ListSort.RECENT, 10)) {
                 assertEquals(0, cursor.getCount());
             }
         List<Rule> apps = Rule.getRules(true, context);
@@ -168,7 +193,8 @@ public class RecentTrafficDeviceTest {
         setWindow("5", RuleDelay.Unit.MINUTES);
         find("recent_sort").click();
         device.wait(Until.findObject(By.text(context.getString(R.string.sort_oldest))), 5000).click();
-        find("recent_hide_allowed").click();
+        find("recent_domain_filter").click();
+        DomainFilterTestUi.choose(DomainFilters.HIDE_ALL, DomainFilters.SHOW);
         device.waitForIdle();
         find("recent_filter").click();
         chooseFilter("filter_type", R.array.list_type_choices, 2);
@@ -186,7 +212,7 @@ public class RecentTrafficDeviceTest {
         assertEquals(1, preferences.getInt("recent_filter_default_type", 0));
         assertTrue(find("recent_window").getText().contains("5 minutes"));
         assertEquals(context.getString(R.string.sort_oldest), find("recent_sort").getContentDescription());
-        onMain(() -> assertTrue(activity.findViewById(R.id.recent_hide_allowed).isSelected()));
+        onMain(() -> assertTrue(activity.findViewById(R.id.recent_domain_filter).isSelected()));
         for (String key : mainDefaults.keySet()) if (key.startsWith("app_filter_default_"))
             assertEquals(mainDefaults.get(key), preferences.getAll().get(key));
         onMain(() -> activity.finish()); open(); await(() -> count() == 1);
@@ -258,10 +284,10 @@ public class RecentTrafficDeviceTest {
         assertEquals(2, ids(now - 180000, Collections.singleton(uid), ListSort.RECENT, 100).size());
         assertEquals(1, ids(now - 180000, new HashSet<>(Arrays.asList(uid, -1)), ListSort.RECENT, 100).size());
         assertEquals(recent.subList(0, 2), ids(now - 180000, Collections.emptySet(), ListSort.RECENT, 2));
-        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.emptySet(), null, false, ListSort.NAME, 100)) {
+        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.emptySet(), null, new DomainFilters(DomainFilters.SHOW, DomainFilters.SHOW), ListSort.NAME, 100)) {
             assertTrue(cursor.moveToFirst()); assertEquals("alpha." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
         }
-        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.singleton(uid), null, true, ListSort.RECENT, 1)) {
+        try (Cursor cursor = db.getRecentAccess(now - 180000, Collections.singleton(uid), null, new DomainFilters(DomainFilters.HIDE_ALL, DomainFilters.SHOW), ListSort.RECENT, 1)) {
             assertTrue(cursor.moveToFirst()); assertEquals("unknown." + HOST, cursor.getString(cursor.getColumnIndexOrThrow("daddr")));
             assertFalse(cursor.moveToNext());
         }
@@ -279,10 +305,9 @@ public class RecentTrafficDeviceTest {
         preferences.edit().putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, true).commit();
         open(); await(() -> count() == 2);
         onMain(() -> {
-            View hide = activity.findViewById(R.id.recent_hide_allowed);
+            View hide = activity.findViewById(R.id.recent_domain_filter);
             assertTrue(hide.isSelected());
-            assertEquals(context.getString(R.string.hide_allowed_domains) + ": " + context.getString(R.string.control_on),
-                    hide.getContentDescription().toString());
+            assertTrue(hide.getContentDescription().toString().contains("Hide all allowed"));
             assertEquals(View.GONE, activity.findViewById(R.id.recent_more).getVisibility());
         });
         insert(uid, "new-allowed", System.currentTimeMillis(), true);
@@ -294,25 +319,27 @@ public class RecentTrafficDeviceTest {
         });
         clickRowControl(99191, R.id.recent_hide_app);
         await(() -> count() == 2);
-        find("recent_hide_allowed").click();
+        find("recent_domain_filter").click();
+        DomainFilterTestUi.choose(DomainFilters.SHOW, DomainFilters.SHOW);
         await(() -> count() == 250);
         find("recent_more").click();
         await(() -> count() == 258);
         recreate(); await(() -> count() == 258);
-        onMain(() -> assertFalse(activity.findViewById(R.id.recent_hide_allowed).isSelected()));
+        onMain(() -> assertFalse(activity.findViewById(R.id.recent_domain_filter).isSelected()));
         assertTrue(preferences.getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false));
         assertFalse(preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, true));
         assertEquals(259, fixtureCount());
-        find("recent_hide_allowed").click();
+        find("recent_domain_filter").click();
+        DomainFilterTestUi.choose(DomainFilters.HIDE_ALL, DomainFilters.SHOW);
         await(() -> count() == 2);
         clickRowControl(uid, R.id.recent_hide_app);
         await(() -> count() == 0);
-        onMain(() -> assertEquals(context.getString(R.string.recent_traffic_empty_blocked),
+        onMain(() -> assertEquals(context.getString(R.string.domain_filters_empty),
                 ((TextView) activity.findViewById(R.id.recent_empty)).getText().toString()));
     }
 
-    // Test: Both views hide allowed rules while retaining pending/unknown records, and rule changes refresh the combined view.
-    // Why: The usual filter must behave the same before and after a saved rule changes, even without new traffic.
+    // Test: Both views retain blocked requests after an Allow rule changes their current status.
+    // Why: Display filters must preserve the historical result instead of treating a rule edit as new traffic.
     @Test public void accessFiltersMatchTheMainListsAfterRuleChanges() {
         long now = System.currentTimeMillis();
         for (String name : new String[]{"blocked", "allowed-rule", "pending", "unknown"}) insert(uid, name, now, false);
@@ -336,13 +363,13 @@ public class RecentTrafficDeviceTest {
         try (Cursor cursor = db.getAccess(uid, true)) {
             while (cursor.moveToNext()) expected.add(cursor.getLong(cursor.getColumnIndexOrThrow("ID")));
         }
-        try (Cursor cursor = db.getRecentAccess(now - 1000, Collections.emptySet(), null, true, ListSort.RECENT, 100)) {
+        try (Cursor cursor = db.getRecentAccess(now - 1000, Collections.emptySet(), null, new DomainFilters(DomainFilters.HIDE_ALL, DomainFilters.SHOW), ListSort.RECENT, 100)) {
             while (cursor.moveToNext()) combined.add(cursor.getLong(cursor.getColumnIndexOrThrow("ID")));
         }
-        assertEquals(3, expected.size());
+        assertEquals(4, expected.size());
         assertEquals(expected, combined);
         preferences.edit().putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, true).commit();
-        open(); await(() -> count() == 3);
+        open(); await(() -> count() == 4);
         db.setAccess(allowedId, null, "Synthetic rule removed");
         await(() -> count() == 4);
         assertFalse(preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, true));
@@ -515,7 +542,7 @@ public class RecentTrafficDeviceTest {
                     View screen = LayoutInflater.from(themed).inflate(R.layout.recent_traffic, null);
                     ((TextView) screen.findViewById(R.id.recent_window)).setText("Last 3 minutes");
                     measure(screen, CompactUi.dp(themed, 320), CompactUi.dp(themed, 640));
-                    for (int id : new int[]{R.id.recent_window, R.id.recent_hide_allowed, R.id.recent_sort, R.id.recent_hidden, R.id.recent_help}) {
+                    for (int id : new int[]{R.id.recent_window, R.id.recent_domain_filter, R.id.recent_sort, R.id.recent_hidden, R.id.recent_help}) {
                         View control = screen.findViewById(id);
                         assertTrue(control.getWidth() >= CompactUi.dp(themed, 48));
                         assertTrue(control.getRight() <= ((View) control.getParent()).getWidth());
@@ -635,7 +662,7 @@ public class RecentTrafficDeviceTest {
     }
     private List<Long> ids(long cutoff, java.util.Set<Integer> hidden, String sort, int limit) {
         List<Long> ids = new ArrayList<>();
-        try (Cursor cursor = db.getRecentAccess(cutoff, hidden, null, false, sort, limit)) {
+        try (Cursor cursor = db.getRecentAccess(cutoff, hidden, null, new DomainFilters(DomainFilters.SHOW, DomainFilters.SHOW), sort, limit)) {
             while (cursor.moveToNext()) ids.add(cursor.getLong(0));
         }
         return ids;
