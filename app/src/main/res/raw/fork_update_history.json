@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.88",
+    "name": "DomainGuard 2.88",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-28",
+    "body": "DomainGuard 2.88\n\n- Fixed the number beside an app remaining stale after clearing its access history. The count now refreshes after clearing, including with live updates paused, and follows new traffic without resetting searches or scrolling.\n- Fixed grouped domain alerts losing their status-bar icon when grouped with the quiet protection notification. Notification visibility follows the existing Android channel settings.\n\nInstall DomainGuard.apk from the assets below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.87",
     "name": "DomainGuard 2.87",
     "draft": false,

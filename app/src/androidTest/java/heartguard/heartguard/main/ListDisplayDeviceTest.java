@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.MotionEvent;
+import android.view.View;
 import android.widget.FrameLayout;
 import androidx.preference.PreferenceManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -37,6 +38,7 @@ public class ListDisplayDeviceTest {
     private Activity activity;
     private SharedPreferences prefs;
     private String savedSort;
+    private AdapterRule counterAdapter;
 
     @Before public void setup() {
         assertTrue("Use a disposable emulator", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
@@ -47,6 +49,7 @@ public class ListDisplayDeviceTest {
         savedSort = prefs.getString(ListSort.APP_DEFAULT, null);
     }
     @After public void cleanup() {
+        if (counterAdapter != null) onMain(() -> counterAdapter.dispose());
         if (activity != null) onMain(() -> activity.finish());
         db.getWritableDatabase().delete("access", "uid = ? AND daddr LIKE ?", new String[]{"" + UID, "%.mw-list-test.invalid"});
         onMain(() -> {
@@ -54,6 +57,52 @@ public class ListDisplayDeviceTest {
             if (savedSort == null) edit.remove(ListSort.APP_DEFAULT); else edit.putString(ListSort.APP_DEFAULT, savedSort);
             edit.commit();
         });
+    }
+
+    // Test: Clearing access history refreshes the bound badge and cached count, even with live updates paused.
+    // Why: Chrome retained its old badge after the trash action deleted the records that it counted.
+    @Test public void clearingAccessRefreshesCounterWithoutRebinding() {
+        insert("blocked", 10, 1);
+        insert("allowed", 20, 0);
+        assertEquals(2, db.getHostCount(UID, true));
+        Rule app = Rule.getRules(true, context).get(0);
+        app.uid = UID; app.packageName = "test.counter"; app.name = "Counter test";
+        app.enabled = true; app.internet = true; app.system = false; app.icon = 0; app.hosts = 2;
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        AdapterRule.ViewHolder[] bound = new AdapterRule.ViewHolder[1];
+        onMain(() -> {
+            counterAdapter = new AdapterRule(activity, new FrameLayout(activity));
+            counterAdapter.options.reset();
+            counterAdapter.set(java.util.Collections.singletonList(app));
+            bound[0] = counterAdapter.onCreateViewHolder(new FrameLayout(activity), 0);
+            counterAdapter.onBindViewHolder(bound[0], 0);
+            activity.setContentView(bound[0].itemView);
+            assertEquals("2", bound[0].tvHosts.getText().toString());
+            bound[0].ivLive.performClick();
+            bound[0].btnClearAccess.performClick();
+        });
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        device.wait(Until.findObject(By.res("android", "button1")), 5000).click();
+        long deadline = SystemClock.elapsedRealtime() + 5000;
+        boolean[] cleared = {false};
+        do {
+            onMain(() -> cleared[0] = bound[0].tvHosts.getVisibility() == View.GONE);
+            if (!cleared[0]) SystemClock.sleep(50);
+        } while (!cleared[0] && SystemClock.elapsedRealtime() < deadline);
+        try (Cursor cursor = db.getAccess(UID)) { assertEquals("Trash clears the records", 0, cursor.getCount()); }
+        assertTrue("The existing bound badge must clear without reopening the screen", cleared[0]);
+        assertEquals("Reopening must not resurrect the cached count", 0, db.getHostCount(UID, true));
+        insert("new-traffic", 30, 1);
+        onMain(() -> counterAdapter.refreshTraffic());
+        deadline = SystemClock.elapsedRealtime() + 5000;
+        boolean[] updated = {false};
+        do {
+            onMain(() -> updated[0] = bound[0].tvHosts.getVisibility() == View.VISIBLE
+                    && "1".contentEquals(bound[0].tvHosts.getText()));
+            if (!updated[0]) SystemClock.sleep(50);
+        } while (!updated[0] && SystemClock.elapsedRealtime() < deadline);
+        assertTrue("New traffic updates the same bound badge", updated[0]);
     }
 
     // Test: Alphabetical sorting ignores changed/traffic grouping, with independent combined filters.
@@ -69,8 +118,8 @@ public class ListDisplayDeviceTest {
         beta.wifi_blocked = beta.other_blocked = false; beta.changed = true;
         gamma.wifi_blocked = gamma.other_blocked = true; gamma.system = true;
         Map<Integer, DatabaseHelper.AccessStats> stats = new HashMap<>();
-        stats.put(2, new DatabaseHelper.AccessStats(4, 20));
-        stats.put(3, new DatabaseHelper.AccessStats(2, 50));
+        stats.put(2, new DatabaseHelper.AccessStats(4, 20, 4));
+        stats.put(3, new DatabaseHelper.AccessStats(2, 50, 2));
         AppListOptions options = new AppListOptions();
         apps.sort(options.comparator(stats));
         assertEquals(Arrays.asList(alpha, beta, gamma), apps);

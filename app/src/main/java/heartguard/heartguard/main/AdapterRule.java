@@ -566,8 +566,16 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             stats = result.stats;
             domainRows = result.domains;
             domainMatches.clear();
-            for (Rule app : listAll) updateDomainMatches(app);
+            for (Rule app : listAll) {
+                DatabaseHelper.AccessStats access = stats.get(app.uid);
+                app.hosts = access == null ? 0 : access.hosts;
+                updateDomainMatches(app);
+            }
             applyOptions(true);
+            // The same Rule objects can stay bound after a traffic refresh. Update only the badge,
+            // so fresh counts do not rebind domain lists or disturb searches and scroll positions.
+            for (ViewHolder holder : boundHolders)
+                if (holder.boundRule != null) bindHostCount(holder, holder.boundRule);
         });
         refreshDomains();
     }
@@ -760,8 +768,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             color = Color.argb(128, Color.red(color), Color.green(color), Color.blue(color));
         holder.tvName.setTextColor(color);
 
-        holder.tvHosts.setVisibility(rule.hosts > 0 ? View.VISIBLE : View.GONE);
-        holder.tvHosts.setText(Long.toString(rule.hosts));
+        bindHostCount(holder, rule);
 
         // Lockdown settings
         boolean lockdown = RulesManager.getInstance(context).getPreferenceLockdown(context);
@@ -1160,8 +1167,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                     public void onSure() {
                         //DatabaseHelper.getInstance(context).clearAccess(rule.uid, true);
                         DatabaseHelper.getInstance(context).clearAccess(rule.uid, false);
-                        if (!live)
-                            notifyDataSetChanged();
+                        // An explicit clear must refresh the view even when live updates are paused.
+                        refreshTraffic();
                         if (rv != null)
                             rv.scrollToPosition(holder.getAdapterPosition());
                     }
@@ -1301,6 +1308,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.boundRule = null;
         holder.boundPackage = null;
         holder.lvAccess.setAdapter(null);
+    }
+
+    private void bindHostCount(ViewHolder holder, Rule rule) {
+        holder.tvHosts.setVisibility(rule.hosts > 0 ? View.VISIBLE : View.GONE);
+        holder.tvHosts.setText(Long.toString(rule.hosts));
     }
 
     private void bindLiveControl(ViewHolder holder) {

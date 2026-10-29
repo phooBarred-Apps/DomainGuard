@@ -2,7 +2,14 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: October 27, 2026.
+Latest changes: October 28, 2026.
+
+Version `2.88` fixes stale per-app destination counts after clearing access history,
+including when live updates are paused. Counts follow new traffic without resetting
+searches or scrolling. Grouped alerts also retain their status-bar icon according
+to the existing Android notification channel settings. This patch does not change
+the placement of **Clear all**; its visibility in Samsung's notification layout
+remains under investigation.
 
 Version `2.87`: **Grouped notifications** put DomainGuard status and alerts in one
 expandable group on Android 7 and newer. Expand the status notification to use

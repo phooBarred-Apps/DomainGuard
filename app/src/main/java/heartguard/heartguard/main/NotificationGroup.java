@@ -1,6 +1,7 @@
 package heartguard.heartguard.main;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -13,6 +14,9 @@ import android.text.TextUtils;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /** Notification presentation only: clearing alerts never changes rules, logs, or services. */
 final class NotificationGroup {
@@ -100,6 +104,9 @@ final class NotificationGroup {
         int alerts = 0;
         boolean ongoing = false;
         Notification existingSummary = null;
+        String summaryChannel = "foreground";
+        int summaryImportance = Integer.MIN_VALUE;
+        Map<String, Integer> channelImportance = new HashMap<>();
         for (StatusBarNotification entry : manager.getActiveNotifications()) {
             Notification notification = entry.getNotification();
             if (SUMMARY_TAG.equals(entry.getTag()) && entry.getId() == SUMMARY_ID) existingSummary = notification;
@@ -108,6 +115,21 @@ final class NotificationGroup {
             children++;
             if (isClearable(notification)) alerts++;
             else ongoing = true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                String channelId = notification.getChannelId();
+                Integer importance = channelImportance.get(channelId);
+                if (importance == null) {
+                    NotificationChannel channel = manager.getNotificationChannel(channelId);
+                    importance = channel == null ? NotificationManager.IMPORTANCE_NONE : channel.getImportance();
+                    channelImportance.put(channelId, importance);
+                }
+                // Android shows the group's summary icon, not its children's icons. Keep the most visible child's
+                // existing channel, respecting user settings instead of hiding alerts behind the quiet VPN channel.
+                if (importance > summaryImportance) {
+                    summaryImportance = importance;
+                    summaryChannel = channelId;
+                }
+            }
         }
         if (children == 0) {
             manager.cancel(SUMMARY_TAG, SUMMARY_ID);
@@ -117,13 +139,15 @@ final class NotificationGroup {
         String text = context.getResources().getQuantityString(R.plurals.notification_alert_count, alerts, alerts);
         // Android updates the children itself; avoid reposting an unchanged summary on every attempt.
         if (existingSummary != null
+                && (Build.VERSION.SDK_INT < Build.VERSION_CODES.O
+                    || TextUtils.equals(existingSummary.getChannelId(), summaryChannel))
                 && ((existingSummary.flags & Notification.FLAG_ONGOING_EVENT) != 0) == ongoing
                 && TextUtils.equals(existingSummary.extras.getCharSequence(Notification.EXTRA_TITLE), title)
                 && TextUtils.equals(existingSummary.extras.getCharSequence(Notification.EXTRA_TEXT), text)) return;
         Intent main = new Intent(context, ActivityMain.class);
         PendingIntent open = PendingIntent.getActivity(context, 0, main, PendingIntent.FLAG_UPDATE_CURRENT
                 | PendingIntent.FLAG_IMMUTABLE);
-        NotificationCompat.Builder summary = builder(context, "foreground")
+        NotificationCompat.Builder summary = builder(context, summaryChannel)
                 .setSmallIcon(R.drawable.ic_security_white_24dp)
                 .setContentTitle(title).setContentText(text)
                 .setContentIntent(open).setGroupSummary(true).setOngoing(ongoing)
