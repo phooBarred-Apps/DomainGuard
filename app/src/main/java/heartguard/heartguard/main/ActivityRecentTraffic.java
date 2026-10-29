@@ -75,10 +75,11 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     private LinearLayoutManager layout;
     private Button window, more;
     private TextView empty, count, protectionStatus;
-    private ImageButton hidden, hideAllowedButton, filterButton;
+    private ImageButton hidden, domainFilterButton, filterButton;
     private int seconds = DEFAULT_WINDOW_SECONDS, limit = PAGE_SIZE;
     private String sort = ListSort.RECENT;
-    private boolean resumed, failed, scrollToTop, hideAllowed;
+    private boolean resumed, failed, scrollToTop;
+    private DomainFilters domainFilters;
     private long loadedRevision = -1, oldestVisible = Long.MAX_VALUE;
     private final DatabaseHelper.AccessChangedListener changed = () -> main.post(this::refresh);
     private final DatabaseHelper.RuleChangedListener rulesChanged = () -> main.post(this::refresh);
@@ -105,12 +106,13 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         worker.setRemoveOnCancelPolicy(true);
         database = DatabaseHelper.getInstance(this);
         filters.loadFilterDefaults(PreferenceManager.getDefaultSharedPreferences(this));
-        hideAllowed = PreferenceManager.getDefaultSharedPreferences(this)
-                .getBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, false);
+        domainFilters = DomainFilters.defaults(PreferenceManager.getDefaultSharedPreferences(this));
         if (state != null) {
             Bundle savedFilters = state.getBundle("filters");
             if (savedFilters != null) filters.restore(savedFilters);
-            hideAllowed = state.getBoolean("hide_allowed", hideAllowed);
+            domainFilters = state.containsKey("domain_filters") ? DomainFilters.decode(state.getInt("domain_filters"))
+                    : new DomainFilters(state.getBoolean("hide_allowed", domainFilters.allowed == DomainFilters.HIDE_ALL)
+                    ? DomainFilters.HIDE_ALL : DomainFilters.SHOW, domainFilters.blocked);
             seconds = Math.max(1, Math.min(MAX_WINDOW_SECONDS, state.getInt("seconds", DEFAULT_WINDOW_SECONDS)));
             sort = ListSort.valid(state.getString("sort", ListSort.RECENT), ListSort.DOMAINS);
             limit = Math.max(PAGE_SIZE, state.getInt("limit", PAGE_SIZE));
@@ -139,16 +141,16 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         empty = findViewById(R.id.recent_empty);
         count = findViewById(R.id.recent_count);
         hidden = findViewById(R.id.recent_hidden);
-        hideAllowedButton = findViewById(R.id.recent_hide_allowed);
+        domainFilterButton = findViewById(R.id.recent_domain_filter);
         for (Button button : new Button[]{window, more}) CompactUi.frameless(button);
         window.setOnClickListener(view -> showWindow());
-        hideAllowedButton.setOnClickListener(view -> {
-            hideAllowed = !hideAllowed;
+        domainFilterButton.setOnClickListener(view -> DomainFilterDialog.show(this, domainFilters, selected -> {
+            domainFilters = selected;
             limit = PAGE_SIZE;
             failed = false;
             updateControls();
             refresh();
-        });
+        }));
         findViewById(R.id.recent_sort).setOnClickListener(view -> showSort());
         hidden.setOnClickListener(view -> showHidden());
         findViewById(R.id.recent_help).setOnClickListener(view -> CompactUi.help(this,
@@ -248,7 +250,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         state.putInt("seconds", seconds);
         state.putInt("limit", limit);
         state.putString("sort", sort);
-        state.putBoolean("hide_allowed", hideAllowed);
+        state.putInt("domain_filters", domainFilters.encode());
         state.putBundle("filters", filters.save());
         int[] uids = new int[hiddenApps.size()];
         int i = 0;
@@ -261,11 +263,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     private void updateControls() {
         if (filterButton != null) filterButton.setSelected(filters.hasAppFilters());
         window.setText(getString(R.string.recent_traffic_window, RuleDelay.duration(this, seconds)));
-        hideAllowedButton.setSelected(hideAllowed);
-        hideAllowedButton.setAlpha(hideAllowed ? 1f : 0.5f);
-        hideAllowedButton.setContentDescription(getString(R.string.hide_allowed_domains) + ": "
-                + getString(hideAllowed ? R.string.control_on : R.string.control_off));
-        TooltipCompat.setTooltipText(hideAllowedButton, hideAllowedButton.getContentDescription());
+        DomainFilterDialog.bind(domainFilterButton, domainFilters);
         hidden.setSelected(!hiddenApps.isEmpty());
         hidden.setContentDescription(getString(R.string.recent_traffic_hidden, hiddenApps.size()));
         TooltipCompat.setTooltipText(hidden, hidden.getContentDescription());
@@ -279,15 +277,15 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         Set<Integer> hiddenSnapshot = new LinkedHashSet<>(hiddenApps.keySet());
         String requestedSort = sort;
         int requestedSeconds = seconds, requestedLimit = limit;
-        boolean requestedHideAllowed = hideAllowed;
+        DomainFilters requestedDomainFilters = domainFilters;
         AppListOptions requestedFilters = new AppListOptions(true);
         requestedFilters.restore(filters.save());
         long requestedCatalogRevision = catalogRevision, requestedPackagesRevision = packagesRevision;
-        reads.submit(() -> read(hiddenSnapshot, requestedHideAllowed, requestedSort, requestedSeconds, requestedLimit,
+        reads.submit(() -> read(hiddenSnapshot, requestedDomainFilters, requestedSort, requestedSeconds, requestedLimit,
                 requestedFilters, requestedCatalogRevision, requestedPackagesRevision), this::display);
     }
 
-    private Snapshot read(Set<Integer> hiddenUids, boolean requestedHideAllowed, String requestedSort,
+    private Snapshot read(Set<Integer> hiddenUids, DomainFilters requestedDomainFilters, String requestedSort,
                           int requestedSeconds, int requestedLimit, AppListOptions requestedFilters,
                           long requestedCatalogRevision, long requestedPackagesRevision) {
         long revision = database.getAccessRevision();
@@ -309,7 +307,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
             }
             GlobalRuleIndicators indicators = database.getGlobalRuleIndicators();
             try (Cursor cursor = database.getRecentAccess(System.currentTimeMillis() - requestedSeconds * 1000L,
-                    hiddenUids, includedUids, requestedHideAllowed, requestedSort, requestedLimit + 1)) {
+                    hiddenUids, includedUids, requestedDomainFilters, requestedSort, requestedLimit + 1)) {
                 boolean hasMore = false;
                 while (cursor.moveToNext()) {
                     if (entries.size() == requestedLimit) { hasMore = true; break; }
@@ -352,7 +350,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         failed = result.failed;
         empty.setText(failed ? R.string.recent_traffic_error
                 : filters.hasAppFilters() ? R.string.recent_traffic_empty_filtered
-                : hideAllowed ? R.string.recent_traffic_empty_blocked
+                : domainFilters.active() ? R.string.domain_filters_empty
                 : hiddenApps.isEmpty() ? R.string.recent_traffic_empty : R.string.recent_traffic_empty_hidden);
         if (failed) {
             empty.setVisibility(View.VISIBLE);

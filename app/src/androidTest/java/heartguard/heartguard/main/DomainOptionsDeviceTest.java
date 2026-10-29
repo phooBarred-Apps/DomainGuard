@@ -111,10 +111,9 @@ public class DomainOptionsDeviceTest {
         ContentValues allowed = new ContentValues(); allowed.put("allowed", 1); allowed.put("block", 0);
         DatabaseHelper.getInstance(context).getWritableDatabase().update("access", allowed,
                 "uid = ? AND daddr = ?", new String[]{Integer.toString(UID), "domain-0.options-test.invalid"});
-        onMain(() -> {
-            holder().cbHideAllowedDomains.performClick();
-            adapter.copyMatchingDomains();
-        });
+        onMain(() -> holder().domainFilterButton.performClick());
+        DomainFilterTestUi.choose(DomainFilters.HIDE_ALL, DomainFilters.SHOW);
+        onMain(() -> adapter.copyMatchingDomains());
         await(() -> clipboardText().equals("domain-1.options-test.invalid\ndomain-9.options-test.invalid"));
     }
 
@@ -219,13 +218,12 @@ public class DomainOptionsDeviceTest {
         // Raw fixture writes bypass DatabaseHelper's access-change notification.
         onMain(() -> adapter.refreshTraffic());
         await(() -> field("domainRows") != beforeTrafficChange);
-        onMain(() -> {
-            if (!holder().cbHideAllowedDomains.isSelected()) holder().cbHideAllowedDomains.performClick();
-            else adapter.refreshTraffic();
-        });
+        onMain(() -> holder().domainFilterButton.performClick());
+        DomainFilterTestUi.choose(DomainFilters.HIDE_ALL, DomainFilters.SHOW);
         await(() -> adapter.getItemCount() == 1 && holder() != null && adapter.matchingDomainCount() == 0
                 && holder().lvAccess.getAdapter().getItemCount() == 0);
-        onMain(() -> holder().cbHideAllowedDomains.performClick());
+        onMain(() -> holder().domainFilterButton.performClick());
+        DomainFilterTestUi.choose(DomainFilters.SHOW, DomainFilters.SHOW);
         await(() -> adapter.matchingDomainCount() == 2 && holder().lvAccess.getAdapter().getItemCount() == 2);
         onMain(() -> adapter.setDomainSearch(true, "missing-main-query"));
         await(() -> adapter.getItemCount() == 0);
@@ -248,8 +246,9 @@ public class DomainOptionsDeviceTest {
         assertSame(stats, field("stats"));
         onMain(() -> {
             holder().domainSearch.setText("");
-            holder().cbHideAllowedDomains.performClick();
+            holder().domainFilterButton.performClick();
         });
+        DomainFilterTestUi.choose(DomainFilters.HIDE_ALL, DomainFilters.SHOW);
         await(() -> holder() != null && holder().lvAccess.getAdapter().getItemCount() == 1);
         assertSame("Hide allowed also stays local", domains, field("domainRows"));
         ContentValues row = new ContentValues();
@@ -299,6 +298,43 @@ public class DomainOptionsDeviceTest {
                     ((LinearLayoutManager) holder().lvAccess.getLayoutManager()).findFirstVisibleItemPosition()));
         }
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "domain-side-gutters.png"));
+    }
+
+    // Test: Further swipes at either end of a compact domain list stay inside it; reverse swipes still scroll domains.
+    // Why: Reaching the last or first domain must not unexpectedly move the surrounding app list.
+    @Test public void compactListKeepsGesturesAtBothEdges() {
+        preferences.edit().putBoolean(CompactDomainLists.ENABLED, true).putInt(CompactDomainLists.ROWS, 3).commit();
+        launch(250);
+        for (boolean bottom : new boolean[]{true, false}) {
+            onMain(() -> {
+                // Leave room to scroll the outer list in either direction, so both assertions can catch a handoff.
+                ((LinearLayoutManager) list.getLayoutManager()).scrollToPositionWithOffset(0, -CompactUi.dp(context, 32));
+                ((LinearLayoutManager) holder().lvAccess.getLayoutManager()).scrollToPositionWithOffset(bottom ? 249 : 0, 0);
+            });
+            device.waitForIdle();
+            int[] appTop = new int[1];
+            Rect bounds = new Rect();
+            onMain(() -> {
+                assertTrue(list.canScrollVertically(bottom ? 1 : -1));
+                assertFalse(holder().lvAccess.canScrollVertically(bottom ? 1 : -1));
+                appTop[0] = holder().itemView.getTop();
+                assertTrue(holder().lvAccess.getGlobalVisibleRect(bounds));
+            });
+            int start = bottom ? bounds.bottom - 12 : bounds.top + 12;
+            int end = bottom ? bounds.top + 12 : bounds.bottom - 12;
+            for (int swipe = 0; swipe < 3; swipe++) {
+                device.swipe(bounds.centerX(), start, bounds.centerX(), end, 35);
+                device.waitForIdle();
+                onMain(() -> {
+                    assertNotNull("The app must remain onscreen", holder());
+                    assertEquals("An edge swipe must not move the outer list", appTop[0], holder().itemView.getTop());
+                });
+            }
+            device.swipe(bounds.centerX(), end, bounds.centerX(), start, 35);
+            await(() -> holder().lvAccess.canScrollVertically(bottom ? 1 : -1));
+            await(() -> holder().lvAccess.getScrollState() == RecyclerView.SCROLL_STATE_IDLE);
+            onMain(() -> assertEquals("Reverse swipes stay inside the domains too", appTop[0], holder().itemView.getTop()));
+        }
     }
 
     // Test: Switch tabs with a real tap, retain the selected tab after refresh, and switch back to all domains.

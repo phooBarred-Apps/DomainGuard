@@ -30,6 +30,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.BooleanSupplier;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
@@ -48,6 +50,7 @@ public class AccessNotificationDeviceTest {
     private Boolean previousNotify;
     private Boolean previousDark;
     private Activity settings;
+    private int otherUid = -1;
     private final List<String> owned = new ArrayList<>();
 
     @Before public void setup() {
@@ -55,6 +58,7 @@ public class AccessNotificationDeviceTest {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         db = DatabaseHelper.getInstance(context);
         rules = RulesManager.getInstance(context);
+        barrier();
         notifications = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         uid = android.os.Process.myUid();
         pkg = context.getPackageName();
@@ -82,6 +86,7 @@ public class AccessNotificationDeviceTest {
         notifications.cancel(AccessNotification.tag(uid, pkg, SUBDOMAIN), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(uid, pkg, LOOKALIKE), AccessNotification.ID);
         notifications.cancel(AccessNotification.tag(99195, "", FIRST), AccessNotification.ID);
+        if (otherUid >= 0) notifications.cancel(AccessNotification.tag(otherUid, "com.android.chrome", FIRST), AccessNotification.ID);
         NotificationGroup.refresh(context);
         List<Long> ids = new ArrayList<>();
         try (Cursor cursor = db.getAllRules()) {
@@ -91,6 +96,7 @@ public class AccessNotificationDeviceTest {
         }
         db.removeRulesById(ids.toArray(new Long[0]));
         rules.startTrueTimeRequest(context);
+        barrier();
         await(() -> RuleDelay.read(context).seconds == 0);
     }
 
@@ -101,6 +107,7 @@ public class AccessNotificationDeviceTest {
         Notification first = notification(FIRST);
         AccessNotification.show(context, uid, SECOND, SECOND);
         Notification second = notification(SECOND);
+        AccessNotification.show(context, 99195, FIRST, FIRST);
         assertEquals(quickAllowLabel(), first.actions[0].title.toString());
         assertEquals(2, first.actions.length);
         assertEquals(context.getString(R.string.notification_allow_options), first.actions[1].title.toString());
@@ -114,6 +121,9 @@ public class AccessNotificationDeviceTest {
         await(() -> WhitelistManager.getInstance(context).isAllowed(context, FIRST, uid) != null);
         assertEquals(1, WhitelistManager.getInstance(context).isAllowed(context, FIRST, uid).allowed);
         assertNull(WhitelistManager.getInstance(context).isAllowed(context, FIRST, 99195));
+        await(() -> find(AccessNotification.tag(uid, pkg, FIRST)) == null);
+        assertNotNull("Another app's alert remains", find(AccessNotification.tag(99195, "", FIRST)));
+        notification(SECOND);
     }
 
     // Test: Tapping the visible notification Allow button stays pending under the existing rule delay.
@@ -138,6 +148,118 @@ public class AccessNotificationDeviceTest {
             assertTrue(cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) > System.currentTimeMillis() + 30000);
         }
         assertNull(WhitelistManager.getInstance(context).isAllowed(context, FIRST, uid));
+        await(() -> hasText(FIRST, R.string.notification_allow_queued));
+    }
+
+    // Test: An in-app delayed temporary allow shows Pending, clears on activation, and does not revive an old alert at expiry.
+    // Why: Notification cleanup must follow effective policy, not the entry point or the time the user pressed Allow.
+    @Test public void inAppTemporaryAllowClearsOnlyAfterActivation() {
+        addRule("delay 3");
+        AccessNotification.show(context, uid, FIRST, FIRST);
+        long posted = notification(FIRST).when;
+        String temporary = TemporaryRuleText.text(allow(FIRST), 2);
+        addRule(temporary);
+        await(() -> hasText(FIRST, R.string.notification_allow_queued));
+        assertFalse(rules.isTemporaryRuleActive(temporary));
+        assertEquals(posted, notification(FIRST).when);
+        await(() -> rules.isTemporaryRuleActive(temporary)
+                && find(AccessNotification.tag(uid, pkg, FIRST)) == null);
+        await(() -> !rules.isTemporaryRuleActive(temporary) && !exists(temporary));
+        assertNull("Expiry must not repost historical alerts", find(AccessNotification.tag(uid, pkg, FIRST)));
+        AccessNotification.show(context, uid, FIRST, FIRST);
+        await(() -> hasText(FIRST, R.string.notification_domain_blocked));
+    }
+
+    // Test: Cancelling a pending allow restores Blocked, and rule processing does not revive a dismissed alert.
+    // Why: Pending text cannot remain after cancellation, and reconciliation must update only outstanding notifications.
+    @Test public void pendingCancellationAndDismissalRemainConsistent() {
+        addRule("delay 60");
+        AccessNotification.show(context, uid, FIRST, FIRST);
+        addRule(allow(FIRST));
+        await(() -> hasText(FIRST, R.string.notification_allow_queued));
+        addRule("abandon " + allow(FIRST));
+        await(() -> hasText(FIRST, R.string.notification_domain_blocked));
+        assertNull(WhitelistManager.getInstance(context).isAllowed(context, FIRST, uid));
+        NotificationGroup.cancel(context, AccessNotification.tag(uid, pkg, FIRST), AccessNotification.ID);
+        await(() -> find(AccessNotification.tag(uid, pkg, FIRST)) == null);
+        addRule(allow(FIRST));
+        assertNull("A dismissed alert stays dismissed", find(AccessNotification.tag(uid, pkg, FIRST)));
+    }
+
+    // Test: A global parent allow clears matching alerts across apps except explicit app blocks and lookalike domains.
+    // Why: Broad rules must reconcile all affected notifications without clearing alerts that remain blocked.
+    @Test public void globalParentAllowRespectsAppExceptions() throws Exception {
+        otherUid = context.getPackageManager().getApplicationInfo("com.android.chrome", 0).uid;
+        addRule("block package:com.android.chrome host:" + FIRST);
+        for (String host : new String[]{FIRST, SUBDOMAIN, SECOND, LOOKALIKE})
+            AccessNotification.show(context, uid, host, host);
+        AccessNotification.show(context, otherUid, FIRST, FIRST);
+        addRule("allow host:" + FIRST);
+        await(() -> find(AccessNotification.tag(uid, pkg, FIRST)) == null
+                && find(AccessNotification.tag(uid, pkg, SUBDOMAIN)) == null);
+        assertNotNull(find(AccessNotification.tag(otherUid, "com.android.chrome", FIRST)));
+        notification(SECOND); notification(LOOKALIKE);
+        addRule("- block package:com.android.chrome host:" + FIRST);
+        await(() -> find(AccessNotification.tag(otherUid, "com.android.chrome", FIRST)) == null);
+    }
+
+    // Test: Global DNS blocks and per-app IP blocks keep a hostname alert until both blocking rules are removed.
+    // Why: A domain allow must not dismiss a notification when another layer still denies the original destination.
+    @Test public void globalAndAddressBlocksKeepAlertsUntilResolved() {
+        prefs.edit().putBoolean(AccessNotification.NOTIFY_GLOBAL_BLOCKS, true).commit();
+        String address = "192.0.2.121";
+        String globalBlock = "blockdomain " + FIRST;
+        String ipBlock = "block package:" + pkg + " ip:" + address;
+        addRule(globalBlock); addRule(ipBlock);
+        AccessNotification.show(context, uid, FIRST, address);
+        addRule("allow host:" + FIRST);
+        notification(FIRST);
+        addRule("- " + globalBlock);
+        notification(FIRST);
+        addRule("- " + ipBlock);
+        await(() -> find(AccessNotification.tag(uid, pkg, FIRST)) == null);
+    }
+
+    private void addRule(String text) {
+        if (!owned.contains(text)) owned.add(text);
+        rules.queueRuleText(context, text);
+        barrier();
+    }
+
+    // Test: Explicit global and app blocks clear only matching existing alerts, even when future global alerts are enabled.
+    // Why: Addressing a domain in one app must also dismiss outstanding alerts covered by a newly enacted global block.
+    @Test public void explicitBlocksAddressExistingAlertsAcrossTheirScope() throws Exception {
+        prefs.edit().putBoolean(AccessNotification.NOTIFY_GLOBAL_BLOCKS, true).commit();
+        otherUid = context.getPackageManager().getApplicationInfo("com.android.chrome", 0).uid;
+        for (String host : new String[]{FIRST, SUBDOMAIN, SECOND, LOOKALIKE})
+            AccessNotification.show(context, uid, host, host);
+        AccessNotification.show(context, otherUid, FIRST, FIRST);
+        notification(FIRST); notification(SUBDOMAIN); notification(SECOND); notification(LOOKALIKE);
+        await(() -> find(AccessNotification.tag(otherUid, "com.android.chrome", FIRST)) != null);
+        addRule("blockdomain " + FIRST);
+        await(() -> find(AccessNotification.tag(uid, pkg, FIRST)) == null
+                && find(AccessNotification.tag(uid, pkg, SUBDOMAIN)) == null
+                && find(AccessNotification.tag(otherUid, "com.android.chrome", FIRST)) == null);
+        notification(SECOND); notification(LOOKALIKE);
+        AccessNotification.show(context, uid, FIRST, FIRST);
+        notification(FIRST);
+        addRule("block package:" + pkg + " host:" + SECOND);
+        await(() -> find(AccessNotification.tag(uid, pkg, SECOND)) == null);
+        notification(FIRST); // A later attempt is not dismissed by unrelated rule processing.
+        notification(LOOKALIKE);
+    }
+
+    private boolean hasText(String host, int resource) {
+        Notification current = find(AccessNotification.tag(uid, pkg, host));
+        return current != null && context.getString(resource, host).contentEquals(
+                current.extras.getCharSequence(Notification.EXTRA_TEXT));
+    }
+
+    private void barrier() {
+        CountDownLatch completed = new CountDownLatch(1);
+        rules.handler.post(completed::countDown);
+        try { assertTrue("Rule worker must finish", completed.await(15, TimeUnit.SECONDS)); }
+        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new AssertionError(interrupted); }
     }
 
     // Test: App/global blocks remain intact; unidentified/shared app identities have no one-tap allow action.
@@ -234,6 +356,8 @@ public class AccessNotificationDeviceTest {
         assertFalse(exists(allow(FIRST)));
         assertFalse(exists(allow(SECOND)));
         assertFalse(rules.isTemporaryRuleActive(text));
+        await(() -> hasText(FIRST, R.string.notification_allow_queued)
+                && hasText(SECOND, R.string.notification_allow_queued));
     }
 
     private void openOptions(UiDevice device) throws Exception {
@@ -244,7 +368,9 @@ public class AccessNotificationDeviceTest {
         assertNotNull("Allow options must be reachable beside quick Allow", options);
         device.takeScreenshot(new File(context.getExternalFilesDir(null), "notification-two-buttons.png"));
         options.click();
-        find(device, "allow_new_access_daddr");
+        // The emulator can take over five seconds to launch a task from the shade after earlier UI tests.
+        assertNotNull("Allow options must open the rule dialog",
+                device.wait(Until.findObject(By.res(pkg, "allow_new_access_daddr")), 15000));
     }
 
     private UiObject2 find(UiDevice device, String id) {

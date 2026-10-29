@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="hide_allowed_domains">Hide allowed domains</string>
-    <string name="hide_allowed_domains_summary">Default for every app’s domain list. Each app’s toggle can override this while the screen is open. Only changes what is displayed.</string>
+    <string name="domain_recorded_result">Recorded result</string>
+    <string name="domain_allowed_then">This request was allowed when recorded. The current rule blocks it. Hide allowed filters by the recorded result.</string>
+    <string name="domain_blocked_then">This request was blocked when recorded. The current rule allows it. Hide blocked filters by the recorded result.</string>
+    <string name="domain_history_legend">A check or X after the time shows the recorded result when it differs from the current rule beside the domain. Tap it for details.</string>
+    <string name="domain_filters">Domain filters</string>
+    <string name="domain_allowed_label">Allowed domains</string>
+    <string name="domain_blocked_label">Blocked domains</string>
+    <string name="domain_filters_reset">Reset to default</string>
+    <string name="domain_filters_explanation">Allowed and blocked refer to the recorded request. Global-only choices also check the current globe indicator. Set as default saves these choices for all app domain lists and Recent traffic.</string>
+    <string name="domain_filters_defaults">Default domain filters</string>
+    <string name="domain_filters_defaults_summary">Choose which allowed or blocked domains to display by default.</string>
+    <string name="domain_filters_empty">No domains to display. Domain filters may be hiding the results.</string>
+    <string name="domain_filter_summary">Allowed: %1$s. Blocked: %2$s.</string>
+    <string-array name="domain_allowed_choices"><item>Show all</item><item>Hide globally allowed</item><item>Hide all allowed</item></string-array>
+    <string-array name="domain_blocked_choices"><item>Show all</item><item>Hide globally blocked</item><item>Hide all blocked</item></string-array>
 </resources>

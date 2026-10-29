@@ -34,7 +34,9 @@ final class DomainRuleDialog {
         TextView title = view.findViewById(R.id.allow_new_access_title);
         TextView scope = view.findViewById(R.id.allow_new_access_package_label);
         TextView delay = view.findViewById(R.id.domain_action_delay);
-        ImageButton global = view.findViewById(R.id.allow_new_access_global);
+        CompactImageButton global = view.findViewById(R.id.allow_new_access_global);
+        int actionColor = CompactUi.color(context, blocked ? R.attr.colorActionDestructive : R.attr.colorActionPositive);
+        global.setSelectedColor(actionColor);
         ImageButton parents = view.findViewById(R.id.domain_parent_choices);
         ImageView appIcon = view.findViewById(R.id.domain_scope_icon);
         TemporaryRuleControls temporary = new TemporaryRuleControls(view);
@@ -50,7 +52,7 @@ final class DomainRuleDialog {
             appIcon.setVisibility(applyGlobally[0] ? View.GONE : View.VISIBLE);
             global.setSelected(applyGlobally[0]);
             global.setImageTintList(applyGlobally[0]
-                    ? ColorStateList.valueOf(CompactUi.color(context, R.attr.colorActionPositive)) : null);
+                    ? ColorStateList.valueOf(actionColor) : null);
             global.setContentDescription(context.getString(applyGlobally[0] ? R.string.scope_on : R.string.scope_off));
             TooltipCompat.setTooltipText(global, global.getContentDescription());
             parents.setEnabled(!parents(context, input.getText().toString()).isEmpty());
@@ -110,6 +112,7 @@ final class DomainRuleDialog {
         dialog.show();
         dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         DialogSurface.apply(dialog);
+        if (blocked) CompactUi.destructiveButton(dialog.getButton(AlertDialog.BUTTON_POSITIVE));
         DatabaseHelper.getInstance(context).addRuleChangedListener(listener);
         refresh.run();
         return dialog;

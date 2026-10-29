@@ -16,12 +16,17 @@ public class CompactImageButton extends AppCompatImageButton {
         CompactUi.frameless(this);
     }
 
+    void setSelectedColor(int color) {
+        if (getBackground() instanceof Feedback)
+            ((Feedback) getBackground()).setSelectedColor(color);
+    }
+
     static final class Feedback extends Drawable {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final float touchRadius;
         private final float selectedRadius;
         private final int touchColor;
-        private final int selectedColor;
+        private int selectedColor;
         private boolean touching;
         private boolean selected;
         private boolean enabled;
@@ -33,6 +38,8 @@ public class CompactImageButton extends AppCompatImageButton {
             touchColor = CompactUi.color(context, android.R.attr.textColorPrimary);
             selectedColor = CompactUi.color(context, R.attr.colorActionPositive);
         }
+
+        void setSelectedColor(int color) { selectedColor = color; invalidateSelf(); }
 
         @Override public boolean isStateful() { return true; }
 

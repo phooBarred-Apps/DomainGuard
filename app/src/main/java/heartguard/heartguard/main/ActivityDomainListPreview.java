@@ -75,18 +75,20 @@ public class ActivityDomainListPreview extends AppCompatActivity {
                     CompactUi.color(this, open ? R.attr.colorActionPositive : android.R.attr.textColorSecondary)));
             if (!open) search.setText("");
         });
-        View hideAllowed = app.findViewById(R.id.cbHideAllowedDomains);
+        android.widget.ImageButton filterButton = app.findViewById(R.id.domainFilterButton);
+        DomainFilters[] filters = {DomainFilters.defaults(androidx.preference.PreferenceManager.getDefaultSharedPreferences(this))};
         Runnable filter = () -> {
             List<AccessEntry> shown = new ArrayList<>();
             String query = search.getText().toString().toLowerCase(Locale.ROOT);
             for (AccessEntry entry : examples)
-                if ((!hideAllowed.isSelected() || entry.block > 0) && entry.address.contains(query)) shown.add(entry);
+                if (filters[0].includes(entry) && entry.address.contains(query)) shown.add(entry);
             adapter.submit(shown);
-            hideAllowed.setAlpha(hideAllowed.isSelected() ? 1f : 0.5f);
-            hideAllowed.setContentDescription(getString(R.string.hide_allowed_domains) + ": "
-                    + getString(hideAllowed.isSelected() ? R.string.control_on : R.string.control_off));
+            DomainFilterDialog.bind(filterButton, filters[0]);
         };
-        hideAllowed.setOnClickListener(view -> { view.setSelected(!view.isSelected()); filter.run(); });
+        filterButton.setOnClickListener(view -> DomainFilterDialog.show(this, filters[0], selected -> {
+            filters[0] = selected;
+            filter.run();
+        }, false));
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
             public void onTextChanged(CharSequence text, int start, int before, int count) { filter.run(); }

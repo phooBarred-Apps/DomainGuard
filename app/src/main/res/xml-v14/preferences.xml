@@ -13,7 +13,7 @@
         <PreferenceCategory android:title="@string/display_domain_lists">
             <heartguard.heartguard.main.CompactDomainListsPreference android:key="compact_domain_lists" android:title="@string/compact_domains_title" android:summary="@string/compact_domains_summary" />
             <ListPreference android:key="domain_timestamp_format" android:title="@string/timestamp_format" android:entries="@array/timestamp_choices" android:entryValues="@array/timestamp_values" android:defaultValue="exact" android:summary="%s" />
-            <CheckBoxPreference android:defaultValue="false" android:key="hide_allowed_domains" android:summary="@string/hide_allowed_domains_summary" android:title="@string/hide_allowed_domains" />
+            <Preference android:key="domain_filters" android:title="@string/domain_filters_defaults" android:summary="@string/domain_filters_defaults_summary" />
             <CheckBoxPreference android:defaultValue="false" android:key="always_show_domain_search" android:summary="@string/list_always_show_domain_search_summary" android:title="@string/list_always_show_domain_search" />
         </PreferenceCategory>
     </PreferenceScreen>

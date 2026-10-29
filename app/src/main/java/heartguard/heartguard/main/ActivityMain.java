@@ -621,6 +621,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             llSystem.setVisibility(!system && hint ? View.VISIBLE : View.GONE);
 
         } else if (Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS.equals(name)
+                || DomainFilters.ALLOWED_KEY.equals(name) || DomainFilters.BLOCKED_KEY.equals(name)
                 || Rule.PREFERENCE_STRING_ALWAYS_SHOW_APP_DETAILS.equals(name)
                 || Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH.equals(name)
                 || CompactDomainLists.ENABLED.equals(name) || CompactDomainLists.ROWS.equals(name)
