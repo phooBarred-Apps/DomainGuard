@@ -907,8 +907,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     static final class AccessStats {
-        final long count, lastTime;
-        AccessStats(long count, long lastTime) { this.count = count; this.lastTime = lastTime; }
+        final long count, lastTime, hosts;
+        AccessStats(long count, long lastTime, long hosts) {
+            this.count = count; this.lastTime = lastTime; this.hosts = hosts;
+        }
     }
 
     Cursor searchAccessDomains(DomainSearchQuery search) {
@@ -928,10 +930,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     Map<Integer, AccessStats> getAccessStats() {
         lock.readLock().lock();
         try (Cursor cursor = getReadableDatabase().rawQuery(
-                "SELECT uid, COUNT(*), MAX(time) FROM access GROUP BY uid", null)) {
+                "SELECT uid, COUNT(*), MAX(time), COUNT(CASE WHEN block >= 0 THEN 1 END)"
+                        + " FROM access GROUP BY uid", null)) {
             Map<Integer, AccessStats> stats = new HashMap<>();
             while (cursor.moveToNext())
-                stats.put(cursor.getInt(0), new AccessStats(cursor.getLong(1), cursor.getLong(2)));
+                stats.put(cursor.getInt(0), new AccessStats(cursor.getLong(1), cursor.getLong(2), cursor.getLong(3)));
             return stats;
         } finally {
             lock.readLock().unlock();
@@ -1424,6 +1427,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     }
 
     private void notifyAccessChanged() {
+        clearCache();
         accessRevision.incrementAndGet();
         Message msg = handler.obtainMessage();
         msg.what = MSG_ACCESS;

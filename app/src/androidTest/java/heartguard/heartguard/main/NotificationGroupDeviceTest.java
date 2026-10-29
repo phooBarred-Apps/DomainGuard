@@ -133,6 +133,41 @@ public class NotificationGroupDeviceTest {
         await(() -> alert(HOST) == null && summary() == null);
     }
 
+    // Test: A group containing access alerts inherits their channel visibility and changes back when only quiet work remains.
+    // Why: A minimum-importance summary hides the status-bar icon for its otherwise visible children.
+    @Test public void summaryPreservesAlertVisibility() throws Exception {
+        assertTrue(Build.VERSION.SDK_INT >= 26);
+        NotificationGroup.notify(context, TAG, 3, NotificationGroup.statusBuilder(context, "foreground")
+                .setSmallIcon(R.drawable.ic_security_white_24dp).setContentTitle("Test protection")
+                .setOngoing(true).build());
+        await(() -> summary() != null);
+        assertEquals("foreground", summary().getNotification().getChannelId());
+        AccessNotification.show(context, uid, HOST, HOST);
+        AccessNotification.show(context, uid, "second." + HOST, "192.0.2.91");
+        String twoAlerts = context.getResources().getQuantityString(R.plurals.notification_alert_count, 2, 2);
+        await(() -> summary() != null && twoAlerts.contentEquals(
+                summary().getNotification().extras.getCharSequence(Notification.EXTRA_TEXT)));
+        device.pressHome();
+        device.takeScreenshot(new File(context.getExternalFilesDir(null),
+                "notification-visibility-" + summary().getNotification().getChannelId() + ".png"));
+        assertEquals("The summary must not hide its access alerts", "access", summary().getNotification().getChannelId());
+        assertEquals(manager.getNotificationChannel("access").getImportance(),
+                manager.getNotificationChannel(summary().getNotification().getChannelId()).getImportance());
+
+        // The text/count are unchanged: channel changes must still refresh the summary.
+        for (String host : new String[]{HOST, "second." + HOST})
+            NotificationGroup.notify(context, AccessNotification.tag(uid, context.getPackageName(), host), AccessNotification.ID,
+                    NotificationGroup.builder(context, "foreground").setSmallIcon(R.drawable.ic_security_white_24dp)
+                            .setContentTitle("Quiet test alert").build());
+        await(() -> "foreground".equals(summary().getNotification().getChannelId()));
+        AccessNotification.show(context, uid, HOST, HOST);
+        await(() -> "access".equals(summary().getNotification().getChannelId()));
+        NotificationGroup.clear(context);
+        await(() -> alert(HOST) == null && alert("second." + HOST) == null
+                && summary() != null && "foreground".equals(summary().getNotification().getChannelId()));
+        assertNotNull("Protection remains", find(TAG, 3));
+    }
+
     private StatusBarNotification foreground() {
         for (StatusBarNotification entry : manager.getActiveNotifications())
             if (entry.getTag() == null && entry.getId() == 1
