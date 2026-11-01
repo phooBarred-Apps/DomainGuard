@@ -26,8 +26,14 @@ final class AccessRowStyle {
         } else if (entry.block < 0) {
             icon.setImageDrawable(null);
         } else {
-            icon.setImageResource(entry.block > 0 ? R.drawable.host_blocked : R.drawable.host_allowed);
+            icon.setImageResource(entry.block > 0
+                    ? (entry.explicitBlock ? R.drawable.host_explicit_blocked : R.drawable.host_blocked)
+                    : R.drawable.host_allowed);
+            icon.setContentDescription(context.getString(entry.block > 0
+                    ? (entry.explicitBlock ? R.string.domain_explicitly_blocked : R.string.domain_blocked_default)
+                    : R.string.title_host_allowed));
         }
+        androidx.appcompat.widget.TooltipCompat.setTooltipText(icon, icon.getContentDescription());
         domain.setTextColor(entry.allowed < 0 ? neutral : entry.allowed > 0 ? allowed
                 : entry.pending > 0 ? pending : blocked);
     }

@@ -2,7 +2,15 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: October 29, 2026.
+Latest changes: October 31, 2026.
+
+Version `2.90` distinguishes explicit per-app domain blocks with a circled red X.
+A plain X means blocked by default because no allow rule applies; a globe with X
+still means a global block. The Legend explains each icon.
+
+**Recent traffic > Clear shown traffic** deletes the currently loaded, filtered
+results from shared traffic history after confirmation. Hidden and unloaded rows,
+new requests received after the confirmation opens, and rules remain intact.
 
 Version `2.89` clears addressed domain notifications after rules activate, including
 matching alerts across apps for global rules. Delayed allows stay pending until
@@ -16,8 +24,10 @@ list or Recent traffic changes that session only; **Reset to default** loads the
 saved choices into the dialog. The icon stays highlighted while filters are active.
 Copy uses the same filters and visible row limit.
 
-Allowed/blocked filtering uses the result when traffic was recorded. Rule changes
-preserve that result. If it differs from the current rule, a small check or X after
+Allowed/blocked filtering uses the result when traffic was recorded by default.
+Enable **Display settings > Filter by current status** to use current rules instead.
+This setting applies to app lists, Recent traffic, matching counts and Copy domains.
+Rule changes preserve the recorded result. If it differs from the current rule, a small check or X after
 the timestamp explains the difference when tapped. Compact domain lists keep
 scrolling inside their boundaries; their side gutters still scroll the apps. Global
 Block selection and confirmation use the theme's red action color.

@@ -73,6 +73,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private final static int MSG_RULE = 5;
 
     private SharedPreferences prefs;
+    private final Context applicationContext;
     private ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
     private GlobalRuleIndicators globalRuleIndicators;
     private final Object indicatorLock = new Object();
@@ -85,11 +86,17 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         synchronized (indicatorLock) {
             if (globalRuleIndicators == null) {
                 List<String> active = new ArrayList<>();
+                Map<String, Long> expirations = new HashMap<>();
                 try (Cursor cursor = getEnactedRules()) {
                     int text = cursor.getColumnIndexOrThrow("ruletext");
-                    while (cursor.moveToNext()) active.add(cursor.getString(text));
+                    while (cursor.moveToNext()) {
+                        String rule = cursor.getString(text);
+                        active.add(rule);
+                        if (TemporaryRuleText.isTemporary(rule)) expirations.put(rule,
+                                TemporaryRuleText.parse(rule).expiresAt(cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))));
+                    }
                 }
-                globalRuleIndicators = new GlobalRuleIndicators(active);
+                globalRuleIndicators = new GlobalRuleIndicators(applicationContext, active, expirations);
             }
             return globalRuleIndicators;
         }
@@ -127,6 +134,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private DatabaseHelper(Context context) {
         super(context, DB_NAME, null, DB_VERSION);
+        applicationContext = context.getApplicationContext();
         prefs = PreferenceManager.getDefaultSharedPreferences(context);
 
         if (!once) {
@@ -665,17 +673,13 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     cv.put("pending_allow", pending);
 
                     RuleAllowData match = wm.isAllowed(context, packet.daddr, packet.uid);
+                    putAccessDecision(cv, match);
                     if (match != null && match.allowed == 1)
                     {
                         Log.w(TAG, "Allowing whitelisted domain " + dname + "for UID " + packet.uid);
                         changed_whitelist = true;
-                        cv.put("ruletext", match.ruletext);
-                        cv.put("input_daddr", match.input_daddr);
-                        cv.put("relevant_daddr", match.relevant_daddr);
-                        cv.put("block", 0);
                         cv.put("comment", "unblocked in updateAccess");
                     } else {
-                        cv.put("block", 1);
                         cv.put("comment", "blocked in updateAccess");
                     }
 
@@ -753,6 +757,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         notifyAccessChanged();
     }
 
+    private static void putAccessDecision(ContentValues values, RuleAllowData decision) {
+        values.put("block", decision != null && decision.allowed == 1 ? 0 : 1);
+        // Preserve the matched block too, including decisions reached through a DNS alias.
+        // A missing decision clears stale evidence of a removed rule.
+        values.put("ruletext", decision == null ? null : decision.ruletext);
+        values.put("relevant_daddr", decision == null ? null : decision.relevant_daddr);
+        values.put("input_daddr", decision == null ? null : decision.input_daddr);
+    }
+
     public void setAccess(long id, RuleAllowData ruleAllowData, String comment) {
         lock.writeLock().lock();
         try {
@@ -760,14 +773,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.beginTransactionNonExclusive();
             try {
                 ContentValues cv = new ContentValues();
-                if (ruleAllowData != null && ruleAllowData.allowed == 1) {
-                    cv.put("block", 0);
-                    cv.put("ruletext", ruleAllowData.ruletext);
-                    cv.put("relevant_daddr", ruleAllowData.relevant_daddr);
-                    cv.put("input_daddr", ruleAllowData.input_daddr);
-                } else {
-                    cv.put("block", 1);
-                }
+                putAccessDecision(cv, ruleAllowData);
                 // A rule change updates current policy, not the outcome of the recorded request.
                 cv.put("comment", comment);
 
@@ -803,6 +809,29 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
 
         notifyAccessChanged();
+    }
+
+    /** Delete only the displayed record versions; later attempts on the same row must survive. */
+    int clearAccessRecords(List<AccessEntry> records) {
+        int removed = 0;
+        lock.writeLock().lock();
+        try {
+            SQLiteDatabase db = getWritableDatabase();
+            db.beginTransactionNonExclusive();
+            try {
+                for (AccessEntry record : records)
+                    removed += db.delete("access", "ID = ? AND time = ?",
+                            new String[]{Long.toString(record.id), Long.toString(record.time)});
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                clearCache();
+            }
+        } finally {
+            lock.writeLock().unlock();
+        }
+        if (removed > 0) notifyAccessChanged();
+        return removed;
     }
 
     public void clearAccess(int uid, boolean keeprules) {
@@ -865,7 +894,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             while (visible.getCount() < limit && source.moveToNext()) {
                 int scope = indicators.scope(source.getInt(source.getColumnIndexOrThrow("block")),
                         source.getString(source.getColumnIndexOrThrow("ruletext")), source.getString(source.getColumnIndexOrThrow("daddr")));
-                if (!filters.includes(DomainFilters.category(source.getInt(source.getColumnIndexOrThrow("allowed")),
+                if (!filters.includes(filters.category(source.getInt(source.getColumnIndexOrThrow("allowed")),
                         source.getInt(source.getColumnIndexOrThrow("block")), scope))) continue;
                 Object[] values = new Object[source.getColumnCount()];
                 for (int column = 0; column < values.length; column++) {

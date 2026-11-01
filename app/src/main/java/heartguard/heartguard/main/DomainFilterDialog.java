@@ -7,6 +7,7 @@ import android.view.View;
 import android.widget.ImageButton;
 import android.widget.Spinner;
 import android.widget.Toast;
+import android.widget.TextView;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.TooltipCompat;
 import androidx.preference.PreferenceManager;
@@ -22,6 +23,9 @@ final class DomainFilterDialog {
         View view = LayoutInflater.from(context).inflate(R.layout.domain_filters, null);
         Spinner allowed = view.findViewById(R.id.domain_filter_allowed);
         Spinner blocked = view.findViewById(R.id.domain_filter_blocked);
+        ((TextView) view.findViewById(R.id.domain_filter_explanation)).setText(
+                context.getString(R.string.domain_filters_explanation, context.getString(current.currentStatus
+                        ? R.string.domain_filter_current_summary : R.string.domain_filter_recorded_summary)));
         allowed.setSelection(current.allowed);
         blocked.setSelection(current.blocked);
         CompactUi.actionButton(view.findViewById(R.id.domain_filter_default));
@@ -31,10 +35,10 @@ final class DomainFilterDialog {
                 .setCustomTitle(SortDialog.title(context, R.string.domain_filters))
                 .setView(view).setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.list_apply, (window, which) -> apply.apply(
-                        new DomainFilters(allowed.getSelectedItemPosition(), blocked.getSelectedItemPosition())))
+                        new DomainFilters(allowed.getSelectedItemPosition(), blocked.getSelectedItemPosition()).withBasis(current.currentStatus)))
                 .create();
         view.findViewById(R.id.domain_filter_default).setOnClickListener(button -> {
-            DomainFilters selection = new DomainFilters(allowed.getSelectedItemPosition(), blocked.getSelectedItemPosition());
+            DomainFilters selection = new DomainFilters(allowed.getSelectedItemPosition(), blocked.getSelectedItemPosition()).withBasis(current.currentStatus);
             selection.saveDefaults(PreferenceManager.getDefaultSharedPreferences(context));
             apply.apply(selection);
             Toast.makeText(context, R.string.list_filter_default_saved, Toast.LENGTH_SHORT).show();
@@ -56,7 +60,8 @@ final class DomainFilterDialog {
                 filters.active() ? R.attr.colorActionPositive : android.R.attr.textColorSecondary)));
         String summary = context.getString(R.string.domain_filter_summary,
                 context.getResources().getStringArray(R.array.domain_allowed_choices)[filters.allowed],
-                context.getResources().getStringArray(R.array.domain_blocked_choices)[filters.blocked]);
+                context.getResources().getStringArray(R.array.domain_blocked_choices)[filters.blocked]) + " "
+                + context.getString(filters.currentStatus ? R.string.domain_filter_current_summary : R.string.domain_filter_recorded_summary);
         button.setContentDescription(context.getString(R.string.domain_filters) + ". " + summary);
         TooltipCompat.setTooltipText(button, summary);
     }

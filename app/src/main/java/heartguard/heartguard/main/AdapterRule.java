@@ -420,7 +420,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
             java.util.SortedSet<String> domains = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             DatabaseHelper database = DatabaseHelper.getInstance(context);
             for (Rule app : apps) {
-                DomainFilters selected = filters.containsKey(app.packageName) ? filters.get(app.packageName) : defaults;
+                DomainFilters selected = filters.containsKey(app.packageName)
+                        ? filters.get(app.packageName).withBasis(defaults.currentStatus) : defaults;
                 // Use the same searches, domain filters, sort and row limit as the app's list.
                 try (Cursor cursor = database.getAccess(app.uid, selected, queries.get(app.packageName), sort, mainQuery)) {
                     int address = cursor.getColumnIndexOrThrow("daddr");
@@ -534,6 +535,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         final long revision = statsRevision;
         final boolean domainMode = searchingDomains;
         final DomainSearchQuery query = new DomainSearchQuery(globalDomainQuery);
+        final DomainFilters categories = DomainFilters.defaults(PreferenceManager.getDefaultSharedPreferences(context));
         final Set<Integer> listedUids = new HashSet<>();
         for (Rule app : listAll) listedUids.add(app.uid);
         trafficTask.submit(() -> {
@@ -548,7 +550,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                     Map<String, Integer> names = rows.get(uid);
                     if (names == null) { names = new HashMap<>(); rows.put(uid, names); }
                     // Multiple ports may have different outcomes; keep a host if any row is visible.
-                    int category = DomainFilters.category(cursor.getInt(3), cursor.getInt(5),
+                    int category = categories.category(cursor.getInt(3), cursor.getInt(5),
                             indicators.scope(cursor.getInt(5), cursor.getString(6), host));
                     names.put(host, category | (names.containsKey(host) ? names.get(host) : 0));
                 }
@@ -654,7 +656,8 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
 
     private DomainFilters domainFilters(String packageName) {
         DomainFilters selected = domainFilters.get(packageName);
-        return selected == null ? DomainFilters.defaults(PreferenceManager.getDefaultSharedPreferences(inflater.getContext())) : selected;
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(inflater.getContext());
+        return selected == null ? DomainFilters.defaults(prefs) : selected.withBasis(prefs);
     }
 
     private void loadDomains(ViewHolder holder, Rule rule) {
