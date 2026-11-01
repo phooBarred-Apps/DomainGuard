@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="domain_blocked_default">Blocked by default (no allow rule)</string>
+    <string name="domain_explicitly_blocked">Blocked by a rule</string>
     <string name="domain_recorded_result">Recorded result</string>
-    <string name="domain_allowed_then">This request was allowed when recorded. The current rule blocks it. Hide allowed filters by the recorded result.</string>
-    <string name="domain_blocked_then">This request was blocked when recorded. The current rule allows it. Hide blocked filters by the recorded result.</string>
+    <string name="domain_allowed_then">This request was allowed when recorded. The current rule blocks it.</string>
+    <string name="domain_blocked_then">This request was blocked when recorded. The current rule allows it.</string>
     <string name="domain_history_legend">A check or X after the time shows the recorded result when it differs from the current rule beside the domain. Tap it for details.</string>
     <string name="domain_filters">Domain filters</string>
     <string name="domain_allowed_label">Allowed domains</string>
     <string name="domain_blocked_label">Blocked domains</string>
     <string name="domain_filters_reset">Reset to default</string>
-    <string name="domain_filters_explanation">Allowed and blocked refer to the recorded request. Global-only choices also check the current globe indicator. Set as default saves these choices for all app domain lists and Recent traffic.</string>
+    <string name="domain_filters_explanation">%1$s Global-only choices also check the current globe indicator. Set as default saves these choices for all app domain lists and Recent traffic.</string>
+    <string name="domain_filter_current_title">Filter by current status</string>
+    <string name="domain_filter_current_summary">Uses current allow/block rules.</string>
+    <string name="domain_filter_recorded_summary">Uses the result when recorded.</string>
     <string name="domain_filters_defaults">Default domain filters</string>
     <string name="domain_filters_defaults_summary">Choose which allowed or blocked domains to display by default.</string>
     <string name="domain_filters_empty">No domains to display. Domain filters may be hiding the results.</string>

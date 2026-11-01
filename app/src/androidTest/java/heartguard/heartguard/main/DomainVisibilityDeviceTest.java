@@ -36,6 +36,7 @@ public class DomainVisibilityDeviceTest {
     private SharedPreferences prefs;
     private boolean hadPreference, oldPreference;
     private boolean hadSearchPreference, oldSearchPreference;
+    private Boolean oldCurrentStatus;
     private Activity activity;
     private RecyclerView list;
     private AdapterRule adapter;
@@ -46,6 +47,8 @@ public class DomainVisibilityDeviceTest {
         context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         db = DatabaseHelper.getInstance(context);
         prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        oldCurrentStatus = prefs.contains(DomainFilters.CURRENT_KEY) ? prefs.getBoolean(DomainFilters.CURRENT_KEY, false) : null;
+        prefs.edit().remove(DomainFilters.CURRENT_KEY).commit();
         hadPreference = prefs.contains(KEY);
         oldPreference = prefs.getBoolean(KEY, false);
         hadSearchPreference = prefs.contains(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH);
@@ -67,6 +70,8 @@ public class DomainVisibilityDeviceTest {
                         Integer.toString(FIRST_UID), Integer.toString(SECOND_UID), "%.mw-visibility-test.invalid"});
         onMain(() -> {
             SharedPreferences.Editor edit = prefs.edit();
+            if (oldCurrentStatus == null) edit.remove(DomainFilters.CURRENT_KEY);
+            else edit.putBoolean(DomainFilters.CURRENT_KEY, oldCurrentStatus);
             if (hadPreference) edit.putBoolean(KEY, oldPreference); else edit.remove(KEY);
             if (hadSearchPreference) edit.putBoolean(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH, oldSearchPreference);
             else edit.remove(Rule.PREFERENCE_STRING_ALWAYS_SHOW_DOMAIN_SEARCH);
@@ -364,6 +369,108 @@ public class DomainVisibilityDeviceTest {
             if (oldBlocked == null) restore.remove(DomainFilters.BLOCKED_KEY); else restore.putInt(DomainFilters.BLOCKED_KEY, oldBlocked);
             restore.commit();
         }
+    }
+
+    // Test: Current-status SQL filtering happens before paging, preserves history and agrees with global-only filtering.
+    // Why: Newer hidden rows must not consume the page or overwrite the historical allow/block value.
+    @Test public void currentStatusFiltersQueriesWithoutChangingHistory() {
+        insert(FIRST_UID, "was-allowed", 1, 1, 1, 0);
+        insert(FIRST_UID, "unknown-rule", 2, 1, -1, 0);
+        for (int i = 0; i < 260; i++) insert(FIRST_UID, "now-allowed-" + i, 10 + i, 0, 0, 0);
+        DomainFilters current = new DomainFilters(DomainFilters.HIDE_ALL, DomainFilters.SHOW).withBasis(true);
+        try (Cursor rows = db.getAccess(FIRST_UID, current, "", ListSort.RECENT, "")) {
+            assertEquals(2, rows.getCount());
+        }
+        try (Cursor rows = db.getRecentAccess(0, java.util.Collections.emptySet(),
+                java.util.Collections.singleton(FIRST_UID), current, ListSort.RECENT, 1)) {
+            assertEquals(1, rows.getCount()); assertTrue(rows.moveToFirst());
+            assertEquals("unknown-rule.mw-visibility-test.invalid", rows.getString(rows.getColumnIndexOrThrow("daddr")));
+        }
+        try (Cursor rows = db.getAccess(FIRST_UID, current.withBasis(false), "", ListSort.RECENT, "")) {
+            assertEquals(250, rows.getCount());
+        }
+        String rule = "allow host:now-allowed-0.mw-visibility-test.invalid";
+        db.addNewRule(rule, 1, 1, 1, 0, 0);
+        long ruleId;
+        try (Cursor row = db.getRuleMatchingRuletext(rule)) { assertTrue(row.moveToFirst()); ruleId = row.getLong(row.getColumnIndexOrThrow("_id")); }
+        try {
+            ContentValues value = new ContentValues(); value.put("ruletext", rule);
+            db.getWritableDatabase().update("access", value, "uid = ? AND daddr = ?", new String[]{Integer.toString(FIRST_UID), "now-allowed-0.mw-visibility-test.invalid"});
+            DomainFilters global = new DomainFilters(DomainFilters.HIDE_GLOBAL, DomainFilters.SHOW);
+            try (Cursor rows = db.getAccess(FIRST_UID, global, "now-allowed-0.", ListSort.RECENT, "")) { assertEquals(1, rows.getCount()); }
+            try (Cursor rows = db.getAccess(FIRST_UID, global.withBasis(true), "now-allowed-0.", ListSort.RECENT, "")) { assertEquals(0, rows.getCount()); }
+            try (Cursor rows = db.getAccess(FIRST_UID, new DomainFilters(0, DomainFilters.HIDE_ALL).withBasis(true), "was-allowed", ListSort.RECENT, "")) { assertEquals(0, rows.getCount()); }
+            try (Cursor rows = db.getAccess(FIRST_UID, new DomainFilters(0, 0), "was-allowed", ListSort.RECENT, "")) {
+                assertTrue(rows.moveToFirst()); assertEquals(1, rows.getInt(rows.getColumnIndexOrThrow("allowed")));
+            }
+        } finally { db.removeRulesById(new Long[]{ruleId}); }
+    }
+
+    // Test: Per-app session overrides and main-search counts/copy all adopt the global basis without losing the searches.
+    // Why: A new global setting must not leave restored per-app overrides using the previous classification.
+    @Test public void basisChangeUpdatesSessionSearchAndCopyTogether() {
+        insert(FIRST_UID, "was-blocked", 100, 0, 0, 0);
+        insert(FIRST_UID, "was-allowed", 200, 1, 1, 0);
+        insert(FIRST_UID, "unknown", 300, -1, 0, 0);
+        apps = new ArrayList<>(Rule.getRules(true, context).subList(0, 1));
+        apps.get(0).uid = FIRST_UID;
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
+                new Intent(context, ComponentTestActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        onMain(() -> {
+            list = new RecyclerView(activity); list.setLayoutManager(new LinearLayoutManager(activity)); list.setItemAnimator(null);
+            activity.setContentView(list); newSession();
+            Bundle saved = adapter.saveViewState(); Bundle overrides = new Bundle();
+            overrides.putInt(apps.get(0).packageName, new DomainFilters(DomainFilters.HIDE_ALL, DomainFilters.SHOW).encode());
+            saved.putBundle("domainFilters", overrides); adapter.restoreViewState(saved);
+            adapter.setDomainSearch(true, "mw-visibility-test.invalid");
+        });
+        assertRow(0, true, 2);
+        onMain(() -> {
+            assertEquals(2, adapter.matchingDomainCount());
+            prefs.edit().putBoolean(DomainFilters.CURRENT_KEY, true).commit();
+            adapter.notifyDataSetChanged(); adapter.refreshTraffic();
+        });
+        assertRow(0, true, 1);
+        onMain(() -> { assertEquals(1, adapter.matchingDomainCount()); adapter.copyMatchingDomains(); });
+        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        long deadline = SystemClock.elapsedRealtime() + 5000;
+        String expected = "was-allowed.mw-visibility-test.invalid";
+        boolean[] copied = {false};
+        do {
+            onMain(() -> copied[0] = clipboard.hasPrimaryClip() && expected.contentEquals(clipboard.getPrimaryClip().getItemAt(0).getText()));
+            if (!copied[0]) SystemClock.sleep(50);
+        } while (!copied[0] && SystemClock.elapsedRealtime() < deadline);
+        assertTrue(copied[0]);
+        onMain(() -> {
+            Bundle saved = adapter.saveViewState(); adapter.dispose(); adapter = new AdapterRule(activity, list);
+            adapter.restoreViewState(saved); list.setAdapter(adapter); adapter.set(new ArrayList<>(apps));
+            adapter.setDomainSearch(true, "mw-visibility-test.invalid");
+        });
+        assertRow(0, true, 1);
+    }
+
+    // Test: The real settings switch defaults off, describes both modes, and persists the selection on reopening.
+    // Why: The short label must make the two meanings clear without changing existing users' filtering.
+    @Test public void settingsSwitchShowsAndPersistsBothModes() {
+        UiDevice device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(new Intent(context, ActivitySettings.class)
+                .putExtra("open_display_settings", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        for (int i = 0; i < 4 && !device.hasObject(By.text(context.getString(R.string.domain_filter_current_title))); i++)
+            device.swipe(400, 900, 400, 400, 20);
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.domain_filter_recorded_summary))), 5000));
+        device.findObject(By.text(context.getString(R.string.domain_filter_current_title))).click();
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.domain_filter_current_summary))), 5000));
+        assertTrue(prefs.getBoolean(DomainFilters.CURRENT_KEY, false));
+        device.takeScreenshot(new java.io.File(context.getExternalFilesDir(null), "filter-current-status.png"));
+        onMain(() -> activity.finish());
+        activity = InstrumentationRegistry.getInstrumentation().startActivitySync(new Intent(context, ActivitySettings.class)
+                .putExtra("open_display_settings", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        assertTrue(DomainFilters.defaults(prefs).currentStatus);
+        for (int i = 0; i < 4 && !device.hasObject(By.text(context.getString(R.string.domain_filter_current_title))); i++)
+            device.swipe(400, 900, 400, 400, 20);
+        device.wait(Until.findObject(By.text(context.getString(R.string.domain_filter_current_title))), 5000).click();
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.domain_filter_recorded_summary))), 5000));
+        assertFalse(prefs.getBoolean(DomainFilters.CURRENT_KEY, true));
     }
 
     private AdapterRule.ViewHolder holder(int position) {

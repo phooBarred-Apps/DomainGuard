@@ -77,7 +77,7 @@ public class RecentTrafficDeviceTest {
         originalLogging = preferences.getBoolean(Rule.PREFERENCE_STRING_LOG, false);
         SharedPreferences.Editor clearFilters = preferences.edit();
         for (Map.Entry<String, ?> entry : preferences.getAll().entrySet())
-            if (entry.getKey().startsWith("recent_filter_default_")) {
+            if (entry.getKey().startsWith("recent_filter_default_") || entry.getKey().startsWith("domain_filter_")) {
                 savedFilters.put(entry.getKey(), entry.getValue());
                 clearFilters.remove(entry.getKey());
             }
@@ -109,7 +109,7 @@ public class RecentTrafficDeviceTest {
         if (originalHideAllowed == null) restore.remove(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS);
         else restore.putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, originalHideAllowed);
         for (String key : preferences.getAll().keySet())
-            if (key.startsWith("recent_filter_default_")) restore.remove(key);
+            if (key.startsWith("recent_filter_default_") || key.startsWith("domain_filter_")) restore.remove(key);
         for (Map.Entry<String, Object> entry : savedFilters.entrySet()) {
             if (entry.getValue() instanceof Integer) restore.putInt(entry.getKey(), (Integer) entry.getValue());
             else restore.putBoolean(entry.getKey(), (Boolean) entry.getValue());
@@ -582,6 +582,88 @@ public class RecentTrafficDeviceTest {
             back.click();
             await(() -> activity.isFinishing());
         }
+    }
+
+    // Test: Cancel keeps all records; Yes deletes only shown versions, including in per-app history, with rules unchanged.
+    // Why: Filters, hidden apps, expired records and traffic arriving during confirmation must not widen a destructive action.
+    @Test public void clearShownTrafficRespectsFiltersAndNewerRequests() throws Exception {
+        long now = System.currentTimeMillis();
+        insert(uid, "delete-me", now - 5000, false);
+        insert(uid, "updates-later", now - 4000, false);
+        insert(uid, "allowed-hidden", now - 3000, true);
+        insert(99191, "hidden-app", now - 2000, false);
+        insert(uid, "too-old", now - 300000, false);
+        preferences.edit().putBoolean(Rule.PREFERENCE_STRING_HIDE_ALLOWED_DOMAINS, true).commit();
+        long rulesBefore = DatabaseUtils.queryNumEntries(db.getReadableDatabase(), "rules");
+        open(); await(() -> count() == 3);
+        clickRowControl(99191, R.id.recent_hide_app); await(() -> count() == 2);
+        find("recent_clear").click();
+        assertEquals(context.getString(R.string.confirm_yes), device.wait(Until.findObject(By.res("android", "button1")), 5000).getText());
+        device.findObject(By.res("android", "button2")).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        assertEquals(5, fixtureCount());
+        find("recent_clear").click();
+        assertNotNull(device.wait(Until.findObject(By.res("android", "button1")), 5000));
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "clear-shown-traffic.png"));
+        insert(uid, "updates-later", System.currentTimeMillis(), false);
+        insert(uid, "new-arrival", System.currentTimeMillis(), false);
+        device.findObject(By.res("android", "button1")).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        await(() -> fixtureCount() == 5);
+        await(() -> count() == 2);
+        try (Cursor rows = db.getAccess(uid, false, "delete-me", ListSort.RECENT)) { assertEquals(0, rows.getCount()); }
+        for (String retained : new String[]{"updates-later", "allowed-hidden", "too-old", "new-arrival"})
+            try (Cursor rows = db.getAccess(uid, false, retained, ListSort.RECENT)) { assertEquals(retained, 1, rows.getCount()); }
+        assertEquals(rulesBefore, DatabaseUtils.queryNumEntries(db.getReadableDatabase(), "rules"));
+    }
+
+    // Test: Clearing a loaded page leaves its unloaded matching record; an empty view disables the button.
+    // Why: A page-limited view must never silently delete all matching database records.
+    @Test public void clearShownTrafficKeepsUnloadedRecords() {
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < 251; i++) insert(uid, "page-" + i, now - i, false);
+        open(); await(() -> count() == 250);
+        find("recent_clear").click();
+        device.wait(Until.findObject(By.res("android", "button1")), 5000).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        await(() -> fixtureCount() == 1); await(() -> count() == 1);
+        try (Cursor rows = db.getAccess(uid)) {
+            assertTrue(rows.moveToFirst());
+            assertEquals("page-250." + HOST, rows.getString(rows.getColumnIndexOrThrow("daddr")));
+        }
+        find("recent_clear").click();
+        device.wait(Until.findObject(By.res("android", "button1")), 5000).click();
+        assertTrue(device.wait(Until.gone(By.res("android", "button1")), 5000));
+        await(() -> count() == 0);
+        assertFalse(find("recent_clear").isEnabled());
+    }
+
+    // Test: Recent traffic restores session filter choices but always reads the current global basis on resume.
+    // Why: A saved screen state must not trap this view on the old basis after the user changes Settings.
+    @Test public void recentTrafficAdoptsCurrentStatusAfterRecreation() {
+        long now = System.currentTimeMillis();
+        insert(uid, "now-allowed", now - 1000, false);
+        insert(uid, "now-blocked", now - 2000, true);
+        ContentValues value = new ContentValues(); value.put("block", 0);
+        db.getWritableDatabase().update("access", value, "daddr = ?", new String[]{"now-allowed." + HOST});
+        value.put("block", 1);
+        db.getWritableDatabase().update("access", value, "daddr = ?", new String[]{"now-blocked." + HOST});
+        open(); await(() -> count() == 2);
+        find("recent_domain_filter").click(); DomainFilterTestUi.choose(DomainFilters.HIDE_ALL, DomainFilters.SHOW);
+        await(() -> count() == 1);
+        onMain(() -> {
+            RecentTrafficAdapter rows = (RecentTrafficAdapter) ((RecyclerView) activity.findViewById(R.id.recent_list)).getAdapter();
+            assertEquals("now-allowed." + HOST, rows.entry(0).destination);
+        });
+        preferences.edit().putBoolean(DomainFilters.CURRENT_KEY, true).commit();
+        recreate(); await(() -> count() == 1);
+        onMain(() -> {
+            RecentTrafficAdapter rows = (RecentTrafficAdapter) ((RecyclerView) activity.findViewById(R.id.recent_list)).getAdapter();
+            assertEquals("now-blocked." + HOST, rows.entry(0).destination);
+        });
+        find("recent_domain_filter").click();
+        assertTrue(find("domain_filter_explanation").getText().contains(context.getString(R.string.domain_filter_current_summary)));
+        device.findObject(By.res("android", "button2")).click();
     }
 
     private void assertTextFits(View view) {

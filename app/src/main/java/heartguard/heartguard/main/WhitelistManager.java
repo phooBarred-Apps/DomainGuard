@@ -671,7 +671,7 @@ public class WhitelistManager {
                     // RulesManager has already applied the addition/removal. Re-evaluate
                     // the complete policy so global additions never overwrite app blocks.
                     RuleAllowData decision = isAllowed(context, daddr, uid);
-                    dh.setAccess(id, decision != null && decision.allowed == 1 ? decision : null,
+                    dh.setAccess(id, decision,
                             "Domain policy changed");
                     uids_to_reload.add(uid);
                 }

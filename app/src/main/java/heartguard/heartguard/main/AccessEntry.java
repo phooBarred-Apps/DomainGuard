@@ -7,6 +7,7 @@ final class AccessEntry {
     final long id, time, sent, received;
     final int version, protocol, port, allowed, block, aliases, connections, pending, globalScope;
     final String address;
+    final boolean explicitBlock;
 
     AccessEntry(Cursor cursor) {
         this(cursor, null);
@@ -28,6 +29,9 @@ final class AccessEntry {
         address = cursor.getString(cursor.getColumnIndexOrThrow("daddr"));
         globalScope = indicators == null ? GlobalRuleIndicators.LOCAL
                 : indicators.scope(block, cursor.getString(cursor.getColumnIndexOrThrow("ruletext")), address);
+        explicitBlock = indicators != null && block > 0 && globalScope == GlobalRuleIndicators.LOCAL
+                && indicators.explicitlyBlocked(cursor.getInt(cursor.getColumnIndexOrThrow("uid")), address,
+                cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));
     }
 
     boolean sameContents(AccessEntry other) {
@@ -35,6 +39,6 @@ final class AccessEntry {
                 && port == other.port && allowed == other.allowed && block == other.block
                 && aliases == other.aliases && connections == other.connections && pending == other.pending
                 && sent == other.sent && received == other.received && address.equals(other.address)
-                && globalScope == other.globalScope;
+                && globalScope == other.globalScope && explicitBlock == other.explicitBlock;
     }
 }

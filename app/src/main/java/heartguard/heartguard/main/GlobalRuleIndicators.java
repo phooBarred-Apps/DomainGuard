@@ -6,12 +6,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
+import android.content.Context;
 
-/** Presentation of the active rule scope; this never changes the firewall decision. */
+/** Presentation of active rule scope and explicit blocks; never used for firewall decisions. */
 final class GlobalRuleIndicators {
     static final int LOCAL = 0, ALLOWED = 1, BLOCKED = 2;
     private final Set<String> active;
     private final List<String> blockedDomains = new ArrayList<>();
+    private final Map<Integer, List<ScopedBlock>> appBlocks = new HashMap<>();
 
     GlobalRuleIndicators(Collection<String> rules) {
         active = new HashSet<>(rules);
@@ -19,6 +23,40 @@ final class GlobalRuleIndicators {
             String rule = TemporaryRuleText.base(text);
             if (rule.matches("blockdomain \\S+( try)?"))
                 blockedDomains.add(rule.split(" ")[1].toLowerCase(Locale.ROOT));
+        }
+    }
+
+    GlobalRuleIndicators(Context context, Collection<String> rules, Map<String, Long> expirations) {
+        this(rules);
+        for (String text : rules) {
+            String base = TemporaryRuleText.base(text);
+            if (!base.startsWith("block ")) continue;
+            // Reuse the firewall's parser and host/IP matchers, once per rule snapshot.
+            MyRule parsed = MyRule.getRuleFromText(context, base);
+            if (!(parsed instanceof RuleAndPackage)) continue;
+            RuleAndPackage rule = (RuleAndPackage) parsed;
+            if (rule.getUid() < 0) continue;
+            List<ScopedBlock> blocks = appBlocks.get(rule.getUid());
+            if (blocks == null) { blocks = new ArrayList<>(); appBlocks.put(rule.getUid(), blocks); }
+            blocks.add(new ScopedBlock(text, rule.rule, expirations.containsKey(text) ? expirations.get(text) : Long.MAX_VALUE));
+        }
+    }
+
+    boolean explicitlyBlocked(int uid, String address, String ruleText) {
+        List<ScopedBlock> blocks = appBlocks.get(uid);
+        if (blocks == null) return false;
+        long now = System.currentTimeMillis();
+        for (ScopedBlock block : blocks)
+            if (block.expiresAt > now && (block.text.equals(ruleText) || block.matcher.matchesAddr(address))) return true;
+        return false;
+    }
+
+    private static final class ScopedBlock {
+        final String text;
+        final RuleForApp matcher;
+        final long expiresAt;
+        ScopedBlock(String text, RuleForApp matcher, long expiresAt) {
+            this.text = text; this.matcher = matcher; this.expiresAt = expiresAt;
         }
     }
 

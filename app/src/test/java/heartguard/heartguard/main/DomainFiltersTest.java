@@ -10,15 +10,33 @@ public class DomainFiltersTest {
         for (int allowed = 0; allowed < 3; allowed++) for (int blocked = 0; blocked < 3; blocked++) {
             DomainFilters filters = new DomainFilters(allowed, blocked);
             assertEquals(allowed != DomainFilters.HIDE_ALL,
-                    filters.includes(DomainFilters.category(1, 1, GlobalRuleIndicators.BLOCKED)));
+                    filters.includes(filters.category(1, 1, GlobalRuleIndicators.BLOCKED)));
             assertEquals(blocked != DomainFilters.HIDE_ALL,
-                    filters.includes(DomainFilters.category(0, 0, GlobalRuleIndicators.ALLOWED)));
+                    filters.includes(filters.category(0, 0, GlobalRuleIndicators.ALLOWED)));
             assertEquals(allowed == DomainFilters.SHOW,
-                    filters.includes(DomainFilters.category(1, 0, GlobalRuleIndicators.ALLOWED)));
+                    filters.includes(filters.category(1, 0, GlobalRuleIndicators.ALLOWED)));
             assertEquals(blocked == DomainFilters.SHOW,
-                    filters.includes(DomainFilters.category(0, 1, GlobalRuleIndicators.BLOCKED)));
-            assertTrue(filters.includes(DomainFilters.category(-1, 0, GlobalRuleIndicators.ALLOWED)));
+                    filters.includes(filters.category(0, 1, GlobalRuleIndicators.BLOCKED)));
+            assertTrue(filters.includes(filters.category(-1, 0, GlobalRuleIndicators.ALLOWED)));
             assertEquals(filters.encode(), DomainFilters.decode(filters.encode()).encode());
+        }
+    }
+
+    // Test: Current-status filters follow present rules, including when the recorded result is unknown or different.
+    // Why: Changing the basis must reverse mismatched rows without guessing unknown current status.
+    @Test public void currentRulesCanReplaceRecordedResults() {
+        for (int allowed = 0; allowed < 3; allowed++) for (int blocked = 0; blocked < 3; blocked++) {
+            DomainFilters filters = new DomainFilters(allowed, blocked).withBasis(true);
+            assertEquals(blocked == DomainFilters.SHOW,
+                    filters.includes(filters.category(1, 1, GlobalRuleIndicators.BLOCKED)));
+            assertEquals(allowed == DomainFilters.SHOW,
+                    filters.includes(filters.category(0, 0, GlobalRuleIndicators.ALLOWED)));
+            assertEquals(allowed != DomainFilters.HIDE_ALL,
+                    filters.includes(filters.category(-1, 0, GlobalRuleIndicators.LOCAL)));
+            assertEquals(blocked != DomainFilters.HIDE_ALL,
+                    filters.includes(filters.category(-1, 1, GlobalRuleIndicators.LOCAL)));
+            assertTrue(filters.includes(filters.category(1, -1, GlobalRuleIndicators.LOCAL)));
+            assertEquals(new DomainFilters(allowed, blocked).encode(), filters.encode());
         }
     }
 }

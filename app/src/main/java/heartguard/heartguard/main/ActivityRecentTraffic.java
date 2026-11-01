@@ -75,10 +75,10 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     private LinearLayoutManager layout;
     private Button window, more;
     private TextView empty, count, protectionStatus;
-    private ImageButton hidden, domainFilterButton, filterButton;
+    private ImageButton hidden, domainFilterButton, filterButton, clearButton;
     private int seconds = DEFAULT_WINDOW_SECONDS, limit = PAGE_SIZE;
     private String sort = ListSort.RECENT;
-    private boolean resumed, failed, scrollToTop;
+    private boolean resumed, failed, scrollToTop, clearing;
     private DomainFilters domainFilters;
     private long loadedRevision = -1, oldestVisible = Long.MAX_VALUE;
     private final DatabaseHelper.AccessChangedListener changed = () -> main.post(this::refresh);
@@ -162,6 +162,8 @@ public class ActivityRecentTraffic extends AppCompatActivity {
 
     @Override protected void onResume() {
         super.onResume();
+        domainFilters = domainFilters.withBasis(PreferenceManager.getDefaultSharedPreferences(this));
+        updateControls();
         resumed = true;
         invalidateOptionsMenu();
         catalogRevision++;
@@ -228,7 +230,62 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         TooltipCompat.setTooltipText(button, button.getContentDescription());
         button.setOnClickListener(view -> showFilters());
         item.setActionView(button);
+        clearButton = new CompactImageButton(this, null);
+        clearButton.setId(R.id.recent_clear);
+        clearButton.setLayoutParams(new ViewGroup.LayoutParams(size, size));
+        clearButton.setPadding(padding, padding, padding, padding);
+        clearButton.setImageResource(R.drawable.ic_delete_white_24dp);
+        clearButton.setImageTintList(android.content.res.ColorStateList.valueOf(
+                CompactUi.color(this, R.attr.colorActionDestructive)));
+        clearButton.setContentDescription(getString(R.string.recent_traffic_clear));
+        TooltipCompat.setTooltipText(clearButton, clearButton.getContentDescription());
+        clearButton.setOnClickListener(view -> clearShownTraffic());
+        menu.findItem(R.id.recent_clear).setActionView(clearButton);
+        updateClearButton();
         return true;
+    }
+
+    private void updateClearButton() {
+        if (clearButton == null) return;
+        boolean enabled = !clearing && !failed && adapter.getItemCount() > 0;
+        clearButton.setEnabled(enabled);
+        clearButton.setAlpha(enabled ? 1f : 0.38f);
+    }
+
+    private void clearShownTraffic() {
+        if (clearing || failed || adapter.getItemCount() == 0) return;
+        List<AccessEntry> records = new ArrayList<>();
+        for (int i = 0; i < adapter.getItemCount(); i++) records.add(adapter.entry(i).access);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.recent_traffic_clear)
+                .setMessage(getResources().getQuantityString(R.plurals.recent_traffic_clear_confirm, records.size(), records.size()))
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.confirm_yes, (window, which) -> {
+                    clearing = true;
+                    reads.cancel();
+                    updateClearButton();
+                    worker.execute(() -> {
+                        int removed;
+                        try { removed = database.clearAccessRecords(records); }
+                        catch (RuntimeException error) {
+                            Log.e("DomainGuard.Recent", "Unable to clear shown traffic", error);
+                            removed = -1;
+                        }
+                        final int result = removed;
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (isDestroyed() || isFinishing()) return;
+                            clearing = false;
+                            android.widget.Toast.makeText(this, result < 0 ? getString(R.string.recent_traffic_clear_error)
+                                    : getResources().getQuantityString(R.plurals.recent_traffic_cleared, result, result),
+                                    android.widget.Toast.LENGTH_LONG).show();
+                            updateClearButton();
+                            refresh();
+                        });
+                    });
+                }).create();
+        dialog.show();
+        DialogSurface.apply(dialog);
+        CompactUi.destructiveButton(dialog.getButton(AlertDialog.BUTTON_POSITIVE));
     }
 
     private void showFilters() {
@@ -273,7 +330,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     }
 
     private void refresh() {
-        if (!resumed) return;
+        if (!resumed || clearing) return;
         Set<Integer> hiddenSnapshot = new LinkedHashSet<>(hiddenApps.keySet());
         String requestedSort = sort;
         int requestedSeconds = seconds, requestedLimit = limit;
@@ -345,6 +402,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
     }
 
     private void display(Snapshot result) {
+        if (clearing) return;
         if (!resumed) return;
         updateProtectionStatus();
         failed = result.failed;
@@ -353,6 +411,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
                 : domainFilters.active() ? R.string.domain_filters_empty
                 : hiddenApps.isEmpty() ? R.string.recent_traffic_empty : R.string.recent_traffic_empty_hidden);
         if (failed) {
+            updateClearButton();
             empty.setVisibility(View.VISIBLE);
             list.setVisibility(View.GONE);
             more.setVisibility(View.GONE);
@@ -367,6 +426,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         long anchorId = first >= 0 && first < adapter.getItemCount() ? adapter.getItemId(first) : -1;
         boolean follow = ListSort.RECENT.equals(sort) && first <= 0 && top >= 0;
         adapter.submit(result.entries);
+        updateClearButton();
         int nextAnchor = adapter.positionOf(anchorId);
         if (scrollToTop || follow) layout.scrollToPositionWithOffset(0, 0);
         else if (nextAnchor >= 0) layout.scrollToPositionWithOffset(nextAnchor, top);

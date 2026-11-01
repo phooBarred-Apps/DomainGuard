@@ -14,6 +14,7 @@
             <heartguard.heartguard.main.CompactDomainListsPreference android:key="compact_domain_lists" android:title="@string/compact_domains_title" android:summary="@string/compact_domains_summary" />
             <ListPreference android:key="domain_timestamp_format" android:title="@string/timestamp_format" android:entries="@array/timestamp_choices" android:entryValues="@array/timestamp_values" android:defaultValue="exact" android:summary="%s" />
             <Preference android:key="domain_filters" android:title="@string/domain_filters_defaults" android:summary="@string/domain_filters_defaults_summary" />
+            <heartguard.heartguard.main.SwitchPreference android:key="domain_filter_current_status" android:defaultValue="false" android:title="@string/domain_filter_current_title" android:summaryOn="@string/domain_filter_current_summary" android:summaryOff="@string/domain_filter_recorded_summary" />
             <heartguard.heartguard.main.SwitchPreference android:defaultValue="false" android:key="always_show_domain_search" android:summary="@string/list_always_show_domain_search_summary" android:title="@string/list_always_show_domain_search" />
         </PreferenceCategory>
     </PreferenceScreen>
