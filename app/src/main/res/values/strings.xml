@@ -433,4 +433,20 @@ Your internet traffic is not being sent to a remote VPN server.</string>
     <string name="secret_key_rules">Secret keys are only made of the characters A-Z and 2-7</string>
     <string name="title_ignore">Ignore</string>
     <string name="ignore_access">Ignore package/URL</string>
+    <string name="domain_identification">Domain identification</string>
+    <string name="domain_name_observed">Name observed</string>
+    <string name="domain_name_inferred">Name inferred</string>
+    <string name="domain_name_uncertain">Domain uncertain</string>
+    <string name="domain_evidence_tls">This hostname was read from this connection’s initial TLS handshake. It identifies the requested server name, not every website or request later carried by the connection.</string>
+    <string name="domain_evidence_http">This hostname was read from this connection’s first HTTP Host header.</string>
+    <string name="domain_evidence_app_dns">This app recently looked up this name, and the DNS answer was still valid. That makes it a candidate, not proof that this connection used it.</string>
+    <string name="domain_evidence_shared_dns">This name came from a recent shared DNS answer. DomainGuard cannot establish which app looked it up or whether this connection used it.</string>
+    <string name="domain_evidence_legacy">This older entry did not save how its name was identified. It may be a name inferred from a shared IP address; DomainGuard cannot verify it now.</string>
+    <string name="domain_evidence_encrypted">This connection included an encrypted-handshake extension. The visible cover name is not treated as the actual destination.</string>
+    <string name="domain_evidence_ambiguous">Several possible names share this IP address. DomainGuard displays the IP instead of choosing one arbitrarily.</string>
+    <string name="domain_evidence_unknown">No reliable hostname was available for this connection. Blocking before the handshake, encrypted DNS, QUIC, or cached addresses can prevent identification.</string>
+    <string name="domain_destination_ip">Destination IP: %1$s</string>
+    <string name="domain_candidate_names">Possible names from DNS (up to 32):</string>
+    <string name="domain_evidence_policy">Protection still uses the existing IP-based rules. Domains sharing an IP can affect one another. Observing a hostname does not change an allow/block decision.</string>
+    <string name="domain_evidence_legend">A question mark means the domain name is inferred or uncertain. Tap a row, then Domain identification, for the saved evidence and destination IP.</string>
 </resources>

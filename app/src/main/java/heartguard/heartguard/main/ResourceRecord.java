@@ -29,6 +29,7 @@ public class ResourceRecord {
     public String AName;
     public String Resource;
     public int TTL;
+    public int Uid = -1;
 
     private static DateFormat formatter = SimpleDateFormat.getDateTimeInstance();
 

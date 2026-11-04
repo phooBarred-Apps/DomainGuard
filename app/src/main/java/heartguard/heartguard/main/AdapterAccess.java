@@ -114,6 +114,7 @@ public class AdapterAccess extends RecyclerView.Adapter<AdapterAccess.Holder> {
         span.setSpan(new UnderlineSpan(), 0, dest.length(), 0);
         tvDest.setText(daddr);
         tvDest.setContentDescription(dest);
+        DomainAttributionUi.bind(tvDest, entry.nameSource);
 
         llTraffic.setVisibility(connections > 0 || sent > 0 || received > 0 ? View.VISIBLE : View.GONE);
         if (connections > 0)

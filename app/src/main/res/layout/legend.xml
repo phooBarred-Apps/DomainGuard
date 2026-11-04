@@ -71,6 +71,7 @@
             <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_gravity="center_vertical" android:layout_margin="0dp" android:src="@drawable/host_global_blocked" android:contentDescription="@string/domain_globally_blocked" android:layout_marginEnd="12dp" />
             <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_gravity="center_vertical" android:layout_marginStart="0dp" android:layout_marginLeft="0dp" android:text="@string/domain_globally_blocked" android:textAppearance="@style/TextSmall" android:layout_weight="1" />
         </LinearLayout>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/domain_evidence_legend" android:textAppearance="@style/TextSmall" android:paddingTop="12dp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/domain_history_legend" android:textAppearance="@style/TextSmall" android:paddingTop="12dp" android:paddingBottom="4dp" />
         <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/legend_scope" android:textAppearance="@style/TextTitle" android:paddingTop="16dp" android:paddingBottom="4dp" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:minHeight="44dp">

@@ -582,9 +582,42 @@ jfieldID fidQName = NULL;
 jfieldID fidAName = NULL;
 jfieldID fidResource = NULL;
 jfieldID fidTTL = NULL;
+jfieldID fidRRUid = NULL;
+
+jboolean inspect_hostname(const struct arguments *args, const struct tcp_session *tcp,
+                          const uint8_t *data, size_t length) {
+    static jmethodID method = NULL;
+    JNIEnv *env = args->env;
+    if (length == 0) return 0;
+    if (length > 32768) return 1;
+    jclass service = (*env)->GetObjectClass(env, args->instance);
+    if (method == NULL)
+        method = jniGetMethodID(env, service, "inspectHostname", "(Lheartguard/heartguard/main/Packet;[B)Z");
+    (*env)->DeleteLocalRef(env, service);
+    if (method == NULL) return 1;
+    jbyteArray bytes = (*env)->NewByteArray(env, (jsize) length);
+    if (bytes == NULL) { jniCheckException(env); return 1; }
+    (*env)->SetByteArrayRegion(env, bytes, 0, (jsize) length, (const jbyte *) data);
+    char source[INET6_ADDRSTRLEN + 1], dest[INET6_ADDRSTRLEN + 1];
+    inet_ntop(tcp->version == 4 ? AF_INET : AF_INET6, &tcp->saddr, source, sizeof(source));
+    inet_ntop(tcp->version == 4 ? AF_INET : AF_INET6, &tcp->daddr, dest, sizeof(dest));
+    jobject packet = create_packet(args, tcp->version, IPPROTO_TCP, "", source,
+                                  ntohs(tcp->source), dest, ntohs(tcp->dest), "", tcp->uid, 1);
+    if (jniCheckException(env) || packet == NULL) {
+        (*env)->DeleteLocalRef(env, bytes);
+        if (packet != NULL) { (*env)->DeleteLocalRef(env, packet); ng_delete_alloc(packet, __FILE__, __LINE__); }
+        return 1;
+    }
+    jboolean done = (*env)->CallBooleanMethod(env, args->instance, method, packet, bytes);
+    if (jniCheckException(env)) done = 1;
+    (*env)->DeleteLocalRef(env, bytes);
+    (*env)->DeleteLocalRef(env, packet);
+    ng_delete_alloc(packet, __FILE__, __LINE__);
+    return done;
+}
 
 void dns_resolved(const struct arguments *args,
-                  const char *qname, const char *aname, const char *resource, int ttl) {
+                  const char *qname, const char *aname, const char *resource, int ttl, int uid) {
 #ifdef PROFILE_JNI
     float mselapsed;
     struct timeval start, end;
@@ -612,6 +645,7 @@ void dns_resolved(const struct arguments *args,
         fidAName = jniGetFieldID(args->env, clsRR, "AName", string);
         fidResource = jniGetFieldID(args->env, clsRR, "Resource", string);
         fidTTL = jniGetFieldID(args->env, clsRR, "TTL", "I");
+        fidRRUid = jniGetFieldID(args->env, clsRR, "Uid", "I");
     }
 
     jlong jtime = time(NULL) * 1000LL;
@@ -627,6 +661,7 @@ void dns_resolved(const struct arguments *args,
     (*args->env)->SetObjectField(args->env, jrr, fidAName, janame);
     (*args->env)->SetObjectField(args->env, jrr, fidResource, jresource);
     (*args->env)->SetIntField(args->env, jrr, fidTTL, ttl);
+    (*args->env)->SetIntField(args->env, jrr, fidRRUid, uid);
 
     (*args->env)->CallVoidMethod(args->env, args->instance, midDnsResolved, jrr);
     jniCheckException(args->env);

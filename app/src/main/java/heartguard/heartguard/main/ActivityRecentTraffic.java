@@ -545,6 +545,7 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         String[] choices = availablePackages.isEmpty() ? new String[]{getString(R.string.title_log_copy)}
                 : new String[]{getString(R.string.title_allow), getString(R.string.title_block), getString(R.string.title_log_copy)};
         AlertDialog dialog = new AlertDialog.Builder(this).setTitle(entry.destination)
+                .setNeutralButton(R.string.domain_identification, (which, button) -> DomainAttributionUi.show(this, entry.access))
                 .setItems(choices, (which, position) -> {
                     if (availablePackages.isEmpty() || position == 2) {
                         ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(

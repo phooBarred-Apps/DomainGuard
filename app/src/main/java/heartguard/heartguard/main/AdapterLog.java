@@ -248,34 +248,11 @@ public class AdapterLog extends CursorAdapter {
         tvSAddr.setText(getKnownAddress(saddr));
 
         // Show destination address
-        if (!we && resolve && !isKnownAddress(daddr))
-            if (dname == null) {
-                tvDaddr.setText(daddr);
-                new AsyncTask<String, Object, String>() {
-                    @Override
-                    protected void onPreExecute() {
-                        ViewCompat.setHasTransientState(tvDaddr, true);
-                    }
+        // A reverse DNS lookup describes the IP owner, not this connection's requested host.
+        tvDaddr.setText(!we && resolve && dname != null ? dname : getKnownAddress(daddr));
 
-                    @Override
-                    protected String doInBackground(String... args) {
-                        try {
-                            return InetAddress.getByName(args[0]).getHostName();
-                        } catch (UnknownHostException ignored) {
-                            return args[0];
-                        }
-                    }
-
-                    @Override
-                    protected void onPostExecute(String name) {
-                        tvDaddr.setText(">" + name);
-                        ViewCompat.setHasTransientState(tvDaddr, false);
-                    }
-                }.execute(daddr);
-            } else
-                tvDaddr.setText(dname);
-        else
-            tvDaddr.setText(getKnownAddress(daddr));
+        int evidenceColumn = cursor.getColumnIndex("name_source");
+        DomainAttributionUi.bind(tvDaddr, evidenceColumn < 0 ? DomainAttribution.LEGACY : cursor.getInt(evidenceColumn));
 
         // Show organization
         tvOrganization.setVisibility(View.GONE);

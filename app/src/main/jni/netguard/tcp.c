@@ -496,6 +496,10 @@ void check_tcp_socket(const struct arguments *args,
                             break;
                         }
                     } else {
+                        // Inspect only successfully forwarded, ordered bytes. Never open a blocked socket.
+                        if (!s->tcp.hostname_done && sent > 0)
+                            s->tcp.hostname_done = inspect_hostname(args, &s->tcp,
+                                    s->tcp.forward->data + s->tcp.forward->sent, (size_t) sent);
                         fwd = 1;
                         buffer_size -= sent;
                         s->tcp.sent += sent;
@@ -756,6 +760,7 @@ jboolean handle_tcp(const struct arguments *args,
             s->tcp.state = TCP_LISTEN;
             s->tcp.socks5 = SOCKS5_NONE;
             s->tcp.forward = NULL;
+            s->tcp.hostname_done = 0;
             s->next = NULL;
 
             if (datalen) {

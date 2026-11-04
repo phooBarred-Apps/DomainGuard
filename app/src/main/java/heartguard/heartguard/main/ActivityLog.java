@@ -185,6 +185,14 @@ public class ActivityLog extends AppCompatActivity implements SharedPreferences.
                 // Build popup menu
                 PopupMenu popup = new PopupMenu(ActivityLog.this, findViewById(R.id.vwPopupAnchor));
                 popup.inflate(R.menu.log);
+                final int nameSource = cursor.getInt(cursor.getColumnIndexOrThrow("name_source"));
+                final String candidates = cursor.getString(cursor.getColumnIndexOrThrow("name_candidates"));
+                popup.getMenu().add(R.string.domain_identification).setOnMenuItemClickListener(item -> {
+                    CompactUi.help(ActivityLog.this, R.string.domain_identification,
+                            DomainAttributionUi.explanation(ActivityLog.this, dname == null ? daddr : dname,
+                                    daddr, nameSource, candidates));
+                    return true;
+                });
 
                 // Application name
                 if (uid >= 0)

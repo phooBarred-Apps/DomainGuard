@@ -24,9 +24,16 @@ final class AccessNotification {
     private static final String ADDRESS = BuildConfig.APPLICATION_ID + ".notification.address";
     private static final String PENDING = BuildConfig.APPLICATION_ID + ".notification.pending";
 
+    private static final String NAME_SOURCE = BuildConfig.APPLICATION_ID + ".notification.nameSource";
+    private static final String NAME_CANDIDATES = BuildConfig.APPLICATION_ID + ".notification.nameCandidates";
+
     private enum State { BLOCKED, PENDING, ALLOWED }
 
     static synchronized void show(Context context, int uid, String destination, String address) {
+        show(context, uid, destination, address, new DomainAttribution(destination, DomainAttribution.LEGACY, ""));
+    }
+
+    static synchronized void show(Context context, int uid, String destination, String address, DomainAttribution evidence) {
         String host;
         try { host = DomainInput.normalize(destination); }
         catch (IllegalArgumentException invalidName) {
@@ -47,32 +54,44 @@ final class AccessNotification {
             return;
         }
         NotificationGroup.notify(context, tag(uid, packageName, host), ID,
-                accessBuilder(context, uid, packageName, host, address, state).build());
+                accessBuilder(context, uid, packageName, host, address, state, evidence).build());
     }
 
     private static NotificationCompat.Builder accessBuilder(Context context, int uid, String packageName,
-                                                            String host, String address, State state) {
+                                                            String host, String address, State state, DomainAttribution evidence) {
         boolean pending = state == State.PENDING;
         String text = context.getString(pending ? R.string.notification_allow_queued : R.string.notification_domain_blocked, host);
+        text += " · " + context.getString(DomainAttributionUi.label(evidence.source));
         NotificationCompat.Builder builder = builder(context, uid, packageName, host, address, text, pending);
         if (!packageName.isEmpty()) {
             if (!pending)
                 builder.addAction(R.drawable.ic_check_white_24dp, context.getString(R.string.notification_allow_app,
                                 DomainRuleDialog.appName(context, packageName)),
-                        allowIntent(context, uid, packageName, host, address));
+                        allowIntent(context, uid, packageName, host, address, evidence));
             addOptions(context, builder, uid, packageName, host, address);
         } else {
             builder.setStyle(new NotificationCompat.BigTextStyle().bigText(text + "\n"
                     + context.getString(R.string.notification_shared_uid)));
         }
+        Bundle source = new Bundle();
+        source.putInt(NAME_SOURCE, evidence.source);
+        source.putString(NAME_CANDIDATES, evidence.candidates);
+        builder.addExtras(source);
         return builder;
     }
 
     static PendingIntent allowIntent(Context context, int uid, String packageName, String host, String address) {
+        return allowIntent(context, uid, packageName, host, address,
+                new DomainAttribution(host, DomainAttribution.LEGACY, ""));
+    }
+
+    private static PendingIntent allowIntent(Context context, int uid, String packageName, String host,
+                                            String address, DomainAttribution evidence) {
         Intent allow = new Intent(context, ReceiverAllowDomain.class)
                 .setAction(ALLOW).setData(identity(uid, packageName, host))
                 .putExtra("uid", uid).putExtra("package", packageName)
                 .putExtra("host", host).putExtra("address", address);
+        allow.putExtra(NAME_SOURCE, evidence.source).putExtra(NAME_CANDIDATES, evidence.candidates);
         return PendingIntent.getBroadcast(context, 0, allow, flags());
     }
 
@@ -98,7 +117,13 @@ final class AccessNotification {
         }
         String message = context.getString(explicitBlock ? R.string.notification_review_block
                 : R.string.notification_allow_queued, host);
+        int nameSource = intent.getIntExtra(NAME_SOURCE, DomainAttribution.LEGACY);
+        message += " \u00b7 " + context.getString(DomainAttributionUi.label(nameSource));
         NotificationCompat.Builder result = builder(context, uid, packageName, host, address, message, !explicitBlock);
+        Bundle evidence = new Bundle();
+        evidence.putInt(NAME_SOURCE, nameSource);
+        evidence.putString(NAME_CANDIDATES, intent.getStringExtra(NAME_CANDIDATES));
+        result.addExtras(evidence);
         addOptions(context, result, uid, packageName, host, address);
         NotificationGroup.notify(context, tag(uid, packageName, host), ID, result.build());
         // Post feedback before queueing: immediate activation must not be followed by a stale alert.
@@ -130,7 +155,9 @@ final class AccessNotification {
             if (state == State.ALLOWED || shouldHideGlobalBlock(context, host)) {
                 NotificationGroup.cancel(context, tag, ID);
             } else if (current.extras.getBoolean(PENDING, false) != (state == State.PENDING)) {
-                NotificationCompat.Builder updated = accessBuilder(context, uid, pkg, host, address, state)
+                NotificationCompat.Builder updated = accessBuilder(context, uid, pkg, host, address, state,
+                        new DomainAttribution(host, current.extras.getInt(NAME_SOURCE, DomainAttribution.LEGACY),
+                                current.extras.getString(NAME_CANDIDATES, "")))
                         .setWhen(current.when);
                 NotificationGroup.notify(context, tag, ID, updated.build());
             }

@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "heartguard.heartguard.main.mw"
-        versionName = "2.90"
+        versionName = "2.91"
         minSdkVersion 22
         targetSdkVersion 31
-        versionCode = 2026103101
+        versionCode = 2026110401
         archivesBaseName = "DomainGuard"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -87,6 +87,11 @@ android {
     }
     buildTypes.all {
         buildConfigField "String", "GITHUB_LATEST_API", "\"https://api.github.com/repos/phooBarred/DomainGuard-downloads/releases/latest\""
+    }
+
+    sourceSets {
+        test.java.srcDir 'src/testShared/java'
+        androidTest.java.srcDir 'src/testShared/java'
     }
 
     compileOptions {

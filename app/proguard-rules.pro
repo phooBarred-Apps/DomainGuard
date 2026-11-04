@@ -40,6 +40,7 @@
     void nativeExit(java.lang.String);
     void nativeError(int, java.lang.String);
     void logPacket(heartguard.heartguard.main.Packet);
+    boolean inspectHostname(heartguard.heartguard.main.Packet, byte[]);
     void dnsResolved(heartguard.heartguard.main.ResourceRecord);
     boolean isDomainBlocked(java.lang.String);
     boolean isDnsBlocked(java.lang.String, int, boolean);

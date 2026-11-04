@@ -2,7 +2,27 @@
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: October 31, 2026.
+Latest changes: November 4, 2026.
+
+Version `2.91` adds **Domain identification**. A small question mark marks inferred
+or uncertain names in app lists, Recent traffic and detailed logs. Tap a row to
+see the saved evidence and IP; alerts also identify inferred names. Older history
+is retained but cannot be verified retrospectively.
+
+New DNS evidence uses the answer's actual lifetime and prefers the same app's
+lookup. Ambiguous shared-IP matches display the IP. Already-allowed TCP streams
+can supply the initial TLS server name or first HTTP Host header; encrypted
+handshakes do not expose their cover name as the destination. Blocked connections
+stay blocked, and QUIC/encrypted DNS are not decoded. The firewall continues to
+use its existing IP-based decisions, so shared-IP rule limitations remain.
+
+Inspection is limited to 32 KiB per connection, 128 tracked connections and a
+15-second inspection window. DNS evidence retains at most 10,255 entries between
+pruning passes. Only names and their evidence are saved, not inspected payloads.
+This diagnostic history/cache is intentionally excluded from Android settings
+backup, alongside the existing traffic and DNS history; rules and settings keep
+their existing backup coverage.
+
 
 Version `2.90` distinguishes explicit per-app domain blocks with a circled red X.
 A plain X means blocked by default because no allow rule applies; a globe with X

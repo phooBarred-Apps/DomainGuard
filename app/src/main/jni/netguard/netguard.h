@@ -192,6 +192,7 @@ struct tcp_session {
 
     uint8_t state;
     uint8_t socks5;
+    uint8_t hostname_done;
     struct segment *forward;
 };
 
@@ -509,8 +510,11 @@ void log_android(int prio, const char *fmt, ...);
 
 void log_packet(const struct arguments *args, jobject jpacket);
 
+jboolean inspect_hostname(const struct arguments *args, const struct tcp_session *tcp,
+                          const uint8_t *data, size_t length);
+
 void dns_resolved(const struct arguments *args,
-                  const char *qname, const char *aname, const char *resource, int ttl);
+                  const char *qname, const char *aname, const char *resource, int ttl, int uid);
 
 jboolean is_domain_blocked(const struct arguments *args, const char *name, int uid, jboolean svcb);
 jlong next_temporary_expiry(const struct arguments *args);

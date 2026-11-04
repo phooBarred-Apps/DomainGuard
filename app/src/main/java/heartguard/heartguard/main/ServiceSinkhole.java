@@ -177,6 +177,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
     private static final int MSG_STATS_START = 1;
     private static final int MSG_STATS_STOP = 2;
     private static final int MSG_STATS_UPDATE = 3;
+    private final ConnectionAttribution connectionNames = new ConnectionAttribution();
     private static final int MSG_PACKET = 4;
     private static final int MSG_USAGE = 5;
 
@@ -761,6 +762,18 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             }
         }
 
+        void refine(Packet packet, DomainAttribution evidence) {
+            synchronized (this) {
+                if (queue >= MAX_QUEUE) return;
+                queue++;
+                if (!post(() -> {
+                    try { DatabaseHelper.getInstance(ServiceSinkhole.this).refineConnectionName(packet, evidence); }
+                    catch (RuntimeException failure) { Log.e(TAG, "Unable to save domain evidence", failure); }
+                    finally { synchronized (LogHandler.this) { queue--; } }
+                })) queue--;
+            }
+        }
+
         public void account(Usage usage) {
             Message msg = obtainMessage();
             msg.obj = usage;
@@ -812,8 +825,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
             DatabaseHelper dh = DatabaseHelper.getInstance(ServiceSinkhole.this);
 
-            // Get real name
-            String dname = dh.getQName(packet.uid, packet.daddr);
+            // DNS is evidence, not proof of the hostname used by this connection.
+            packet.attribution = dh.getAttribution(packet.uid, packet.daddr, packet.time);
+            String dname = packet.attribution.name;
 
             // Traffic log
             if (log)
@@ -829,7 +843,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                     if (!mapNotify.containsKey(packet.uid) || mapNotify.get(packet.uid))
                         if (!packet.allowed && rm.shouldNotifyOnPacket(ServiceSinkhole.this, packet, dname)) {
                             AccessNotification.show(ServiceSinkhole.this, packet.uid,
-                                    dname == null ? packet.daddr : dname, packet.daddr);
+                                    dname == null ? packet.daddr : dname, packet.daddr, packet.attribution);
                         }
                     lock.readLock().unlock();
                 }
@@ -1958,7 +1972,17 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
     // Called from native code
     private void logPacket(Packet packet) {
+        connectionNames.track(packet);
         logHandler.queue(packet);
+    }
+
+    // Called with ordered bytes from an already-allowed TCP connection.
+    private boolean inspectHostname(Packet packet, byte[] bytes) {
+        ConnectionAttribution.Flow flow = connectionNames.inspect(packet, bytes);
+        if (flow == null) return true;
+        DomainAttribution evidence = flow.parser.result();
+        if (evidence != null) logHandler.refine(flow.packet, evidence);
+        return !connectionNames.contains(packet);
     }
 
     // Called from native code
@@ -2847,6 +2871,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
     @Override
     public void onDestroy() {
+        connectionNames.clear();
         synchronized (this) {
             Log.i(TAG, "Destroy");
             commandLooper.quit();
