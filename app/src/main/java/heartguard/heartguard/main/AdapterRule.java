@@ -551,7 +551,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                     if (names == null) { names = new HashMap<>(); rows.put(uid, names); }
                     // Multiple ports may have different outcomes; keep a host if any row is visible.
                     int category = categories.category(cursor.getInt(3), cursor.getInt(5),
-                            indicators.scope(cursor.getInt(5), cursor.getString(6), host));
+                            indicators.scope(cursor.getInt(5), cursor.getString(6), cursor.getString(7)));
                     names.put(host, category | (names.containsKey(host) ? names.get(host) : 0));
                 }
             }
@@ -1227,20 +1227,9 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                 Util.getProtocolName(protocol, version, false) + " " +
                         daddr + (dport > 0 ? "/" + dport : ""));
 
-        SubMenu sub = popup.getMenu().findItem(R.id.menu_host).getSubMenu();
-        boolean multiple = false;
-        Cursor alt = null;
-        try {
-            alt = DatabaseHelper.getInstance(context).getAlternateQNames(daddr);
-            while (alt.moveToNext()) {
-                multiple = true;
-                sub.add(Menu.NONE, Menu.NONE, 0, alt.getString(0)).setEnabled(false);
-            }
-        } finally {
-            if (alt != null)
-                alt.close();
-        }
-        popup.getMenu().findItem(R.id.menu_host).setEnabled(multiple);
+        popup.getMenu().findItem(R.id.menu_host).setEnabled(false);
+        popup.getMenu().add(Menu.NONE, Menu.NONE, 0, R.string.domain_identification)
+                .setOnMenuItemClickListener(item -> { DomainAttributionUi.show(context, entry); return true; });
 
         popup.getMenu().findItem(R.id.menu_time).setTitle(
                 DomainTimestamp.full(time));
@@ -1267,7 +1256,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                     //    result = true;
                     //    break;
                         RulesManager rm = RulesManager.getInstance(context);
-                        rm.resetRulesForAccess(context, rule.uid, daddr, pending);
+                        rm.resetRulesForAccess(context, rule.uid, entry.policyAddress, pending);
                         result = true;
                         break;
 

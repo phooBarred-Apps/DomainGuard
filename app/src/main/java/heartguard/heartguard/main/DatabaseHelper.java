@@ -49,7 +49,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DB_NAME = "Netguard";
     // HeartGuard change - version 22 adds rules table
-    private static final int DB_VERSION = 25;
+    private static final int DB_VERSION = 26;
 
     private static boolean once = true;
     private static List<LogChangedListener> logChangedListeners = new ArrayList<>();
@@ -160,6 +160,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         createTableLog(db);
         createTableAccess(db);
         createTableDns(db);
+        createAttributionSchema(db);
         createTableForward(db);
         createTableApp(db);
         // HeartGuard change - add rules table
@@ -250,6 +251,26 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 ");");
         db.execSQL("CREATE UNIQUE INDEX idx_dns ON dns(qname, aname, resource)");
         db.execSQL("CREATE INDEX idx_dns_resource ON dns(resource)");
+    }
+
+    private void createAttributionSchema(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS dns_attribution (uid INTEGER NOT NULL, name TEXT NOT NULL,"
+                + " ip TEXT NOT NULL, time INTEGER NOT NULL, expires INTEGER NOT NULL, PRIMARY KEY(uid,name,ip))");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_dns_attribution_ip ON dns_attribution(ip)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_dns_attribution_expires ON dns_attribution(expires)");
+        for (String table : new String[]{"access", "log"}) {
+            if (!columnExists(db, table, "name_source"))
+                db.execSQL("ALTER TABLE " + table + " ADD COLUMN name_source INTEGER NOT NULL DEFAULT 1");
+            if (!columnExists(db, table, "name_candidates"))
+                db.execSQL("ALTER TABLE " + table + " ADD COLUMN name_candidates TEXT");
+            if (!columnExists(db, table, "flow")) db.execSQL("ALTER TABLE " + table + " ADD COLUMN flow TEXT");
+        }
+        if (!columnExists(db, "access", "destination_ip"))
+            db.execSQL("ALTER TABLE access ADD COLUMN destination_ip TEXT");
+        if (!columnExists(db, "access", "observed_name"))
+            db.execSQL("ALTER TABLE access ADD COLUMN observed_name TEXT");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_access_flow ON access(flow)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_log_flow ON log(flow)");
     }
 
     private void createTableForward(SQLiteDatabase db) {
@@ -431,6 +452,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 oldVersion = 25;
             }
 
+            if (oldVersion < 26) {
+                createAttributionSchema(db);
+                oldVersion = 26;
+            }
+
             if (oldVersion == DB_VERSION) {
                 db.setVersion(oldVersion);
                 db.setTransactionSuccessful();
@@ -455,6 +481,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             try {
                 ContentValues cv = new ContentValues();
                 cv.put("time", packet.time);
+                putNameEvidence(cv, packet);
                 cv.put("version", packet.version);
 
                 if (packet.protocol < 0)
@@ -646,6 +673,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             try {
                 ContentValues cv = new ContentValues();
                 cv.put("time", packet.time);
+                putNameEvidence(cv, packet);
+                cv.put("destination_ip", packet.daddr);
+                cv.putNull("observed_name");
                 cv.put("allowed", packet.allowed ? 1 : 0);
 
                 // There is a segmented index on uid, version, protocol, daddr and dport
@@ -915,8 +945,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static String accessOrder(String sort) {
         String order = "a.time DESC";
-        if (ListSort.NAME.equals(sort)) order = "a.daddr COLLATE NOCASE";
-        else if (ListSort.NAME_DESC.equals(sort)) order = "a.daddr COLLATE NOCASE DESC";
+        if (ListSort.NAME.equals(sort)) order = "COALESCE(a.observed_name,a.daddr) COLLATE NOCASE";
+        else if (ListSort.NAME_DESC.equals(sort)) order = "COALESCE(a.observed_name,a.daddr) COLLATE NOCASE DESC";
         else if (ListSort.OLDEST.equals(sort)) order = "a.time ASC";
         else if (ListSort.BLOCKED.equals(sort)) order = "(a.block > 0) DESC, a.time DESC";
         else if (ListSort.ALLOWED.equals(sort)) order = "(a.block = 0) DESC, a.time DESC";
@@ -952,11 +982,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             List<String> args = new ArrayList<>();
             args.add(Integer.toString(uid));
             if (search != null && !search.trim().isEmpty()) {
-                query += " AND a.daddr LIKE ? ESCAPE '\\'";
+                query += " AND COALESCE(a.observed_name,a.daddr) LIKE ? ESCAPE '\\'";
                 args.add("%" + search.trim().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%");
             }
             if (mainSearch != null && !mainSearch.isEmpty()) {
-                query += " AND a.daddr LIKE ? ESCAPE '\\'";
+                query += " AND COALESCE(a.observed_name,a.daddr) LIKE ? ESCAPE '\\'";
                 args.add(new DomainSearchQuery(mainSearch).sqlContains());
             }
             query += " ORDER BY " + accessOrder(sort) + (filters.needsGlobalScope() ? "" : " LIMIT 250");
@@ -978,8 +1008,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try {
             // Search all recorded apps before grouping, independent of app filters and the per-app limit.
             return getReadableDatabase().rawQuery(
-                    "SELECT uid, daddr, time, allowed, pending_allow, COALESCE(block, -1), ruletext FROM access"
-                            + " WHERE daddr LIKE ? ESCAPE '\\'"
+                    "SELECT uid, COALESCE(observed_name,daddr) AS daddr, time, allowed, pending_allow, COALESCE(block, -1), ruletext, daddr AS policy_address FROM access"
+                            + " WHERE COALESCE(observed_name,daddr) LIKE ? ESCAPE '\\'"
                             + " ORDER BY uid, daddr COLLATE NOCASE, time DESC, ID DESC",
                     new String[]{search.sqlContains()});
         } finally {
@@ -1099,6 +1129,21 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             SQLiteDatabase db = this.getWritableDatabase();
             db.beginTransactionNonExclusive();
             try {
+                String hostname = DomainAttribution.hostname(rr.QName);
+                if (hostname != null && rr.TTL > 0) {
+                    ContentValues evidence = new ContentValues();
+                    evidence.put("uid", rr.Uid);
+                    evidence.put("name", hostname);
+                    evidence.put("ip", rr.Resource);
+                    evidence.put("time", rr.Time);
+                    evidence.put("expires", rr.Time + Math.min(rr.TTL, 604800) * 1000L);
+                    db.insertWithOnConflict("dns_attribution", null, evidence, SQLiteDatabase.CONFLICT_REPLACE);
+                    if ((++dnsEvidenceWrites & 255) == 0) {
+                        db.delete("dns_attribution", "expires <= ?", new String[]{Long.toString(rr.Time)});
+                        db.execSQL("DELETE FROM dns_attribution WHERE rowid IN (SELECT rowid FROM dns_attribution"
+                                + " ORDER BY time DESC LIMIT -1 OFFSET 10000)");
+                    }
+                }
                 int ttl = rr.TTL;
 
                 int min = Integer.parseInt(prefs.getString("ttl", "259200"));
@@ -1144,6 +1189,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 // There is no index on time for write performance
                 long now = new Date().getTime();
                 db.execSQL("DELETE FROM dns WHERE time + ttl < " + now);
+                db.delete("dns_attribution", "expires <= ?", new String[]{Long.toString(now)});
                 Log.i(TAG, "Cleanup DNS");
 
                 db.setTransactionSuccessful();
@@ -1162,6 +1208,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.beginTransactionNonExclusive();
             try {
                 db.delete("dns", null, new String[]{});
+                db.delete("dns_attribution", null, null);
 
                 db.setTransactionSuccessful();
             } finally {
@@ -1172,24 +1219,59 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
-    public String getQName(int uid, String ip) {
+    private int dnsEvidenceWrites;
+
+    DomainAttribution getAttribution(int uid, String ip, long time) {
         lock.readLock().lock();
         try {
-            SQLiteDatabase db = this.getReadableDatabase();
-            // There is a segmented index on resource
-            String query = "SELECT d.qname";
-            query += " FROM dns AS d";
-            query += " WHERE d.resource = '" + ip.replace("'", "''") + "'";
-            query += " ORDER BY d.qname";
-            query += " LIMIT 1";
-            // There is no way to known for sure which domain name an app used, so just pick the first one
-            return db.compileStatement(query).simpleQueryForString();
-        } catch (SQLiteDoneException ignored) {
-            // Not found
-            return null;
-        } finally {
-            lock.readLock().unlock();
-        }
+            List<DomainAttribution.Dns> records = new ArrayList<>();
+            // Bound candidates while prioritizing this app. A truncated list stays ambiguous.
+            try (Cursor cursor = getReadableDatabase().rawQuery(
+                    "SELECT uid,name,time,expires FROM dns_attribution WHERE ip=? AND time<=? AND expires>?"
+                            + " ORDER BY (uid=?) DESC,time DESC LIMIT 256",
+                    new String[]{ip, Long.toString(time), Long.toString(time), Integer.toString(uid)})) {
+                while (cursor.moveToNext()) records.add(new DomainAttribution.Dns(cursor.getInt(0),
+                        cursor.getString(1), cursor.getLong(2), cursor.getLong(3)));
+            }
+            DomainAttribution resolved = DomainAttribution.resolve(uid, time, records);
+            return records.size() == 256 ? new DomainAttribution(null, DomainAttribution.AMBIGUOUS, resolved.candidates) : resolved;
+        } finally { lock.readLock().unlock(); }
+    }
+
+    public String getQName(int uid, String ip) {
+        return getAttribution(uid, ip, System.currentTimeMillis()).name;
+    }
+
+    private static void putNameEvidence(ContentValues values, Packet packet) {
+        DomainAttribution evidence = packet.attribution;
+        values.put("name_source", evidence == null ? DomainAttribution.LEGACY : evidence.source);
+        values.put("name_candidates", evidence == null ? "" : evidence.candidates);
+        values.put("flow", ConnectionAttribution.identity(packet));
+    }
+
+    /** Enrich only the original connection. Clearing traffic or a newer request wins the race. */
+    void refineConnectionName(Packet original, DomainAttribution evidence) {
+        lock.writeLock().lock();
+        try {
+            SQLiteDatabase db = getWritableDatabase();
+            db.beginTransactionNonExclusive();
+            try {
+                String flow = ConnectionAttribution.identity(original);
+                ContentValues log = new ContentValues();
+                log.put("dname", evidence.name);
+                log.put("name_source", evidence.source);
+                log.put("name_candidates", evidence.candidates);
+                db.update("log", log, "flow=?", new String[]{flow});
+                ContentValues access = new ContentValues();
+                access.put("observed_name", evidence.destination(original.daddr));
+                access.put("name_source", evidence.source);
+                access.put("name_candidates", evidence.candidates);
+                db.update("access", access, "flow=?", new String[]{flow});
+                db.setTransactionSuccessful();
+            } finally { db.endTransaction(); }
+        } finally { lock.writeLock().unlock(); }
+        notifyLogChanged();
+        notifyAccessChanged();
     }
 
     public Cursor getAlternateQNames(String qname) {

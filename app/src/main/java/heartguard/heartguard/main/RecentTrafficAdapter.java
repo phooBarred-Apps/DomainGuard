@@ -133,6 +133,7 @@ final class RecentTrafficAdapter extends RecyclerView.Adapter<RecentTrafficAdapt
             icon.setImageDrawable(entry.app.icon);
             name.setText(entry.app.name);
             domain.setText(entry.destination);
+            DomainAttributionUi.bind(domain, entry.access.nameSource);
             refreshTime();
             time.setContentDescription(DomainTimestamp.full(entry.time));
             rowStyle.bind(entry.access, outcome, domain);

@@ -100,6 +100,22 @@ public class AccessNotificationDeviceTest {
         await(() -> RuleDelay.read(context).seconds == 0);
     }
 
+    // Test: Inferred-name wording survives a quick Allow and later pending cancellation.
+    // Why: Acting on an alert must not silently turn DNS evidence into a confirmed name.
+    @Test public void uncertaintySurvivesPendingActions() throws Exception {
+        addRule("delay 60");
+        AccessNotification.show(context, uid, FIRST, "192.0.2.91",
+                new DomainAttribution(FIRST, DomainAttribution.DNS_SHARED, FIRST));
+        String inferred = context.getString(R.string.domain_name_inferred);
+        assertTrue(notification(FIRST).extras.getCharSequence(Notification.EXTRA_TEXT).toString().endsWith(inferred));
+        notification(FIRST).actions[0].actionIntent.send();
+        await(() -> exists(allow(FIRST)));
+        assertTrue(notification(FIRST).extras.getCharSequence(Notification.EXTRA_TEXT).toString().endsWith(inferred));
+        addRule("abandon " + allow(FIRST));
+        await(() -> !exists(allow(FIRST)));
+        assertTrue(notification(FIRST).extras.getCharSequence(Notification.EXTRA_TEXT).toString().endsWith(inferred));
+    }
+
     // Test: Two destinations have independent real notification actions; filling in another host cannot retarget a tap.
     // Why: A newer connection must not silently change the destination allowed from an older notification.
     @Test public void actionTargetsOneDomainAndOneApp() throws Exception {
@@ -251,7 +267,7 @@ public class AccessNotificationDeviceTest {
 
     private boolean hasText(String host, int resource) {
         Notification current = find(AccessNotification.tag(uid, pkg, host));
-        return current != null && context.getString(resource, host).contentEquals(
+        return current != null && (context.getString(resource, host) + " \u00b7 " + context.getString(R.string.domain_name_uncertain)).contentEquals(
                 current.extras.getCharSequence(Notification.EXTRA_TEXT));
     }
 

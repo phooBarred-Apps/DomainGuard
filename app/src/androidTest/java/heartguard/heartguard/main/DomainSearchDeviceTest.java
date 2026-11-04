@@ -136,6 +136,36 @@ public class DomainSearchDeviceTest {
         onMain(() -> assertEquals("no-local-match", holder(apps.get(1)).domainSearch.getText().toString()));
     }
 
+    // Test: The visible domain menu opens the saved identification explanation in both themes.
+    // Why: An uncertainty icon is useful only if its explanation is reachable from the actual row.
+    @Test public void opensIdentificationFromDomainRow() {
+        String domain = "evidence" + SUFFIX;
+        long id = insert(apps.get(0).uid, domain, 443, System.currentTimeMillis(), 0);
+        ContentValues evidence = new ContentValues();
+        evidence.put("name_source", DomainAttribution.DNS_SHARED);
+        evidence.put("destination_ip", "192.0.2.91"); evidence.put("name_candidates", domain);
+        db.getWritableDatabase().update("access", evidence, "ID=?", new String[]{Long.toString(id)});
+        Object originalDark = prefs.getAll().get("dark_theme");
+        savedPreferences.put("dark_theme", originalDark);
+        for (boolean dark : new boolean[]{false, true}) {
+            prefs.edit().putBoolean("dark_theme", dark).commit();
+            openSearch(); query(domain);
+            await(() -> displayedApps().size() == 1);
+            showApp(apps.get(0)); await(() -> entries(apps.get(0)).size() == 1);
+            UiObject2 row = device.wait(Until.findObject(By.res(context.getPackageName(), "tvDest").text(domain)), 5000);
+            assertNotNull("Domain row", row); row.click();
+            findText(context.getString(R.string.domain_identification)).click();
+            // UI Automator 2.2 textContains does not match across paragraph breaks.
+            UiObject2 explanation = device.wait(Until.findObject(By.text(java.util.regex.Pattern.compile(
+                    ".*Destination IP: 192\\.0\\.2\\.91.*", java.util.regex.Pattern.DOTALL))), 5000);
+            assertNotNull("Saved destination IP in the explanation", explanation);
+            assertTrue(explanation.getText().contains(context.getString(R.string.domain_evidence_shared_dns)));
+            device.takeScreenshot(new java.io.File(context.getExternalFilesDir(null), "attribution-" + (dark ? "dark" : "light") + ".png"));
+            device.pressBack();
+            onMain(() -> activity.finish());
+        }
+    }
+
     // Test: Copy deduplicates off-screen domains from matching apps, respecting each app's local filter.
     // Why: The main-screen copy action must follow the displayed lists rather than the removed search screen.
     @Test public void copiesDistinctDisplayedDomains() {
@@ -189,9 +219,13 @@ public class DomainSearchDeviceTest {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(
                 new Intent(context, ActivityMain.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         device.waitForIdle();
+        UiObject2 agree = device.findObject(By.text(context.getString(R.string.app_agree)));
+        if (agree != null) agree.click();
         if (device.hasObject(By.res(context.getPackageName(), "cbDontAsk")))
             device.findObject(By.res("android", "button2")).click();
-        device.wait(Until.findObject(By.desc("More options")), 5000).click();
+        UiObject2 menu = device.wait(Until.findObject(By.desc("More options")), 10000);
+        assertNotNull("Main menu must be ready after onboarding", menu);
+        menu.click();
         findText(context.getString(R.string.domain_search_title)).click();
         assertTrue(device.wait(Until.hasObject(By.res(context.getPackageName(), "search_src_text")), 5000));
     }

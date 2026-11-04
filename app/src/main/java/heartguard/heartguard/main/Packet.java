@@ -31,6 +31,7 @@ public class Packet {
     public String data;
     public int uid;
     public boolean allowed;
+    DomainAttribution attribution;
 
     public Packet() {
     }

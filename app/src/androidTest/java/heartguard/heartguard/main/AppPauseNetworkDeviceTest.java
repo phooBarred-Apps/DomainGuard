@@ -42,6 +42,103 @@ public class AppPauseNetworkDeviceTest {
         verifyExpiry(false, true);
     }
 
+    // Test: HTTP and TLS names cross the native VPN bridge; ECH stays uncertain and blocked flows stay blocked.
+    // Why: Parser-only tests cannot catch JNI signature, ownership, ordering or forwarding mistakes.
+    @Test public void nativeHostnameEvidence() throws Exception {
+        String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
+        assertTrue("Host-local fixture required", port.matches("[0-9]{1,5}"));
+        assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        RulesManager rules = RulesManager.getInstance(context);
+        assertEquals(0, RuleDelay.read(context).seconds);
+        boolean wasEnabled = rules.getPreferenceEnabled(context);
+        List<String> owned = new ArrayList<>();
+        try {
+            shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
+            assertNull(VpnService.prepare(context));
+            if (!rules.hasFeatureRule(FeatureRule.FEATURE_NAME_MANAGE_SYSTEM)) add(context, rules, owned, "feature manage_system");
+            add(context, rules, owned, "allow package:com.android.shell ip:10.0.2.2");
+            if (!wasEnabled) add(context, rules, owned, "feature enabled");
+            ServiceSinkhole.start("hostname network fixture", context);
+            long ready = SystemClock.elapsedRealtime() + 20000;
+            boolean recorded = false;
+            while (!recorded && SystemClock.elapsedRealtime() < ready) {
+                hostnameProbe(port);
+                try (Cursor rows = DatabaseHelper.getInstance(context).getReadableDatabase().rawQuery(
+                        "SELECT ID FROM access WHERE uid=2000 AND dport=? AND allowed=1", new String[]{port})) {
+                    recorded = rows.moveToFirst();
+                }
+                if (!recorded) SystemClock.sleep(100);
+            }
+            assertTrue("Fixture request recorded through VPN", recorded);
+            byte[][] payloads = {
+                "GET / HTTP/1.1\r\nHost: mail.http.invalid\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+                HostnameFixture.hello("mail.tls.invalid", false), HostnameFixture.hello("cover.invalid", true)
+            };
+            int[] sources = {DomainAttribution.HTTP, DomainAttribution.TLS, DomainAttribution.ENCRYPTED};
+            String[] names = {"mail.http.invalid", "mail.tls.invalid", "10.0.2.2"};
+            for (int i = 0; i < payloads.length; i++) {
+                assertTrue("Fixture payload delivered", sendFixture(context, port, payloads[i], "echo").contains("fixture-received"));
+                long end = SystemClock.elapsedRealtime() + 5000;
+                boolean found = false;
+                while (!found && SystemClock.elapsedRealtime() < end) {
+                    try (Cursor rows = DatabaseHelper.getInstance(context).getReadableDatabase().rawQuery(
+                            "SELECT observed_name,name_source,daddr,allowed FROM access WHERE uid=2000 AND dport=?", new String[]{port})) {
+                        while (rows.moveToNext()) if (names[i].equals(rows.getString(0)) && sources[i] == rows.getInt(1)) {
+                            assertEquals("10.0.2.2", rows.getString(2)); assertEquals(1, rows.getInt(3)); found = true;
+                        }
+                    }
+                    if (!found) SystemClock.sleep(100);
+                }
+                assertTrue("Native evidence " + names[i], found);
+            }
+            if ("true".equals(InstrumentationRegistry.getArguments().getString("dnsFixture"))) {
+                java.io.ByteArrayOutputStream query = new java.io.ByteArrayOutputStream();
+                query.write(new byte[]{0x29,0x10,1,0,0,1,0,0,0,0,0,0});
+                for (String label : "dns.native.invalid".split("\\.")) {
+                    query.write(label.length()); query.write(label.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                }
+                query.write(new byte[]{0,0,1,0,1});
+                java.io.ByteArrayOutputStream framed = new java.io.ByteArrayOutputStream();
+                framed.write(0); framed.write(query.size()); framed.write(query.toByteArray());
+                try {
+                    assertTrue(sendFixture(context, "53", framed.toByteArray(), "dns").contains("fixture-received"));
+                    try (Cursor rows = DatabaseHelper.getInstance(context).getReadableDatabase().rawQuery(
+                            "SELECT uid,name,expires-time FROM dns_attribution WHERE ip='192.0.2.92'", null)) {
+                        assertTrue("Synthetic DNS response recorded", rows.moveToFirst());
+                        assertEquals("Native DNS owner", 2000, rows.getInt(0));
+                        assertEquals("dns.native.invalid", rows.getString(1)); assertEquals(60000, rows.getLong(2));
+                    }
+                } finally {
+                    DatabaseHelper.getInstance(context).getWritableDatabase().delete("dns_attribution", "ip=?", new String[]{"192.0.2.92"});
+                    DatabaseHelper.getInstance(context).getWritableDatabase().delete("dns", "resource=?", new String[]{"192.0.2.92"});
+                }
+            }
+            add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
+            assertNotNull("Explicit block enacted", WhitelistManager.getInstance(context).getExplicitBlock(context, "10.0.2.2", 2000));
+            long blocked = SystemClock.elapsedRealtime() + 10000;
+            while (hostnameProbe(port).contains("fixture-received") && SystemClock.elapsedRealtime() < blocked) SystemClock.sleep(100);
+            assertFalse("Attribution must not bypass a block", hostnameProbe(port).contains("fixture-received"));
+        } finally { cleanup(context, rules, owned, wasEnabled); }
+    }
+
+    private static String hostnameProbe(String port) throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        return sendFixture(context, port, "probe".getBytes(java.nio.charset.StandardCharsets.US_ASCII), "echo");
+    }
+
+    private static String sendFixture(Context context, String port, byte[] bytes, String mode) throws Exception {
+        File data = File.createTempFile("hostname-", ".bin", context.getExternalFilesDir(null));
+        File command = null;
+        try {
+            try (FileOutputStream output = new FileOutputStream(data)) { output.write(bytes); }
+            String apk = InstrumentationRegistry.getInstrumentation().getContext().getPackageCodePath();
+            command = script("CLASSPATH=" + apk + " app_process / heartguard.heartguard.main.NativeTrafficClient "
+                    + port + " " + data.getAbsolutePath() + " " + mode);
+            return shell("sh " + command.getAbsolutePath());
+        } finally { data.delete(); if (command != null) command.delete(); }
+    }
+
     private void verifyExpiry(boolean temporaryAllow, boolean global) throws Exception {
         String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
         assumeTrue(port.matches("[0-9]{1,5}"));
@@ -100,6 +197,11 @@ public class AppPauseNetworkDeviceTest {
             }
         } finally {
             allowCleanup.countDown(); barrier(rules);
+            cleanup(context, rules, owned, wasEnabled);
+        }
+    }
+
+    private static void cleanup(Context context, RulesManager rules, List<String> owned, boolean wasEnabled) throws Exception {
             List<Long> ids = new ArrayList<>();
             DatabaseHelper db = DatabaseHelper.getInstance(context);
             try (Cursor cursor = db.getAllRules()) {
@@ -114,7 +216,6 @@ public class AppPauseNetworkDeviceTest {
             rules.startTrueTimeRequest(context); barrier(rules);
             if (wasEnabled) ServiceSinkhole.reload("pause network fixture cleanup", context, false);
             else ServiceSinkhole.stop("pause network fixture cleanup", context, false);
-        }
     }
 
     private static void add(Context context, RulesManager rules, List<String> owned, String text) throws Exception {
