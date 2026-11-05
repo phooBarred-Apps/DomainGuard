@@ -62,6 +62,7 @@ public class RecentTrafficDeviceTest {
     private int uid;
     private final Map<String, Object> savedFilters = new HashMap<>();
     private final List<ContentValues> priorTraffic = new ArrayList<>();
+    private final List<String> ownedRules = new ArrayList<>();
     private boolean hadVpn;
 
     @Before public void setup() throws Exception {
@@ -100,7 +101,25 @@ public class RecentTrafficDeviceTest {
     }
 
     @After public void cleanup() throws Exception {
+        onMain(() -> {
+            for (Activity open : new ArrayList<>(ActivityLifecycleMonitorRegistry.getInstance()
+                    .getActivitiesInStage(Stage.RESUMED)))
+                if (open instanceof ActivityRulesEntry) open.finish();
+        });
         if (activity != null) onMain(() -> activity.finish());
+        barrier();
+        List<Long> remove = new ArrayList<>();
+        try (Cursor cursor = db.getAllRules()) {
+            while (cursor.moveToNext()) {
+                String text = cursor.getString(cursor.getColumnIndexOrThrow("ruletext"));
+                if (ownedRules.contains(text) || (text.startsWith("- ") && ownedRules.contains(text.substring(2))))
+                    remove.add(cursor.getLong(cursor.getColumnIndexOrThrow("_id")));
+            }
+        }
+        if (!remove.isEmpty()) {
+            db.removeRulesById(remove.toArray(new Long[0]));
+            reloadRules();
+        }
         clearFixtures();
         for (ContentValues record : priorTraffic)
             db.getWritableDatabase().insertWithOnConflict("access", null, record, android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE);
@@ -125,6 +144,144 @@ public class RecentTrafficDeviceTest {
             if (capabilities != null && capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) return true;
         }
         return false;
+    }
+
+    // Test: Unknown-owner DNS rows offer Reset, review the parent block, and queue delayed removal only on Submit.
+    // Why: A global DNS block must be removable from Recent traffic without inventing an app or erasing history.
+    @Test public void unknownDnsResetReviewsGlobalBlockAndHonorsDelay() throws Exception {
+        String global = "blockdomain " + HOST;
+        fixtureRule(global);
+        fixtureRule("delay 120");
+        reloadRules();
+        insert(-1, "play", System.currentTimeMillis(), false);
+        ContentValues dns = new ContentValues();
+        dns.put("protocol", 17); dns.put("dport", 53);
+        dns.put("name_source", DomainAttribution.DNS_BLOCKED);
+        dns.put("destination_ip", "192.0.2.53");
+        db.getWritableDatabase().update("access", dns, "uid=-1 AND daddr=?", new String[]{"play." + HOST});
+        open(); await(() -> count() == 1);
+        showFirstActions();
+        assertFalse(device.hasObject(By.text(context.getString(R.string.title_allow))));
+        assertFalse(device.hasObject(By.text(context.getString(R.string.title_block))));
+        selectAction(R.string.menu_reset);
+        assertEquals("- " + global, find("etAddMultipleRules").getText().trim());
+        find("cancel_button").click();
+        assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "etAddMultipleRules")), 5000));
+        try (Cursor cursor = db.getRuleMatchingRuletext("- " + global)) { assertFalse(cursor.moveToFirst()); }
+
+        showFirstActions(); selectAction(R.string.menu_reset);
+        find("etAddMultipleRules");
+        long before = System.currentTimeMillis();
+        find("submit_button").click();
+        assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "etAddMultipleRules")), 5000));
+        barrier();
+        try (Cursor cursor = db.getRuleMatchingRuletext("- " + global)) {
+            assertTrue(cursor.moveToFirst());
+            assertEquals(0, cursor.getInt(cursor.getColumnIndexOrThrow("enacted")));
+            assertTrue(cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) >= before + 120000);
+        }
+        assertTrue(rules.isGlobalDomainBlocked("play." + HOST));
+        assertEquals(1, fixtureCount());
+        await(() -> count() == 1);
+    }
+
+    // Test: Known apps keep Allow/Block/Copy; Reset uses the stored policy address and excludes another app's rule.
+    // Why: Inserting a new menu item must not misroute actions or reset an unrelated observed hostname.
+    @Test public void resetPreservesOtherActionsAndPolicyIdentity() throws Exception {
+        String local = "allow package:" + context.getPackageName() + " ip:192.0.2.91";
+        fixtureRule(local);
+        fixtureRule("block package:missing.reset.fixture ip:192.0.2.91");
+        fixtureRule("blockdomain observed." + HOST);
+        reloadRules();
+        insert(uid, "original", System.currentTimeMillis(), false);
+        ContentValues observed = new ContentValues();
+        observed.put("daddr", "192.0.2.91"); observed.put("observed_name", "observed." + HOST);
+        observed.put("name_source", DomainAttribution.TLS);
+        db.getWritableDatabase().update("access", observed, "uid=? AND daddr=?",
+                new String[]{Integer.toString(uid), "original." + HOST});
+        try {
+            open(); await(() -> count() == 1);
+            for (int action : new int[]{R.string.title_allow, R.string.title_block}) {
+                showFirstActions(); selectAction(action);
+                find("allow_new_access_global");
+                assertTrue(device.hasObject(By.text(context.getString(action == R.string.title_allow
+                        ? R.string.domain_allow_title : R.string.domain_block_title))));
+                device.findObject(By.res("android", "button2")).click();
+                assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "allow_new_access_global")), 5000));
+            }
+            showFirstActions(); selectAction(R.string.title_log_copy);
+            assertTrue(device.wait(Until.gone(By.text(context.getString(R.string.menu_reset))), 5000));
+            await(() -> {
+                boolean[] focused = new boolean[1];
+                onMain(() -> focused[0] = activity.hasWindowFocus());
+                return focused[0];
+            });
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
+                    context.getSystemService(Context.CLIPBOARD_SERVICE);
+            onMain(() -> assertEquals("observed." + HOST, clipboard.getPrimaryClip().getItemAt(0).getText().toString()));
+            showFirstActions(); selectAction(R.string.menu_reset);
+            assertEquals("- " + local, find("etAddMultipleRules").getText().trim());
+            find("cancel_button").click();
+            assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "etAddMultipleRules")), 5000));
+            assertEquals(1, count());
+        } finally {
+            db.getWritableDatabase().delete("access", "uid=? AND observed_name=?",
+                    new String[]{Integer.toString(uid), "observed." + HOST});
+        }
+    }
+
+    // Test: Reset matches parent/exact global rules, preserves scope and suffix boundaries, and separates pending rules.
+    // Why: Unknown owners must not match missing-package rules; resetting one host must not remove unrelated protection.
+    @Test public void resetMatchesGlobalAndLocalScopesWithoutUnrelatedRules() throws Exception {
+        String parent = "blockdomain " + HOST;
+        String exact = TemporaryRuleText.text("blockdomain play." + HOST, 3600);
+        String globalAllow = "allow host:play." + HOST;
+        String local = "block package:" + context.getPackageName() + " host:play." + HOST;
+        for (String text : new String[]{parent, exact, globalAllow, local,
+                "block package:missing.reset.fixture host:play." + HOST,
+                "blockdomain unrelated.invalid"}) fixtureRule(text);
+        reloadRules();
+        java.util.Set<String> global = new HashSet<>(Arrays.asList("- " + parent, "- " + exact, "- " + globalAllow));
+        assertEquals(global, new HashSet<>(rules.getRulesToReset(context, -1, "play." + HOST, 0)));
+        assertEquals(global, new HashSet<>(rules.getRulesToReset(context, -2, "play." + HOST, 0)));
+        global.add("- " + local);
+        assertEquals(global, new HashSet<>(rules.getRulesToReset(context, uid, "play." + HOST, 0)));
+        assertEquals(new HashSet<>(Arrays.asList("- " + parent, "- " + exact, "- " + globalAllow)),
+                new HashSet<>(rules.getRulesToReset(context, -1, "PLAY." + HOST.toUpperCase(java.util.Locale.ROOT) + ".", 0)));
+        assertTrue(rules.getRulesToReset(context, -1, "lookalike-" + HOST, 0).isEmpty());
+        assertTrue(rules.getRulesToReset(context, -1, "unmatched.invalid", 0).isEmpty());
+
+        fixtureRule("delay 120"); reloadRules();
+        String pending = "allow package:" + context.getPackageName() + " host:pending." + HOST;
+        ownedRules.add(pending); rules.queueRuleText(context, pending); barrier();
+        assertEquals(Collections.singletonList("- " + pending), rules.getRulesToReset(context, uid, "pending." + HOST, 1));
+        assertEquals(Collections.singletonList("- " + parent), rules.getRulesToReset(context, uid, "pending." + HOST, 0));
+        assertTrue(rules.getRulesToReset(context, -1, "pending." + HOST, 1).isEmpty());
+    }
+
+    private void fixtureRule(String text) {
+        try (Cursor cursor = db.getRuleMatchingRuletext(text)) {
+            assertFalse("Synthetic rule must not already exist", cursor.moveToFirst());
+        }
+        MyRule rule = MyRule.getRuleFromText(context, text);
+        assertNotNull(rule);
+        ownedRules.add(text);
+        long now = System.currentTimeMillis();
+        db.addNewRule(text, now, now, 1, rule.getMajorCategory(), rule.getMinorCategory());
+    }
+
+    private void showFirstActions() {
+        onMain(() -> {
+            RecyclerView list = activity.findViewById(R.id.recent_list);
+            assertNotNull(list.findViewHolderForAdapterPosition(0));
+            list.findViewHolderForAdapterPosition(0).itemView.performClick();
+        });
+        assertNotNull(device.wait(Until.findObject(By.text(context.getString(R.string.menu_reset))), 5000));
+    }
+
+    private void selectAction(int label) {
+        UiObject2 action = device.wait(Until.findObject(By.text(context.getString(label))), 5000);
+        assertNotNull(action); action.click();
     }
 
     // Test: App filters apply before paging and combine with Hide allowed and hidden apps.

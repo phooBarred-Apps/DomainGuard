@@ -542,17 +542,29 @@ public class ActivityRecentTraffic extends AppCompatActivity {
                 if (getPackageManager().getApplicationInfo(name, 0).uid == entry.uid) availablePackages.add(name);
             } catch (PackageManager.NameNotFoundException removed) { /* Keep copy available for removed apps. */ }
         }
-        String[] choices = availablePackages.isEmpty() ? new String[]{getString(R.string.title_log_copy)}
-                : new String[]{getString(R.string.title_allow), getString(R.string.title_block), getString(R.string.title_log_copy)};
+        List<Integer> actions = new ArrayList<>();
+        if (!availablePackages.isEmpty()) {
+            actions.add(R.string.title_allow);
+            actions.add(R.string.title_block);
+        }
+        // Unknown/removed apps can still have matching global rules to reset.
+        actions.add(R.string.menu_reset);
+        actions.add(R.string.title_log_copy);
+        String[] choices = new String[actions.size()];
+        for (int i = 0; i < choices.length; i++) choices[i] = getString(actions.get(i));
         AlertDialog dialog = new AlertDialog.Builder(this).setTitle(entry.destination)
                 .setNeutralButton(R.string.domain_identification, (which, button) -> DomainAttributionUi.show(this, entry.access))
                 .setItems(choices, (which, position) -> {
-                    if (availablePackages.isEmpty() || position == 2) {
+                    int action = actions.get(position);
+                    if (action == R.string.menu_reset) {
+                        RulesManager.getInstance(this).resetRulesForAccess(this, entry.uid,
+                                entry.access.policyAddress, entry.access.pending);
+                    } else if (action == R.string.title_log_copy) {
                         ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(
                                 ClipData.newPlainText(getString(R.string.recent_traffic_title), entry.destination));
                     } else if (availablePackages.size() == 1)
-                        DomainRuleDialog.show(this, availablePackages.get(0), entry.destination, position == 1);
-                    else choosePackage(entry, availablePackages, position == 1);
+                        DomainRuleDialog.show(this, availablePackages.get(0), entry.destination, action == R.string.title_block);
+                    else choosePackage(entry, availablePackages, action == R.string.title_block);
                 }).setNegativeButton(android.R.string.cancel, null).create();
         dialog.show();
         DialogSurface.apply(dialog);
