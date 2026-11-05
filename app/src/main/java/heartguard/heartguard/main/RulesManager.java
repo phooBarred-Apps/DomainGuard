@@ -1266,31 +1266,44 @@ public class RulesManager {
 
     // The user has clicked to reset an access rule
     public void resetRulesForAccess(Context context, int uid, String daddr, int pending) {
+        List<String> ruletexts = getRulesToReset(context, uid, daddr, pending);
+        if (!ruletexts.isEmpty()) {
+            ActivityRulesEntry.startActivityToConfirmRules(context, ruletexts);
+        } else {
+            Toast.makeText(context, R.string.reset_no_matching_rules, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    List<String> getRulesToReset(Context context, int uid, String daddr, int pending) {
         List<String> ruletexts = new LinkedList<>();
 
         List<String> daddrs = DatabaseHelper.getInstance(context).getListAlternateQNames(daddr);
-
-        // Get the list of either the current rules or the pending rules
-        List<MyRule> rules = (pending > 0) ? m_allPendingRules : m_allCurrentRules;
+        String host = daddr.toLowerCase(java.util.Locale.ROOT);
+        if (host.endsWith(".")) host = host.substring(0, host.length() - 1);
 
         // Check all current rules to see if they apply
         lock.readLock().lock();
         try {
+            List<MyRule> rules = (pending > 0) ? m_allPendingRules : m_allCurrentRules;
             for (MyRule rule : rules) {
                 if (rule instanceof RuleAndPackage) {
                     RuleAndPackage rap = (RuleAndPackage) rule;
-                    if (rap.appliesToAccess(uid, daddrs)) {
+                    if ((uid >= 0 || rap.getUid() == RuleAndPackage.UID_GLOBAL)
+                            && rap.appliesToAccess(uid, daddrs)) {
                         ruletexts.add("- " + rule.getRuleText());
                     }
+                } else if (rule instanceof BlockedDomainRule) {
+                    // DNS blocks apply to the queried name, not unrelated names sharing its IP.
+                    String domain = ((BlockedDomainRule) rule).getDomainName().toLowerCase(java.util.Locale.ROOT);
+                    if (Util.isAddressInsideDomain(host, domain))
+                        ruletexts.add("- " + rule.getRuleText());
                 }
             }
         } finally {
             lock.readLock().unlock();
         }
 
-        if (ruletexts.size() > 0) {
-            ActivityRulesEntry.startActivityToConfirmRules(context, ruletexts);
-        }
+        return ruletexts;
     }
 
     // Starts a new TrueTime runnable

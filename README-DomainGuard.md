@@ -4,6 +4,12 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 Latest changes: November 4, 2026.
 
+Version `2.93` adds **Reset** to Recent traffic, including matching global rules
+for Unknown app entries. Both traffic views now include global blacklist and
+parent-domain rules in the removal review, with the existing delay and history
+preservation. Redundant question-mark icons are removed, the Domain identification
+button has better side padding, and update history retains original release dates.
+
 Version `2.92` makes rejected DNS lookups visible in Recent traffic and in the
 identified app's domain list. The queried name is kept separate from the DNS
 server address, unidentified owners remain Unknown app, and Domain identification
@@ -40,6 +46,12 @@ still means a global block. The Legend explains each icon.
 **Recent traffic > Clear shown traffic** deletes the currently loaded, filtered
 results from shared traffic history after confirmation. Hidden and unloaded rows,
 new requests received after the confirmation opens, and rules remain intact.
+
+**Recent traffic > tap a domain > Reset** opens the same rule-removal review as
+the per-app domain list. Matching global blacklist rules (including parent domains)
+are included, even for Unknown app entries. Submit applies the normal rule delay;
+Cancel changes nothing. Reset removes rules, not traffic history. Removing a global
+or parent-domain rule affects every app or subdomain covered by that rule.
 
 Version `2.89` clears addressed domain notifications after rules activate, including
 matching alerts across apps for global rules. Delayed allows stay pending until
