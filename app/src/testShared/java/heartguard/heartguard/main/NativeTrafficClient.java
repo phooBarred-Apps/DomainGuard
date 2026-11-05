@@ -18,6 +18,16 @@ public final class NativeTrafficClient {
             }
             data = bytes.toByteArray();
         }
+        if ("dns-udp".equals(args[2])) {
+            try (DatagramSocket socket = new DatagramSocket()) {
+                socket.setSoTimeout(4000);
+                socket.send(new DatagramPacket(data, data.length, InetAddress.getByName("10.0.2.2"), port));
+                byte[] reply = new byte[512]; DatagramPacket packet = new DatagramPacket(reply, reply.length);
+                socket.receive(packet); dnsResult(Arrays.copyOf(reply, packet.getLength()));
+                System.out.println("fixture-received");
+            } catch (IOException blocked) { System.out.println("fixture-blocked"); }
+            return;
+        }
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("10.0.2.2", port), 4000);
             socket.setSoTimeout(4000);
@@ -28,12 +38,17 @@ public final class NativeTrafficClient {
             if ("dns".equals(args[2])) {
                 int size = input.readUnsignedShort();
                 if (size < 12 || size > 512) throw new IOException("Invalid fixture response");
-                input.readFully(new byte[size]);
+                byte[] reply = new byte[size]; input.readFully(reply); dnsResult(reply);
             } else {
                 byte[] reply = new byte[data.length]; input.readFully(reply);
                 if (!Arrays.equals(data, reply)) throw new IOException("Echo mismatch");
             }
             System.out.println("fixture-received");
         } catch (IOException blocked) { System.out.println("fixture-blocked"); }
+    }
+    private static void dnsResult(byte[] reply) throws IOException {
+        if (reply.length < 12) throw new IOException("Short fixture response");
+        System.out.println("fixture-dns-rcode-" + (reply[3] & 15) + "-answers-" +
+                (((reply[6] & 255) << 8) | (reply[7] & 255)));
     }
 }

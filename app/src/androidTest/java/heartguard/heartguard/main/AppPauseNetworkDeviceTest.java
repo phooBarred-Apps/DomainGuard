@@ -24,6 +24,145 @@ import static org.junit.Assume.assumeTrue;
 /** Requires a TCP/UDP echo server on the host port passed as pauseNetworkPort. */
 @RunWith(AndroidJUnit4.class)
 public class AppPauseNetworkDeviceTest {
+    // Test: Rejected DNS responses cross the native bridge into Recent traffic with their name and owner.
+    // Why: Capture-all with system apps allowed used to suppress DNS blocks even with every display filter off.
+    @Test public void nativeBlockedDnsIsVisible() throws Exception {
+        assertEquals("true", InstrumentationRegistry.getArguments().getString("dnsFixture"));
+        assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        RulesManager rules = RulesManager.getInstance(context);
+        DatabaseHelper db = DatabaseHelper.getInstance(context);
+        assertEquals(0, RuleDelay.read(context).seconds);
+        assertFalse("Match the reported system-app setting", rules.getPreferenceManageSystem(context));
+        android.content.SharedPreferences prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context);
+        java.util.Map<String, Object> saved = new java.util.HashMap<>(prefs.getAll());
+        String[] changedPrefs = {Rule.PREFERENCE_STRING_LOG, AccessNotification.NOTIFY_GLOBAL_BLOCKS,
+                DomainFilters.ALLOWED_KEY, DomainFilters.BLOCKED_KEY, "recent_filter_default_type", "recent_filter_default_access"};
+        prefs.edit().putBoolean(Rule.PREFERENCE_STRING_LOG, false).putBoolean(AccessNotification.NOTIFY_GLOBAL_BLOCKS, false)
+                .putInt(DomainFilters.ALLOWED_KEY, 0).putInt(DomainFilters.BLOCKED_KEY, 0)
+                .putInt("recent_filter_default_type", 0).putInt("recent_filter_default_access", 0).commit();
+        boolean wasEnabled = rules.getPreferenceEnabled(context);
+        List<String> owned = new ArrayList<>();
+        android.app.Activity activity = null;
+        try {
+            shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
+            assertNull(VpnService.prepare(context));
+            if (!rules.hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC))
+                add(context, rules, owned, "feature capture_all_traffic");
+            add(context, rules, owned, "blockdomain dns.native.invalid");
+            if (!wasEnabled) add(context, rules, owned, "feature enabled");
+            ServiceSinkhole.start("blocked DNS fixture", context);
+            long ready = SystemClock.elapsedRealtime() + 20000;
+            String reply = "";
+            while (!reply.contains("fixture-dns-rcode-3-answers-0") && SystemClock.elapsedRealtime() < ready)
+                reply = sendFixture(context, "53", dnsQuery("dns.native.invalid", 1, true), "dns");
+            assertTrue("Global block still rejects the DNS answer", reply.contains("fixture-dns-rcode-3-answers-0"));
+            AccessEntry tcp = awaitDns(db, "dns.native.invalid", 6, 2000, DomainAttribution.DNS_BLOCKED);
+            assertEquals("Resolver IP is retained separately", "10.0.2.2", tcp.destinationIp);
+            assertEquals(GlobalRuleIndicators.BLOCKED, tcp.globalScope);
+
+            assertTrue(sendFixture(context, "53", dnsQuery("dns.native.invalid", 1, false), "dns-udp")
+                    .contains("fixture-dns-rcode-3-answers-0"));
+            // Android 12 cannot assign this deliberately unconnected UDP socket to an app.
+            AccessEntry unknown = awaitDns(db, "dns.native.invalid", 17, -1, DomainAttribution.DNS_BLOCKED);
+            assertEquals(0, unknown.allowed);
+
+            assertTrue(sendFixture(context, "53", dnsQuery("service.native.invalid", 65, true), "dns")
+                    .contains("fixture-dns-rcode-3-answers-0"));
+            awaitDns(db, "service.native.invalid", 6, 2000, DomainAttribution.DNS_SERVICE_BINDING);
+            assertFalse("A service-binding rejection is not a global domain rule", rules.isGlobalDomainBlocked("service.native.invalid"));
+
+            android.app.NotificationManager manager = (android.app.NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            for (android.service.notification.StatusBarNotification notification : manager.getActiveNotifications())
+                assertFalse("Global alerts stay off", String.valueOf(notification.getTag()).contains("dns.native.invalid"));
+            try (Cursor rows = db.getRecentAccess(System.currentTimeMillis() - 60000, java.util.Collections.emptySet(), null,
+                    new DomainFilters(DomainFilters.HIDE_ALL, DomainFilters.SHOW), ListSort.RECENT, 1000)) {
+                boolean found = false;
+                while (rows.moveToNext()) if (new AccessEntry(rows).id == unknown.id) found = true;
+                assertTrue("Hide allowed keeps blocked unknown-owner DNS", found);
+            }
+            try (Cursor rows = db.getRecentAccess(System.currentTimeMillis() - 60000, java.util.Collections.emptySet(), null,
+                    new DomainFilters(DomainFilters.SHOW, DomainFilters.HIDE_GLOBAL), ListSort.RECENT, 1000)) {
+                while (rows.moveToNext()) assertNotEquals("Hide global blocks uses the queried domain", unknown.id, new AccessEntry(rows).id);
+            }
+            activity = InstrumentationRegistry.getInstrumentation().startActivitySync(new android.content.Intent(context,
+                    ActivityRecentTraffic.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
+            androidx.test.uiautomator.UiDevice device = androidx.test.uiautomator.UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
+            androidx.test.uiautomator.UiObject2 row = device.wait(androidx.test.uiautomator.Until.findObject(
+                    androidx.test.uiautomator.By.text("dns.native.invalid")), 5000);
+            assertNotNull("Rejected lookup is visible in Recent traffic", row);
+            assertTrue("Unknown owner is visible", device.hasObject(androidx.test.uiautomator.By.text(context.getString(R.string.recent_traffic_unknown_app))));
+            row.click();
+            device.wait(androidx.test.uiautomator.Until.findObject(androidx.test.uiautomator.By.text(
+                    context.getString(R.string.domain_identification))), 5000).click();
+            androidx.test.uiautomator.UiObject2 explanation = device.wait(androidx.test.uiautomator.Until.findObject(
+                    androidx.test.uiautomator.By.text(java.util.regex.Pattern.compile(".*DNS server: 10\\.0\\.2\\.2.*",
+                            java.util.regex.Pattern.DOTALL))), 5000);
+            assertNotNull("DNS server is not presented as the website IP", explanation);
+            assertTrue(explanation.getText().contains(context.getString(R.string.domain_evidence_dns_blocked)));
+            device.takeScreenshot(new File(context.getExternalFilesDir(null), "blocked-dns-explanation.png"));
+            device.pressBack(); device.pressBack();
+            assertTrue("Logging and reviewing do not weaken the global block", rules.isGlobalDomainBlocked("dns.native.invalid"));
+            String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort");
+            add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
+            assertFalse("Explicit exception blocks an otherwise allowed system app", hostnameProbe(port).contains("fixture-received"));
+            long end = SystemClock.elapsedRealtime() + 5000;
+            boolean recorded = false;
+            while (!recorded && SystemClock.elapsedRealtime() < end) {
+                try (Cursor rows = db.getReadableDatabase().rawQuery(
+                        "SELECT ID FROM access WHERE uid=2000 AND dport=? AND allowed=0", new String[]{port})) {
+                    recorded = rows.moveToFirst();
+                }
+                if (!recorded) SystemClock.sleep(100);
+            }
+            assertTrue("Capture-all must not hide the explicit block", recorded);
+        } finally {
+            if (activity != null) { final android.app.Activity open = activity; InstrumentationRegistry.getInstrumentation().runOnMainSync(open::finish); }
+            cleanup(context, rules, owned, wasEnabled);
+            android.content.SharedPreferences.Editor restore = prefs.edit();
+            for (String key : changedPrefs) {
+                Object value = saved.get(key);
+                if (value instanceof Boolean) restore.putBoolean(key, (Boolean) value);
+                else if (value instanceof Integer) restore.putInt(key, (Integer) value);
+                else restore.remove(key);
+            }
+            restore.commit();
+            for (String name : new String[]{"dns.native.invalid", "service.native.invalid"}) {
+                db.getWritableDatabase().delete("access", "daddr=?", new String[]{name});
+                db.getWritableDatabase().delete("log", "dname=?", new String[]{name});
+                db.getWritableDatabase().delete("dns", "qname=?", new String[]{name});
+                db.getWritableDatabase().delete("dns_attribution", "name=?", new String[]{name});
+            }
+        }
+    }
+
+    private static AccessEntry awaitDns(DatabaseHelper db, String name, int protocol, int uid, int source) {
+        long end = SystemClock.elapsedRealtime() + 5000;
+        while (SystemClock.elapsedRealtime() < end) {
+            try (Cursor rows = db.getRecentAccess(System.currentTimeMillis() - 60000, java.util.Collections.emptySet(), null,
+                    new DomainFilters(DomainFilters.SHOW, DomainFilters.SHOW), ListSort.RECENT, 1000)) {
+                while (rows.moveToNext()) {
+                    AccessEntry entry = new AccessEntry(rows, db.getGlobalRuleIndicators());
+                    if (name.equals(entry.address) && entry.protocol == protocol && rows.getInt(rows.getColumnIndexOrThrow("uid")) == uid) {
+                        assertEquals(source, entry.nameSource); assertEquals(0, entry.allowed); return entry;
+                    }
+                }
+            }
+            SystemClock.sleep(100);
+        }
+        throw new AssertionError("Missing DNS event: " + name + " protocol " + protocol + " uid " + uid);
+    }
+
+    private static byte[] dnsQuery(String name, int type, boolean tcp) throws Exception {
+        java.io.ByteArrayOutputStream query = new java.io.ByteArrayOutputStream();
+        query.write(new byte[]{0x29,0x12,1,0,0,1,0,0,0,0,0,0});
+        for (String label : name.split("\\.")) { query.write(label.length()); query.write(label.getBytes(java.nio.charset.StandardCharsets.US_ASCII)); }
+        query.write(new byte[]{0,0,(byte)type,0,1});
+        if (!tcp) return query.toByteArray();
+        java.io.ByteArrayOutputStream framed = new java.io.ByteArrayOutputStream();
+        framed.write(0); framed.write(query.size()); framed.write(query.toByteArray()); return framed.toByteArray();
+    }
+
     // Test: Real TCP and UDP sessions stop carrying data when the app pause expires.
     // Why: Packet-policy unit checks cannot detect a native session retaining a stale allow decision.
     @Test public void nativeConnectionsStopAtPauseExpiry() throws Exception {

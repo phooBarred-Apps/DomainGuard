@@ -31,6 +31,9 @@ public class Packet {
     public String data;
     public int uid;
     public boolean allowed;
+    // Set only for a DNS response rejected by the native filter.
+    public String dnsName;
+    public boolean dnsServiceBinding;
     DomainAttribution attribution;
 
     public Packet() {

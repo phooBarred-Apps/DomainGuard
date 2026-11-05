@@ -9,7 +9,7 @@ import time
 import urllib.error
 import urllib.request
 
-DOWNLOADS = "phooBarred/DomainGuard-downloads"
+REPOSITORY = "phooBarred-Apps/DomainGuard"
 
 
 def require(condition, message):
@@ -38,7 +38,7 @@ class GitHub:
                    "User-Agent": "DomainGuard-release",
                    "X-GitHub-Api-Version": "2022-11-28"}
         if upload is not None:
-            require(re.fullmatch(r"/repos/" + re.escape(DOWNLOADS) +
+            require(re.fullmatch(r"/repos/" + re.escape(REPOSITORY) +
                                 r"/releases/\d+/assets\?name=[A-Za-z0-9.-]+", route),
                     "Unexpected asset upload destination.")
             url = "https://uploads.github.com" + route
@@ -71,7 +71,7 @@ def github_credentials(root):
 
 def verify_download(url, expected_hash):
     # Anonymous requests: never send GitHub credentials to a download/CDN URL.
-    require(url.startswith(f"https://github.com/{DOWNLOADS}/releases/download/"),
+    require(url.startswith(f"https://github.com/{REPOSITORY}/releases/download/"),
             "Unexpected public download URL.")
     for attempt in range(6):
         try:

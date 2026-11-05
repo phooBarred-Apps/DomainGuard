@@ -826,7 +826,12 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             DatabaseHelper dh = DatabaseHelper.getInstance(ServiceSinkhole.this);
 
             // DNS is evidence, not proof of the hostname used by this connection.
-            packet.attribution = dh.getAttribution(packet.uid, packet.daddr, packet.time);
+            String dnsName = DomainAttribution.hostname(packet.dnsName);
+            boolean dnsBlocked = dnsName != null && !packet.allowed;
+            packet.attribution = dnsBlocked
+                    ? new DomainAttribution(dnsName, packet.dnsServiceBinding
+                            ? DomainAttribution.DNS_SERVICE_BINDING : DomainAttribution.DNS_BLOCKED, "")
+                    : dh.getAttribution(packet.uid, packet.daddr, packet.time);
             String dname = packet.attribution.name;
 
             // Traffic log
@@ -834,14 +839,15 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                 dh.insertLog(packet, dname, connection, interactive);
 
             // Application log
-            if (log_app && packet.uid >= 0 &&
-                    !(packet.uid == 0 && (packet.protocol == 6 || packet.protocol == 17) && packet.dport == 53)) {
+            if (log_app && (dnsBlocked || (packet.uid >= 0 &&
+                    !(packet.uid == 0 && (packet.protocol == 6 || packet.protocol == 17) && packet.dport == 53)))) {
                 if (!(packet.protocol == 6 /* TCP */ || packet.protocol == 17 /* UDP */))
                     packet.dport = 0;
                 if (dh.updateAccess(ServiceSinkhole.this, packet, dname)) {
                     lock.readLock().lock();
                     if (!mapNotify.containsKey(packet.uid) || mapNotify.get(packet.uid))
-                        if (!packet.allowed && rm.shouldNotifyOnPacket(ServiceSinkhole.this, packet, dname)) {
+                        if (!packet.allowed && (!dnsBlocked || (!packet.dnsServiceBinding && packet.uid >= 10000))
+                                && rm.shouldNotifyOnPacket(ServiceSinkhole.this, packet, dname)) {
                             AccessNotification.show(ServiceSinkhole.this, packet.uid,
                                     dname == null ? packet.daddr : dname, packet.daddr, packet.attribution);
                         }
@@ -2132,8 +2138,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         if (prefs.getBoolean(Rule.PREFERENCE_STRING_LOG, false) || rm.getPreferenceLogApp(this))
             if (packet.protocol != 6 /* TCP */ || !"".equals(packet.flags))
-                // HeartGuard change - don't log for whitelisted programs while we are capturing all traffic
-                if (packet.uid != Process.myUid() && !(capture_all_traffic && mapUidAllowed.containsKey(packet.uid)))
+                // Keep quiet allowed-app traffic quiet, but never hide an actual rejected request.
+                if (packet.uid != Process.myUid() && (!packet.allowed ||
+                        !(capture_all_traffic && mapUidAllowed.containsKey(packet.uid))))
                     logPacket(packet);
 
         return allowed;

@@ -8,7 +8,7 @@ import java.util.Set;
 /** Evidence about a connection, separate from the IP-based firewall policy. */
 final class DomainAttribution {
     static final int UNKNOWN = 0, LEGACY = 1, DNS_SHARED = 2, DNS_APP = 3,
-            TLS = 4, HTTP = 5, ENCRYPTED = 6, AMBIGUOUS = 7;
+            TLS = 4, HTTP = 5, ENCRYPTED = 6, AMBIGUOUS = 7, DNS_BLOCKED = 8, DNS_SERVICE_BINDING = 9;
     final String name, candidates;
     final int source;
 
@@ -19,6 +19,7 @@ final class DomainAttribution {
     }
 
     boolean observed() { return source == TLS || source == HTTP; }
+    static boolean dnsEvent(int source) { return source == DNS_BLOCKED || source == DNS_SERVICE_BINDING; }
     String destination(String ip) { return name == null ? ip : name; }
 
     static final class Dns {

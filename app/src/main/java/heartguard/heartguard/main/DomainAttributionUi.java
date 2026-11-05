@@ -25,6 +25,8 @@ final class DomainAttributionUi {
     }
     static int label(int source) {
         switch (source) {
+            case DomainAttribution.DNS_BLOCKED: return R.string.domain_dns_blocked;
+            case DomainAttribution.DNS_SERVICE_BINDING: return R.string.domain_dns_service_binding;
             case DomainAttribution.TLS: case DomainAttribution.HTTP: return R.string.domain_name_observed;
             case DomainAttribution.DNS_APP: case DomainAttribution.DNS_SHARED: return R.string.domain_name_inferred;
             default: return R.string.domain_name_uncertain;
@@ -33,6 +35,8 @@ final class DomainAttributionUi {
     static String explanation(Context context, String address, String ip, int source, String candidates) {
         int description;
         switch (source) {
+            case DomainAttribution.DNS_BLOCKED: description = R.string.domain_evidence_dns_blocked; break;
+            case DomainAttribution.DNS_SERVICE_BINDING: description = R.string.domain_evidence_dns_service_binding; break;
             case DomainAttribution.TLS: description = R.string.domain_evidence_tls; break;
             case DomainAttribution.HTTP: description = R.string.domain_evidence_http; break;
             case DomainAttribution.DNS_APP: description = R.string.domain_evidence_app_dns; break;
@@ -43,7 +47,8 @@ final class DomainAttributionUi {
             default: description = R.string.domain_evidence_unknown;
         }
         String text = address + "\n\n" + context.getString(description);
-        if (ip != null && !ip.isEmpty()) text += "\n\n" + context.getString(R.string.domain_destination_ip, ip);
+        if (ip != null && !ip.isEmpty()) text += "\n\n" + context.getString(
+                DomainAttribution.dnsEvent(source) ? R.string.domain_dns_server : R.string.domain_destination_ip, ip);
         if (candidates != null && !candidates.isEmpty())
             text += "\n\n" + context.getString(R.string.domain_candidate_names) + "\n" + candidates;
         return text + "\n\n" + context.getString(R.string.domain_evidence_policy);

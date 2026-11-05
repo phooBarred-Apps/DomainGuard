@@ -509,6 +509,7 @@ int sdk_int(JNIEnv *env);
 void log_android(int prio, const char *fmt, ...);
 
 void log_packet(const struct arguments *args, jobject jpacket);
+void log_dns_packet(const struct arguments *args, jobject jpacket, const char *name, int service_binding);
 
 jboolean inspect_hostname(const struct arguments *args, const struct tcp_session *tcp,
                           const uint8_t *data, size_t length);
