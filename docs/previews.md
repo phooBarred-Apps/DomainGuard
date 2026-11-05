@@ -32,10 +32,10 @@ refuses to overwrite an existing PDF. Render and inspect the completed pages
 before sharing them; successful generation alone does not prove a good layout.
 
 Use the single preview uploader for the reviewed PDF. It checks without
-uploading by default. Choose an actual existing public release tag explicitly:
+uploading by default. Choose an actual existing public release tag in `phooBarred-Apps/DomainGuard` explicitly:
 
 ```powershell
-python -B scripts/publish-preview.py --tag v2.83 --file .gradle/verification/example/output/pdf/DomainGuard-example.pdf
+python -B scripts/publish-preview.py --tag v2.92 --file .gradle/verification/example/output/pdf/DomainGuard-example.pdf
 ```
 
 Only when sharing that preview is authorized, add `--publish`. This uploads one

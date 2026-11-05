@@ -7,14 +7,14 @@ import re
 
 from pypdf import PdfReader
 
-from github_assets import DOWNLOADS, github_credentials, require, sha256, verify_download
+from github_assets import REPOSITORY, github_credentials, require, sha256, verify_download
 
 
 def release_assets(github, release_id):
     result = {}
     page = 1
     while True:
-        assets = github.request(f"/repos/{DOWNLOADS}/releases/{release_id}/assets?per_page=100&page={page}")
+        assets = github.request(f"/repos/{REPOSITORY}/releases/{release_id}/assets?per_page=100&page={page}")
         result.update((asset["name"], asset) for asset in assets)
         if len(assets) < 100:
             return result
@@ -28,9 +28,9 @@ def publish_preview(github, tag, path, publish=False):
     require(len(PdfReader(path).pages) > 0, "The PDF has no pages.")
     digest = "sha256:" + sha256(path)
     size = path.stat().st_size
-    api = f"/repos/{DOWNLOADS}"
+    api = f"/repos/{REPOSITORY}"
     repository = github.request(api)
-    require(repository["full_name"] == DOWNLOADS and not repository["private"], "Unexpected downloads repository.")
+    require(repository["full_name"] == REPOSITORY and not repository["private"], "Unexpected downloads repository.")
     release = github.request(api + "/releases/tags/" + tag)
     require(not release["draft"] and not release["prerelease"], "Choose an existing public stable release.")
     before = release_assets(github, release["id"])

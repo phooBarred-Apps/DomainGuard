@@ -24,8 +24,8 @@ It checks again after building and immediately before uploading.
 
 Use Python 3.11 or newer (standard library only), Git, Git Credential Manager,
 JDK 17 and the Android build dependencies in [Build](../README-DomainGuard.md#build).
-The signed-in GitHub account needs permission to publish in the public downloads
-repository. Source is read from the public `phooBarred-Apps/DomainGuard` repository.
+The signed-in GitHub account needs permission to publish releases in the public
+`phooBarred-Apps/DomainGuard` repository, which holds both source and APKs.
 Credentials are read from Git Credential Manager without an interactive prompt
 or printing the token.
 
@@ -88,6 +88,9 @@ After these checks it creates a draft release and uploads the saved files:
 - `DomainGuard.apk`
 - `DomainGuard-source.zip`, made from the exact source commit using `git archive`
 - `SHA256SUMS.txt`, covering both files
+
+The release tag points to the exact verified source commit. Each release includes
+an explicit source link as well as the corresponding source archive.
 
 Only after GitHub confirms every uploaded file's size and SHA-256 does the
 publisher make the release public and latest. It then downloads all three files

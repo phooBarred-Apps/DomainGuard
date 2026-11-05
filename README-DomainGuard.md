@@ -4,6 +4,16 @@ A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGua
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
 Latest changes: November 4, 2026.
 
+Version `2.92` makes rejected DNS lookups visible in Recent traffic and in the
+identified app's domain list. The queried name is kept separate from the DNS
+server address, unidentified owners remain Unknown app, and Domain identification
+explains lookup blocks and service-binding suppression. Rejected app-specific
+exceptions are also recorded when the app is otherwise allowed in capture-all
+mode. This is a visibility fix; it does not change blocking rules or automatically
+unblock Play Store downloads.
+
+APKs, source code and new releases now share [this repository](https://github.com/phooBarred-Apps/DomainGuard/releases). In-app updates use its releases, and the complete earlier update history remains available in the app.
+
 Version `2.91` adds **Domain identification**. A small question mark marks inferred
 or uncertain names in app lists, Recent traffic and detailed logs. Tap a row to
 see the saved evidence and IP; alerts also identify inferred names. Older history
@@ -310,7 +320,7 @@ publication. It builds from merged source and uploads only with `--publish`.
 The source code and development history are public in
 [`phooBarred-Apps/DomainGuard`](https://github.com/phooBarred-Apps/DomainGuard).
 Public releases are in
-[`phooBarred/DomainGuard-downloads`](https://github.com/phooBarred/DomainGuard-downloads). Each release includes the APK, its checksum,
+[`phooBarred-Apps/DomainGuard`](https://github.com/phooBarred-Apps/DomainGuard/releases). Each release includes the APK, its checksum,
 and the corresponding GPLv3 source archive (including build scripts).
 Original notices and [LICENSE](LICENSE) are retained.
 

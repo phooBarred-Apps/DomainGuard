@@ -575,6 +575,29 @@ void log_packet(const struct arguments *args, jobject jpacket) {
 #endif
 }
 
+// Keep the queried name separate from the resolver IP and preserve the real socket owner.
+void log_dns_packet(const struct arguments *args, jobject jpacket, const char *name, int service_binding) {
+    JNIEnv *env = args->env;
+    static jfieldID dnsName = NULL, dnsServiceBinding = NULL;
+    if (jniCheckException(env) || jpacket == NULL) {
+        if (jpacket != NULL) {
+            (*env)->DeleteLocalRef(env, jpacket);
+            ng_delete_alloc(jpacket, __FILE__, __LINE__);
+        }
+        return;
+    }
+    if (dnsName == NULL) dnsName = jniGetFieldID(env, clsPacket, "dnsName", "Ljava/lang/String;");
+    if (dnsServiceBinding == NULL) dnsServiceBinding = jniGetFieldID(env, clsPacket, "dnsServiceBinding", "Z");
+    jstring value = (*env)->NewStringUTF(env, name);
+    if (!jniCheckException(env) && dnsName != NULL && dnsServiceBinding != NULL && value != NULL) {
+        (*env)->SetObjectField(env, jpacket, dnsName, value);
+        (*env)->SetBooleanField(env, jpacket, dnsServiceBinding, service_binding != 0);
+        jniCheckException(env);
+    }
+    if (value != NULL) (*env)->DeleteLocalRef(env, value);
+    log_packet(args, jpacket); // Consumes the packet local reference.
+}
+
 static jmethodID midDnsResolved = NULL;
 static jmethodID midInitRR = NULL;
 jfieldID fidQTime = NULL;

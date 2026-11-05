@@ -33,14 +33,14 @@ class GitHubFixture:
             self.writes += 1
             asset = dict(id=2, name=upload.name, size=upload.stat().st_size, state="uploaded",
                          digest="sha256:" + ("wrong" if self.corrupt else preview.sha256(upload)),
-                         browser_download_url=f"https://github.com/{preview.DOWNLOADS}/releases/download/v2.83/{upload.name}")
+                         browser_download_url=f"https://github.com/{preview.REPOSITORY}/releases/download/v2.83/{upload.name}")
             self.assets.append(asset)
             return copy.deepcopy(asset)
         if "/assets?" in route:
             return copy.deepcopy(self.assets)
         if "/releases/tags/" in route:
             return copy.deepcopy(self.release)
-        return dict(full_name=preview.DOWNLOADS, private=False)
+        return dict(full_name=preview.REPOSITORY, private=False)
 
 
 class PreviewTests(unittest.TestCase):

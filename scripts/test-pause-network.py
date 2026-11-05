@@ -43,12 +43,27 @@ class DnsReply(socketserver.BaseRequestHandler):
             if not part or len(data) + len(part) > 512:
                 return
             data += part
-        data = data[2:]
-        question = b'\x03dns\x06native\x07invalid\0\0\x01\0\x01'
+        reply = dns_reply(data[2:])
+        if reply:
+            self.request.sendall(len(reply).to_bytes(2, 'big') + reply)
+
+
+def dns_reply(data):
+    for label, kind, answer in [(b'dns', 1, bytes([192, 0, 2, 92])),
+                                (b'service', 65, b'\x00\x01\x00')]:
+        question = bytes([len(label)]) + label + b'\x06native\x07invalid\0' + struct.pack('!HH', kind, 1)
         if len(data) == 12 + len(question) and data[12:] == question:
             reply = data[:2] + struct.pack('!HHHHH', 0x8180, 1, 1, 0, 0) + question
-            reply += b'\xc0\x0c' + struct.pack('!HHIH', 1, 1, 60, 4) + bytes([192, 0, 2, 92])
-            self.request.sendall(len(reply).to_bytes(2, 'big') + reply)
+            return reply + b'\xc0\x0c' + struct.pack('!HHIH', kind, 1, 60, len(answer)) + answer
+    return None  # This fixture never forwards arbitrary queries.
+
+
+class UdpDnsReply(socketserver.BaseRequestHandler):
+    def handle(self):
+        data, connection = self.request
+        reply = dns_reply(data)
+        if reply:
+            connection.sendto(reply, self.client_address)
 
 
 class TcpServer(socketserver.ThreadingTCPServer):
@@ -73,6 +88,9 @@ def main():
                 dns = stack.enter_context(TcpServer(('127.0.0.1', 53), DnsReply))
                 threading.Thread(target=dns.serve_forever, daemon=True).start()
                 stack.callback(dns.shutdown)
+                dns_udp = stack.enter_context(socketserver.ThreadingUDPServer(('127.0.0.1', 53), UdpDnsReply))
+                threading.Thread(target=dns_udp.serve_forever, daemon=True).start()
+                stack.callback(dns_udp.shutdown)
             for server in (tcp, udp):
                 threading.Thread(target=server.serve_forever, daemon=True).start()
             try:

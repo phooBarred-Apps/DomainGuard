@@ -229,8 +229,8 @@ void parse_dns_response(const struct arguments *args, const struct ng_session *s
             jobject objPacket = create_packet(
                     args, version, s->protocol, "",
                     source, sport, dest, dport,
-                    name, 0, 0);
-            log_packet(args, objPacket);
+                    name, uid, 0);
+            log_dns_packet(args, objPacket, qname, svcb);
         }
     } else if (acount > 0)
         log_android(ANDROID_LOG_WARN,

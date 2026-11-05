@@ -10,7 +10,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class UpdateRelease {
-    static final String REPOSITORY = "phooBarred/DomainGuard-downloads";
+    static final String REPOSITORY = "phooBarred-Apps/DomainGuard";
     static final long MAX_APK_BYTES = 64 * 1024 * 1024;
     private static final Pattern VERSION = Pattern.compile("(\\d+)\\.(\\d+)-mw\\.(\\d+)");
     private static final Pattern DOMAIN_GUARD_VERSION = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?");

@@ -25,41 +25,49 @@ class GitHubFixture:
         self.pulls = [{"merged_at": "2026-10-25", "merge_commit_sha": commit,
                        "base": {"ref": "main", "repo": {"id": 123}}}]
         self.existing = None
+        self.existing_tag = None
         self.latest_version = "v2.83"
         self.corrupt_asset = False
         self.public = False
         self.writes = []
         self.assets = []
+        self.release_target = None
 
     def request(self, route, data=None, *, method=None, upload=None, optional=False):
         if data is not None or upload is not None or method in ("POST", "PATCH"):
             self.writes.append((method or "POST", route))
-        source = f"/repos/{publisher.SOURCE}"
-        downloads = f"/repos/{publisher.DOWNLOADS}"
+        source = f"/repos/{publisher.REPOSITORY}"
+        downloads = f"/repos/{publisher.REPOSITORY}"
         if route == source:
-            return {"id": 123, "full_name": publisher.SOURCE, "private": self.source_private}
+            return {"id": 123, "full_name": publisher.REPOSITORY, "private": self.source_private,
+                    "default_branch": "main"}
         if route == source + "/branches/main":
             return {"commit": {"sha": self.main}}
         if route.startswith(source + "/commits/"):
             return self.pulls
-        if route == downloads:
-            return {"full_name": publisher.DOWNLOADS, "private": False, "default_branch": "main"}
         if route.startswith(downloads + "/releases/tags/"):
             return self.existing
+        if route.startswith(source + "/git/ref/tags/"):
+            return self.existing_tag
         if route == downloads + "/releases/latest":
+            if self.latest_version is None and not self.public:
+                assert optional, "Only a confirmed 404 may be treated as the first release."
+                return None
             return {"id": 10 if self.public else 9,
-                    "tag_name": "v2.84" if self.public else self.latest_version}
+                    "tag_name": "v2.84" if self.public else self.latest_version,
+                    "assets": [dict(a, browser_download_url=a['browser_download_url'].replace('untagged-draft', 'v2.84')) for a in self.assets]}
         if route == downloads + "/releases":
-            return {"id": 10, "html_url": "https://github.com/" + publisher.DOWNLOADS + "/releases/tag/v2.84"}
+            self.release_target = data["target_commitish"]
+            return {"id": 10, "html_url": "https://github.com/" + publisher.REPOSITORY + "/releases/tag/v2.84"}
         if upload is not None:
-            result = {"state": "uploaded", "size": upload.stat().st_size,
+            result = {"name": upload.name, "state": "uploaded", "size": upload.stat().st_size,
                       "digest": "sha256:" + ("bad" if self.corrupt_asset else publisher.sha256(upload)),
-                      "browser_download_url": f"https://github.com/{publisher.DOWNLOADS}/releases/download/v2.84/{upload.name}"}
+                      "browser_download_url": f"https://github.com/{publisher.REPOSITORY}/releases/download/untagged-draft/{upload.name}"}
             self.assets.append(result)
             return result
         if method == "PATCH":
             self.public = True
-            return {"draft": False, "html_url": "https://github.com/" + publisher.DOWNLOADS + "/releases/tag/v2.84"}
+            return {"draft": False, "html_url": "https://github.com/" + publisher.REPOSITORY + "/releases/tag/v2.84"}
         raise AssertionError("Unexpected API call: " + route)
 
 
@@ -141,12 +149,33 @@ class ReleaseTests(unittest.TestCase):
 
     def test_publish_verifies_all_uploads_before_making_release_public(self):
         """Test: Explicit publication uploads all three assets before publishing.
-        Why: Users must receive an APK with matching source and checksums.
+        Why: Users must receive matching files, and temporary draft URLs must not fail final verification.
         """
         result = self.run_release(publish=True)
         self.assertEqual(3, len(result["assets"]))
         self.assertEqual(["POST", "POST", "POST", "POST", "PATCH"], [method for method, _ in self.github.writes])
         self.assertEqual(3, self.download.call_count)
+        self.assertEqual(self.commit, self.github.release_target)
+        for call in self.download.call_args_list:
+            self.assertIn('/releases/download/v2.84/', call.args[0])
+            self.assertNotIn('untagged-draft', call.args[0])
+
+    def test_first_release_uses_verified_source_commit(self):
+        """Test: Publish the first release in the source repository at the verified commit.
+        Why: Consolidation has no previous latest release and must not tag an unrelated branch head.
+        """
+        self.github.latest_version = None
+        result = self.run_release(publish=True)
+        self.assertEqual(self.commit, self.github.release_target)
+        self.assertIn(publisher.REPOSITORY, result['release'])
+
+    def test_existing_tag_cannot_override_verified_source(self):
+        """Test: A pre-existing tag without a release prevents publication.
+        Why: GitHub ignores target_commitish for existing tags, which could expose mismatched source.
+        """
+        self.github.existing_tag = {'object': {'sha': 'unrelated'}}
+        self.reject('tag already exists')
+        self.build.assert_not_called()
 
     def test_missing_or_invalid_pr_prevents_build_and_publication(self):
         """Test: Direct commits and PRs with the wrong state, base or commit are rejected.

@@ -702,7 +702,9 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                         pending = 1;
                     cv.put("pending_allow", pending);
 
-                    RuleAllowData match = wm.isAllowed(context, packet.daddr, packet.uid);
+                    boolean dnsEvent = packet.attribution != null && DomainAttribution.dnsEvent(packet.attribution.source);
+                    RuleAllowData match = wm.isAllowed(context, dnsEvent ? dname : packet.daddr, packet.uid);
+                    if (dnsEvent && RulesManager.getInstance(context).isGlobalDomainBlocked(dname)) match = null;
                     putAccessDecision(cv, match);
                     if (match != null && match.allowed == 1)
                     {

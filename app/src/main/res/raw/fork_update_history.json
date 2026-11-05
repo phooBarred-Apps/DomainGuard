@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.92",
+    "name": "DomainGuard 2.92",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-04",
+    "body": "DomainGuard 2.92\n\n- Blocked DNS lookups now appear in Recent traffic even when detailed recording is off. They also appear under the app when Android identifies it; unknown owners remain Unknown app.\n- Domain identification explains DNS lookup blocks and service-binding suppression, and labels the resolver address as DNS server.\n- Rejected domain exceptions are recorded when Capture all traffic is on and the app is otherwise fully allowed.\n- APKs and corresponding source now share the public DomainGuard repository; in-app updates use that repository.\n- Recording remains separate from notification preferences. Existing rules, delays, traffic history and blocking behavior are preserved.\n\nThis patch reveals previously missing requests; it does not automatically unblock Play Store downloads. Retry the download and check Recent traffic to identify any rejected lookup.\n\nInstall DomainGuard.apk from the assets below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.91",
     "name": "DomainGuard 2.91",
     "draft": false,

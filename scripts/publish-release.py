@@ -16,11 +16,10 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
-from github_assets import DOWNLOADS, github_credentials, require, sha256, verify_download
+from github_assets import REPOSITORY, github_credentials, require, sha256, verify_download
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = "phooBarred-Apps/DomainGuard"
 PACKAGE = "heartguard.heartguard.main.mw"
 CERTIFICATE = "145d3d426ae87e16407f02ef3f0a476c450d6bd8ed101fda97e31038c1fecd4b"
 HISTORY = "app/src/main/res/raw/fork_update_history.json"
@@ -39,11 +38,11 @@ def save_json(path, value):
 def require_merged_source(root, github):
     require(not git(root, "status", "--porcelain"), "Commit all source changes before releasing.")
     commit = git(root, "rev-parse", "HEAD")
-    source = github.request(f"/repos/{SOURCE}")
-    require(source["full_name"] == SOURCE and not source["private"], "Unexpected source repository.")
-    main = github.request(f"/repos/{SOURCE}/branches/main")
+    source = github.request(f"/repos/{REPOSITORY}")
+    require(source["full_name"] == REPOSITORY and not source["private"], "Unexpected source repository.")
+    main = github.request(f"/repos/{REPOSITORY}/branches/main")
     require(main["commit"]["sha"] == commit, "Check out the merged main revision before releasing.")
-    pulls = github.request(f"/repos/{SOURCE}/commits/{commit}/pulls?per_page=100")
+    pulls = github.request(f"/repos/{REPOSITORY}/commits/{commit}/pulls?per_page=100")
     require(any(pr.get("merged_at") and pr["base"]["ref"] == "main" and
                 pr["base"]["repo"]["id"] == source["id"] and
                 pr.get("merge_commit_sha") == commit for pr in pulls),
@@ -60,13 +59,15 @@ def version_parts(value):
 
 
 def require_new_release(github, version):
-    downloads = github.request(f"/repos/{DOWNLOADS}")
-    require(downloads["full_name"] == DOWNLOADS and not downloads["private"],
+    downloads = github.request(f"/repos/{REPOSITORY}")
+    require(downloads["full_name"] == REPOSITORY and not downloads["private"],
             "Unexpected downloads repository.")
-    existing = github.request(f"/repos/{DOWNLOADS}/releases/tags/v{version}", optional=True)
+    existing = github.request(f"/repos/{REPOSITORY}/releases/tags/v{version}", optional=True)
     require(existing is None, "That release already exists. Inspect it; do not overwrite or rerun it.")
-    latest = github.request(f"/repos/{DOWNLOADS}/releases/latest")
-    require(version_parts(version) > version_parts(latest["tag_name"].removeprefix("v")),
+    tag = github.request(f"/repos/{REPOSITORY}/git/ref/tags/v{version}", optional=True)
+    require(tag is None, "That tag already exists. Inspect its source before preparing a new release.")
+    latest = github.request(f"/repos/{REPOSITORY}/releases/latest", optional=True)
+    require(latest is None or version_parts(version) > version_parts(latest["tag_name"].removeprefix("v")),
             "The new version must be newer than the latest public release.")
     return downloads
 
@@ -180,27 +181,33 @@ def prepare_assets(root, directory, commit, verification):
     return [apk, source, checksums]
 
 
-def publish_assets(github, version, notes, files, directory, downloads, hashes):
-    release = github.request(f"/repos/{DOWNLOADS}/releases", {
-        "tag_name": "v" + version, "target_commitish": downloads["default_branch"],
+def publish_assets(github, version, notes, files, directory, commit, hashes):
+    release = github.request(f"/repos/{REPOSITORY}/releases", {
+        "tag_name": "v" + version, "target_commitish": commit,
         "name": "DomainGuard " + version, "body": notes, "draft": True, "prerelease": False})
     save_json(directory / "draft.json", {"id": release["id"], "url": release["html_url"]})
     assets = []
     for path in files:
         digest = hashes[path.name]
         require(sha256(path) == digest, "Bundle file changed before upload: " + path.name)
-        asset = github.request(f"/repos/{DOWNLOADS}/releases/{release['id']}/assets?name={path.name}",
+        asset = github.request(f"/repos/{REPOSITORY}/releases/{release['id']}/assets?name={path.name}",
                                upload=path, method="POST")
         require(asset["state"] == "uploaded" and asset["size"] == path.stat().st_size and
                 asset.get("digest") == "sha256:" + digest, "Uploaded asset verification failed: " + path.name)
         assets.append(dict(name=path.name, url=asset["browser_download_url"], sha256=digest))
-    published = github.request(f"/repos/{DOWNLOADS}/releases/{release['id']}",
+    published = github.request(f"/repos/{REPOSITORY}/releases/{release['id']}",
                                {"draft": False, "make_latest": "true"}, method="PATCH")
     require(not published["draft"], "GitHub did not confirm publication.")
-    latest = github.request(f"/repos/{DOWNLOADS}/releases/latest")
+    latest = github.request(f"/repos/{REPOSITORY}/releases/latest")
     require(latest["id"] == release["id"] and latest["tag_name"] == "v" + version,
             "GitHub did not confirm this release as latest.")
+    # Draft upload URLs can contain an untagged placeholder. Verify the final public URLs.
+    public_assets = {asset["name"]: asset for asset in latest["assets"]}
     for asset in assets:
+        public = public_assets.get(asset["name"])
+        require(public is not None and public.get("digest") == "sha256:" + asset["sha256"],
+                "Published asset verification failed: " + asset["name"])
+        asset["url"] = public["browser_download_url"]
         verify_download(asset["url"], asset["sha256"])
     result = dict(release=published["html_url"], assets=assets)
     save_json(directory / "publication.json", result)
@@ -224,7 +231,9 @@ def release(root, github, version, notes_path, tools, publish=False):
     require(local_build_inputs(root) == inputs, "Local build configuration changed while building.")
     files = prepare_assets(root, directory, commit, verification)
     notes += (f"\n\nValidation: signed release build, release lint, and {verification['unitTests']} unit tests"
-              f" ({verification['skippedTests']} skipped). {DEVICE_EVIDENCE}\n\nSource commit: {commit}\n")
+              f" ({verification['skippedTests']} skipped). {DEVICE_EVIDENCE}\n\n"
+              f"[Corresponding source code](https://github.com/{REPOSITORY}/tree/{commit}) "
+              "is also included in DomainGuard-source.zip.\n")
     (directory / "release-notes.md").write_text(notes, encoding="utf-8")
     verification.update(schemaVersion=1, sourceCommit=commit, localBuildInputs=inputs,
                         files={path.name: sha256(path) for path in files + [directory / "release-notes.md"]})
@@ -255,9 +264,9 @@ def publish_bundle(root, github, directory, tools):
     verify_apk(root, directory / "DomainGuard.apk", version, verification["versionCode"], tools)
     notes = (directory / "release-notes.md").read_text(encoding="utf-8")
     # Recheck GitHub immediately before the first external write. Never rebuild or use app/build here.
-    downloads = require_new_release(github, version)
+    require_new_release(github, version)
     require(require_merged_source(root, github) == verification["sourceCommit"], "Source changed before publication.")
-    result = publish_assets(github, version, notes, files, directory, downloads, verification["files"])
+    result = publish_assets(github, version, notes, files, directory, verification["sourceCommit"], verification["files"])
     print("Published and verified: " + result["release"])
     return result
 
