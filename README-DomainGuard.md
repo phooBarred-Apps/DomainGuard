@@ -14,9 +14,8 @@ unblock Play Store downloads.
 
 APKs, source code and new releases now share [this repository](https://github.com/phooBarred-Apps/DomainGuard/releases). In-app updates use its releases, and the complete earlier update history remains available in the app.
 
-Version `2.91` adds **Domain identification**. A small question mark marks inferred
-or uncertain names in app lists, Recent traffic and detailed logs. Tap a row to
-see the saved evidence and IP; alerts also identify inferred names. Older history
+Version `2.91` adds **Domain identification**. Tap a row in app lists, Recent traffic
+or detailed logs to see the saved evidence and IP; alerts also identify inferred names. Older history
 is retained but cannot be verified retrospectively.
 
 New DNS evidence uses the answer's actual lifetime and prefers the same app's

@@ -9,6 +9,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.Assert.*;
 
 public class UpdateHistoryTest {
+    // Test: Refresh notes without replacing known release dates; new versions still use their published dates.
+    // Why: Moving historical releases must not make the app show every version as released on the migration date.
+    @Test public void rehostedHistoryPreservesOriginalDates() {
+        List<UpdateHistory.Entry> saved = java.util.Arrays.asList(
+                new UpdateHistory.Entry("2.91", "Old notes", false, "2026-11-04"),
+                new UpdateHistory.Entry("2.90", "No date", false, ""));
+        List<UpdateHistory.Entry> published = java.util.Arrays.asList(
+                new UpdateHistory.Entry("2.92", "New version", false, "2026-11-05"),
+                new UpdateHistory.Entry("2.91", "Updated notes", false, "2026-11-06"),
+                new UpdateHistory.Entry("2.90", "Published notes", false, "2026-11-01"));
+        List<UpdateHistory.Entry> merged = UpdateHistory.merge(saved, published);
+        assertEquals("2.92", merged.get(0).version);
+        assertEquals("2026-11-05", merged.get(0).date);
+        assertEquals("2026-11-04", merged.get(1).date);
+        assertEquals("Updated notes", merged.get(1).notes);
+        assertEquals("2026-11-01", merged.get(2).date);
+    }
+
     private JSONObject release(String tag, String notes) throws Exception {
         return new JSONObject().put("tag_name", tag).put("body", notes).put("draft", false);
     }

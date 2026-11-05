@@ -453,5 +453,5 @@ Your internet traffic is not being sent to a remote VPN server.</string>
     <string name="domain_evidence_dns_service_binding">DomainGuard suppressed a DNS service-binding response under its existing filtering policy. This alone does not mean the whole domain is blocked: the app can retry using ordinary address lookups. Android may identify a system resolver instead of the requesting app.</string>
     <string name="domain_candidate_names">Possible names from DNS (up to 32):</string>
     <string name="domain_evidence_policy">Protection still uses the existing IP-based rules. Domains sharing an IP can affect one another. Observing a hostname does not change an allow/block decision.</string>
-    <string name="domain_evidence_legend">A question mark means the domain name is inferred or uncertain. Tap a row, then Domain identification, for the saved evidence and destination IP.</string>
+    <string name="domain_evidence_legend">Tap a domain row, then Domain identification, to see how its name was identified and whether the record represents a connection or a DNS lookup.</string>
 </resources>

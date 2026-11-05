@@ -556,6 +556,9 @@ public class ActivityRecentTraffic extends AppCompatActivity {
                 }).setNegativeButton(android.R.string.cancel, null).create();
         dialog.show();
         DialogSurface.apply(dialog);
+        android.widget.Button identification = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        identification.setPaddingRelative(CompactUi.dp(this, 16), identification.getPaddingTop(),
+                CompactUi.dp(this, 16), identification.getPaddingBottom());
     }
 
     private void choosePackage(RecentTrafficAdapter.Entry entry, List<String> packages, boolean block) {

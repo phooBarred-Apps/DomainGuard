@@ -1,26 +1,12 @@
 package heartguard.heartguard.main;
 
 import android.content.Context;
-import android.graphics.drawable.Drawable;
 import android.widget.TextView;
-import androidx.appcompat.content.res.AppCompatResources;
-import androidx.core.graphics.drawable.DrawableCompat;
 
 final class DomainAttributionUi {
     private DomainAttributionUi() { }
-    static boolean uncertain(int source) {
-        return source != DomainAttribution.TLS && source != DomainAttribution.HTTP;
-    }
     static void bind(TextView label, int source) {
         Context context = label.getContext();
-        Drawable hint = uncertain(source) ? AppCompatResources.getDrawable(context, R.drawable.ic_domain_uncertain) : null;
-        if (hint != null) {
-            hint = DrawableCompat.wrap(hint.mutate());
-            DrawableCompat.setTint(hint, CompactUi.color(context, android.R.attr.textColorSecondary));
-            hint.setBounds(0, 0, CompactUi.dp(context, 16), CompactUi.dp(context, 16));
-        }
-        label.setCompoundDrawablesRelative(null, null, hint, null);
-        label.setCompoundDrawablePadding(CompactUi.dp(context, 4));
         label.setContentDescription(label.getText() + ". " + context.getString(label(source)));
     }
     static int label(int source) {

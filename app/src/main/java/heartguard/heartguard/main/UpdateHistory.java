@@ -61,7 +61,12 @@ final class UpdateHistory {
     static List<Entry> merge(List<Entry> bundled, List<Entry> published) {
         Map<String, Entry> versions = new HashMap<>();
         for (Entry entry : bundled) versions.put(entry.version, entry);
-        for (Entry entry : published) versions.put(entry.version, entry);
+        for (Entry entry : published) {
+            Entry saved = versions.get(entry.version);
+            // Rehosting a release changes GitHub's publication timestamp, not its original release date.
+            String date = saved != null && !saved.date.isEmpty() ? saved.date : entry.date;
+            versions.put(entry.version, new Entry(entry.version, entry.notes, entry.prerelease, date));
+        }
         List<Entry> result = new ArrayList<>(versions.values());
         Collections.sort(result, (first, second) -> UpdateRelease.compare(second.version, first.version));
         return result;
