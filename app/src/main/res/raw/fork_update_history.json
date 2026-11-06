@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.94",
+    "name": "DomainGuard 2.94",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-06",
+    "body": "DomainGuard 2.94\n\n- Clearer timing labels distinguish the default rule delay, app-specific overrides, pause durations and temporary rules. App controls show Default or Custom, and the automatic-resume dialog switches to Pause DomainGuard.\n- Pause status says when the pause starts or protection resumes. Duration pickers have context-appropriate screen-reader labels.\n- Android settings backup now preserves your Automatic backup choice. Restoring clears the old installation's backup-request timestamp. Existing backups without this setting still use the new-install default.\n- Expanded Android restore checks cover a fresh installation, missing apps, app delays, global and per-app rules, pending changes, timer deadlines and saved preferences. Google cloud delivery is controlled by Android and was not tested.\n\nInstall DomainGuard.apk from the assets below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.93",
     "name": "DomainGuard 2.93",
     "draft": false,

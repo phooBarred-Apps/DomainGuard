@@ -881,8 +881,10 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
         holder.tvPackage.setText(rule.packageName);
         holder.tvVersion.setText(rule.version);
         TextView appDelay = holder.itemView.findViewById(R.id.appDelayButton);
-        appDelay.setText(context.getString(R.string.app_delay_summary,
-                RuleDelay.duration(context, RulesManager.getInstance(context).getPauseDelay(rule.packageName))));
+        RulesManager delays = RulesManager.getInstance(context);
+        appDelay.setText(context.getString(delays.hasCustomDelay(rule.packageName)
+                        ? R.string.app_delay_summary_custom : R.string.app_delay_summary_default,
+                RuleDelay.duration(context, delays.getPauseDelay(rule.packageName))));
         appDelay.setOnClickListener(view -> RuleDelayDialog.forApp(rule.packageName, rule.name)
                 .show(((androidx.fragment.app.FragmentActivity) context).getSupportFragmentManager(), "app-rule-delay"));
 

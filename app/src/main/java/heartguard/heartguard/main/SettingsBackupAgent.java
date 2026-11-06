@@ -20,12 +20,14 @@ public class SettingsBackupAgent extends BackupAgentHelper {
 
     @Override public void onCreate() {
         addHelper("preferences", new SharedPreferencesBackupHelper(this,
-                getPackageName() + "_preferences", "apply", "roaming", "lockdown"));
+                getPackageName() + "_preferences", "apply", "roaming", "lockdown", "backup_control"));
         addHelper("rules", new FileBackupHelper(this, RULES_FILE));
         addHelper("hosts", new FileBackupHelper(this, "hosts.txt"));
     }
 
     @Override public void onRestoreFinished() {
+        // Keep the user's backup choice, but do not report a request made on another installation.
+        SettingsBackup.controls(this).edit().remove("last_requested").commit();
         RulesManager.getInstance(this).startTrueTimeRequest(this);
     }
 
