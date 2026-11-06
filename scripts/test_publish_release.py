@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import zipfile
+import release_runtime as runtime
 
 
 SPEC = importlib.util.spec_from_file_location("publisher", Path(__file__).with_name("publish-release.py"))
@@ -113,6 +114,21 @@ class ReleaseTests(unittest.TestCase):
 
         patch.object(publisher.subprocess, "check_output", side_effect=inspect).start()
         self.download = patch.object(publisher, "verify_download").start()
+        self.runtime = patch.object(publisher, "run_checks", side_effect=self.runtime_fixture).start()
+
+    def runtime_fixture(self, root, directory, apk, commit, inputs, serial):
+        for name, tests in zip(runtime.LOGS[:2], (runtime.NETWORK_TESTS, runtime.JAVA_TESTS)):
+            output = ""
+            for test in tests:
+                cls, method = test.split("#")
+                output += f"INSTRUMENTATION_STATUS: class={cls}\nINSTRUMENTATION_STATUS: test={method}\nINSTRUMENTATION_STATUS_CODE: 0\n"
+            output += f"OK ({len(tests)} tests)\n"
+            (directory / name).write_text(output, encoding="utf-8")
+        (directory / runtime.LOGS[2]).write_text("Minified release launched and remained active without a crash.", encoding="utf-8")
+        publisher.save_json(directory / "runtime.json", dict(policy=runtime.POLICY, sourceCommit=commit,
+            localBuildInputs=inputs, artifacts={"release": publisher.sha256(apk)}, device={"sdk": "31"},
+            native=sorted(runtime.NETWORK_TESTS), android=sorted(runtime.JAVA_TESTS), releaseSmoke=True,
+            logs={name: publisher.sha256(directory / name) for name in runtime.LOGS}))
 
     def write(self, name, text):
         path = self.root / name
@@ -126,7 +142,7 @@ class ReleaseTests(unittest.TestCase):
 
     def run_release(self, publish=False):
         with contextlib.redirect_stdout(io.StringIO()):
-            return publisher.release(self.root, self.github, "2.84", self.notes, self.root, publish)
+            return publisher.release(self.root, self.github, "2.84", self.notes, self.root, publish, "emulator-5590")
 
     def reject(self, message):
         with self.assertRaisesRegex(RuntimeError, message):
@@ -312,7 +328,7 @@ class ReleaseTests(unittest.TestCase):
         Why: The publication must remain tied to the reviewed verification bundle.
         """
         directory = self.run_release()
-        for name in (*publisher.ASSET_NAMES, "release-notes.md"):
+        for name in (*publisher.ASSET_NAMES, "release-notes.md", "runtime.json"):
             with self.subTest(name=name):
                 path = directory / name
                 original = path.read_bytes()
@@ -364,6 +380,65 @@ class ReleaseTests(unittest.TestCase):
         del verification["schemaVersion"]
         publisher.save_json(manifest, verification)
         with self.assertRaisesRegex(RuntimeError, "Prepare a new bundle"):
+            publisher.publish_bundle(self.root, self.github, directory, self.root)
+        self.assertEqual([], self.github.writes)
+
+    def test_runtime_failure_and_timeout_block_one_step_publication(self):
+        """Test: A real subprocess failure/timeout stops --publish before any GitHub write.
+        Why: A mocked success must not hide failure propagation across the actual process boundary.
+        """
+        import sys
+        for code, timeout in [("raise SystemExit(9)", 5), ("import time; time.sleep(5)", 0.1)]:
+            with self.subTest(code=code):
+                self.runtime.side_effect = lambda *args: runtime.run(
+                    [sys.executable, "-c", code], self.root, timeout)
+                self.reject("Runtime (command failed|check timed out)")
+
+    def test_missing_emulator_or_runtime_result_cannot_prepare(self):
+        """Test: Missing/physical-device targets and a runner producing no evidence cannot prepare a release.
+        Why: Forgetting the runtime stage must not silently turn it into a successful build-only release.
+        """
+        for serial in (None, 'physical-phone', 'emulator-'):
+            with self.subTest(serial=serial), self.assertRaisesRegex(RuntimeError, 'disposable emulator'):
+                publisher.release(self.root, self.github, '2.84', self.notes, self.root, True, serial)
+        self.build.assert_not_called()
+        self.runtime.side_effect = None
+        with self.assertRaises(OSError):
+            self.run_release(publish=True)
+        self.assertEqual([], self.github.writes)
+        self.assertEqual([], list((self.root / '.gradle/verification').glob('release-*/verification.json')))
+
+    def test_missing_failed_stale_or_changed_runtime_evidence_blocks_bundle(self):
+        """Test: Saved-bundle publication rejects absent, legacy, failed, stale and corrupt runtime evidence.
+        Why: A separately prepared bundle must never bypass mandatory checks, even with edited manifest hashes.
+        """
+        directory = self.run_release()
+        manifest = directory / "verification.json"
+        evidence = directory / "runtime.json"
+        original_manifest, original_evidence = manifest.read_bytes(), evidence.read_bytes()
+        cases = [{"releaseSmoke": False}, {"sourceCommit": "stale"}, {"localBuildInputs": "stale"},
+                 {"artifacts": {"release": "different"}}, {"native": []}, {"android": []},
+                 {"policy": 0}, {"device": {"sdk": "30"}}]
+        for changes in cases:
+            with self.subTest(changes=changes):
+                data = json.loads(original_evidence); data.update(changes)
+                publisher.save_json(evidence, data)
+                v = json.loads(original_manifest); v['files']['runtime.json'] = publisher.sha256(evidence)
+                publisher.save_json(manifest, v)
+                with self.assertRaises(RuntimeError):
+                    publisher.publish_bundle(self.root, self.github, directory, self.root)
+                self.assertEqual([], self.github.writes)
+        manifest.write_bytes(original_manifest); evidence.write_bytes(original_evidence)
+        evidence.unlink()
+        with self.assertRaises(OSError):
+            publisher.publish_bundle(self.root, self.github, directory, self.root)
+        evidence.write_bytes(original_evidence)
+        v = json.loads(original_manifest); v['schemaVersion'] = 1; publisher.save_json(manifest, v)
+        with self.assertRaisesRegex(RuntimeError, 'Prepare a new bundle'):
+            publisher.publish_bundle(self.root, self.github, directory, self.root)
+        manifest.write_bytes(original_manifest)
+        (directory / runtime.LOGS[0]).write_text('incomplete')
+        with self.assertRaisesRegex(RuntimeError, 'Runtime log changed'):
             publisher.publish_bundle(self.root, self.github, directory, self.root)
         self.assertEqual([], self.github.writes)
 

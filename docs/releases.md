@@ -50,7 +50,7 @@ substitute the version already merged into `main` and your reviewed notes file.
 An already published version cannot be used for a new release.
 
 ```powershell
-python -B scripts/publish-release.py --version 2.84 --notes .gradle/verification/release-notes.md
+python -B scripts/publish-release.py --version 2.84 --notes .gradle/verification/release-notes.md --serial emulator-5590
 ```
 
 Without `--publish`, the script reads GitHub state, builds and prepares the
@@ -61,9 +61,29 @@ or edit the checkout concurrently.
 
 Verification checks the test reports, lint errors, APK signature, package ID,
 version name/code, non-debuggable status and packaged update history. Test counts
-come from the actual reports. The publisher compiles device tests but does not
-run an emulator or a physical device; release notes state that limitation.
-Perform any separately requested device checks before authorizing publication.
+come from the actual reports. Preparation then requires a running, dedicated
+Android 12 (API 31) disposable emulator selected by `--serial`. It installs the
+matching debug and test APKs, runs the existing native VPN/DNS tests with
+host-local synthetic TCP/UDP/DNS fixtures, and runs the Android attribution,
+database, and rule-action tests selected in `scripts/release_runtime.py`.
+Finally it installs and launches the exact signed release APK saved in the bundle,
+checks the foreground activity and watches for crashes. Test failures, skips,
+assumption failures, missing methods/results, disconnected emulators, nonzero
+commands and timeouts all prevent publication. There is no skip flag.
+
+Use an isolated emulator with no personal data, no configured rule delay and
+Manage system apps off, such as `DomainGuard_Attribution_Test`. The native tests
+temporarily grant VPN permission within that emulator and restore their rules;
+the runner stops the app afterward. Host loopback port 53 must be available for
+the synthetic DNS fixture. The runner neither launches an emulator nor saves
+snapshots. A missing prerequisite is a failed gate, not a skipped pass.
+
+The gate covers Android framework/SQLite/JNI/native VPN behavior on the debug
+build plus release packaging/startup on the signed APK. It is not full functional
+testing of minified code, older Android versions, ARM or physical devices.
+Add feature-specific runtime checks when changing affected boundaries, including
+installer, backup, notification presentation and lifecycle behavior. This app has
+no deployed Node/Workers backend; tests for those runtimes would not apply here.
 
 When publication is authorized, pass the output directory printed by preparation:
 
@@ -77,6 +97,10 @@ APK's signature/package/version/history, and confirms the source is still merged
 `main`. The source revision includes tracked build configuration; a separate
 fingerprint detects changes to local Gradle settings, build environment and JDK
 metadata without storing their contents. Changed inputs require fresh preparation.
+`runtime.json` binds the passed runtime policy, exact required test identities,
+device/API/ABI, APK hashes and logs to that source/configuration/release APK.
+Publication checks the evidence and log hashes and reparses completed test results
+before its first GitHub write. Legacy bundles without this evidence are rejected.
 
 Preparation records the final notes as part of the bundle. Review
 `release-notes.md` there before publication. If notes or artifacts need changing,
@@ -104,7 +128,8 @@ Pass `--build-tools <directory>` to choose an installed version explicitly.
 
 Each run prints a unique output directory beneath `.gradle/verification/`.
 It retains `build.log`, `verification.json`, the three release files and the
-final `release-notes.md`. Publication also records `draft.json` as soon as GitHub
+final `release-notes.md`, plus `runtime.json` and the three `runtime-*.log` files.
+Publication also records `draft.json` as soon as GitHub
 creates the draft and `publication.json` after public download verification.
 
 If anything fails, inspect the error, output directory and GitHub release before
@@ -114,7 +139,7 @@ absence of a success message means nothing happened. Existing drafts/releases
 stop subsequent runs; investigate and resolve the specific failure rather than
 blindly rerunning or overwriting assets.
 
-For an already authorized one-step release, `--version ... --notes ... --publish`
+For an already authorized one-step release, `--version ... --notes ... --serial ... --publish`
 still prepares once and publishes that same bundle. Use `--bundle` after a
 separate preparation to avoid a second build. Historical verification reports
 without the bundle schema and hashes cannot be reused.
@@ -123,12 +148,34 @@ without the bundle schema and hashes cannot be reused.
 
 ```powershell
 python -B -m unittest discover -s scripts -p test_publish_release.py -v
+python -B -m unittest discover -s scripts -p test_runtime_guard.py -v
 ```
 
 These regression tests use temporary Git repositories and simulated GitHub and
 Android build responses. They exercise source/PR checks, artifact validation,
 release assembly and publication failure paths without uploading or building an
 APK. They do not substitute for the publisher's real release-time checks.
+
+## Publication routes and enforcement limits
+
+- `publish-release.py`, both one-step and saved-bundle modes, is the maintained
+  APK publication route. Both require the runtime evidence above before any
+  draft, upload or latest-release update. Failed preparation cannot emit a
+  publishable manifest.
+- `Build-DomainGuard.ps1` and Gradle produce local builds only; they do not upload.
+  Building an APK directly is not release approval or a substitute for the gate.
+- `publish-preview.py` accepts reviewed PDFs only and preserves existing release
+  assets/metadata. It does not publish APKs. Archived publishers are inactive.
+- No GitHub Actions deployment workflow exists in this repository. GitHub's web
+  UI, direct release API/CLI calls and an administrator modifying the scripts or
+  local evidence can bypass a local check. Existing credentials and repository
+  privileges are unchanged. This is enforced by the maintained publisher, not
+  an unbypassable server rule or a cryptographic attestation service.
+
+The integrity checks follow the relevant [OWASP supply-chain guidance](https://cheatsheetseries.owasp.org/cheatsheets/Software_Supply_Chain_Security_Cheat_Sheet.html).
+Android tests use [AndroidJUnitRunner](https://developer.android.com/training/testing/instrumented-tests/androidx-test-libraries/runner)
+on the actual emulator runtime; desktop mocks verify only the release guard's
+failure handling and do not establish Android compatibility.
 
 The twelve former local APK publishers were archived under
 `.gradle/verification/archive/apk-publishers-20261025/` with original paths and

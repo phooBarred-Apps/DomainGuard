@@ -17,13 +17,16 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 from github_assets import REPOSITORY, github_credentials, require, sha256, verify_download
+from release_runtime import run_checks, verify_evidence
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "heartguard.heartguard.main.mw"
 CERTIFICATE = "145d3d426ae87e16407f02ef3f0a476c450d6bd8ed101fda97e31038c1fecd4b"
 HISTORY = "app/src/main/res/raw/fork_update_history.json"
-DEVICE_EVIDENCE = "Device tests compiled; emulator and physical-device tests were not run by this publisher."
+DEVICE_EVIDENCE = ("Mandatory Android 12 emulator checks passed: native VPN/DNS and Android rule/database "
+                   "tests on the matching debug build, plus launch/crash checks on this signed release APK. "
+                   "Other Android versions, ARM devices and physical-device behavior are not covered by this gate.")
 ASSET_NAMES = ("DomainGuard.apk", "DomainGuard-source.zip", "SHA256SUMS.txt")
 
 
@@ -214,7 +217,9 @@ def publish_assets(github, version, notes, files, directory, commit, hashes):
     return result
 
 
-def release(root, github, version, notes_path, tools, publish=False):
+def release(root, github, version, notes_path, tools, publish=False, serial=None):
+    require(re.fullmatch(r"emulator-\d+", serial or ""),
+            "Select a disposable emulator with --serial before preparing a release.")
     version_parts(version)
     notes = notes_path.read_text(encoding="utf-8-sig").strip()
     require(notes, "Release notes are empty.")
@@ -230,13 +235,18 @@ def release(root, github, version, notes_path, tools, publish=False):
     require(require_merged_source(root, github) == commit, "Source changed while building.")
     require(local_build_inputs(root) == inputs, "Local build configuration changed while building.")
     files = prepare_assets(root, directory, commit, verification)
+    run_checks(root, directory, directory / "DomainGuard.apk", commit, inputs, serial)
+    verify_evidence(directory, commit, inputs, verification["sha256"])
+    require(require_merged_source(root, github) == commit, "Source changed during runtime checks.")
+    require(local_build_inputs(root) == inputs, "Local build configuration changed during runtime checks.")
     notes += (f"\n\nValidation: signed release build, release lint, and {verification['unitTests']} unit tests"
               f" ({verification['skippedTests']} skipped). {DEVICE_EVIDENCE}\n\n"
               f"[Corresponding source code](https://github.com/{REPOSITORY}/tree/{commit}) "
               "is also included in DomainGuard-source.zip.\n")
     (directory / "release-notes.md").write_text(notes, encoding="utf-8")
-    verification.update(schemaVersion=1, sourceCommit=commit, localBuildInputs=inputs,
-                        files={path.name: sha256(path) for path in files + [directory / "release-notes.md"]})
+    verification.update(schemaVersion=2, sourceCommit=commit, localBuildInputs=inputs,
+                        files={path.name: sha256(path) for path in files +
+                               [directory / "release-notes.md", directory / "runtime.json"]})
     save_json(directory / "verification.json", verification)
     if not publish:
         print("Verified locally; nothing uploaded. Publish this bundle without rebuilding:\n"
@@ -247,7 +257,7 @@ def release(root, github, version, notes_path, tools, publish=False):
 
 def publish_bundle(root, github, directory, tools):
     verification = json.loads((directory / "verification.json").read_text(encoding="utf-8"))
-    require(verification.get("schemaVersion") == 1, "Prepare a new bundle with the current publisher.")
+    require(verification.get("schemaVersion") == 2, "Prepare a new bundle with mandatory runtime checks.")
     version = verification["version"]
     version_parts(version)
     require(project_version(root, version) == verification["versionCode"], "Bundle version code changed.")
@@ -258,10 +268,11 @@ def publish_bundle(root, github, directory, tools):
             not any(verification[key] for key in ("failures", "errors", "lintErrors")),
             "Bundle does not contain successful verification.")
     files = [directory / name for name in ASSET_NAMES]
-    for path in files + [directory / "release-notes.md"]:
+    for path in files + [directory / "release-notes.md", directory / "runtime.json"]:
         require(sha256(path) == verification["files"][path.name], "Bundle file changed: " + path.name)
     require(verification["files"]["DomainGuard.apk"] == verification["sha256"], "Bundle APK hash is inconsistent.")
     verify_apk(root, directory / "DomainGuard.apk", version, verification["versionCode"], tools)
+    verify_evidence(directory, verification["sourceCommit"], verification["localBuildInputs"], verification["sha256"])
     notes = (directory / "release-notes.md").read_text(encoding="utf-8")
     # Recheck GitHub immediately before the first external write. Never rebuild or use app/build here.
     require_new_release(github, version)
@@ -278,16 +289,17 @@ def main():
     parser.add_argument("--bundle", type=Path, help="Publish an existing verified output directory without rebuilding")
     parser.add_argument("--build-tools", help="Android SDK build-tools directory; otherwise use the latest installed")
     parser.add_argument("--publish", action="store_true", help="Create and publish a new GitHub release after all checks")
+    parser.add_argument("--serial", help="Dedicated running Android 12 emulator for mandatory runtime checks")
     args = parser.parse_args()
     if args.bundle:
         if not args.publish or args.version or args.notes:
             parser.error("Use --bundle with --publish, without --version or --notes.")
         publish_bundle(ROOT, github_credentials(ROOT), args.bundle.resolve(), build_tools_path(args.build_tools))
     else:
-        if not args.version or not args.notes:
-            parser.error("Preparation requires --version and --notes.")
+        if not args.version or not args.notes or not args.serial:
+            parser.error("Preparation requires --version, --notes and --serial.")
         release(ROOT, github_credentials(ROOT), args.version, args.notes.resolve(),
-                build_tools_path(args.build_tools), args.publish)
+                build_tools_path(args.build_tools), args.publish, args.serial)
 
 
 if __name__ == "__main__":
