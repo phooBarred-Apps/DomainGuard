@@ -11,6 +11,7 @@
             <TextView android:id="@+id/allow_new_access_package_label" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textAppearance="@style/TextMedium" />
             <heartguard.heartguard.main.CompactImageButton android:id="@+id/allow_new_access_global" android:layout_width="48dp" android:layout_height="48dp" android:padding="12dp" android:src="@drawable/ic_globe_compact" android:contentDescription="@string/scope_off" />
         </LinearLayout>
+        <TextView android:id="@+id/domain_scope_notice" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/domain_scope_unknown" android:textAppearance="@style/TextSmall" android:visibility="gone" />
         <TextView android:id="@+id/domain_action_delay" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:drawableStart="@drawable/ic_history_compact" android:drawablePadding="8dp" android:gravity="center_vertical" android:textAppearance="@style/TextSmall" android:visibility="gone" />
         <include layout="@layout/temporary_rule" />
     </LinearLayout>

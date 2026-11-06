@@ -1155,6 +1155,10 @@ public class RulesManager {
         return specific == null ? m_delay : specific;
     }
 
+    int getDefaultDelay() {
+        return m_delay;
+    }
+
     int getGlobalProtectionDelay() {
         int delay = m_delay;
         for (int specific : m_packageDelays.values()) delay = Math.max(delay, specific);

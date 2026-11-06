@@ -29,6 +29,23 @@ final class DomainRuleDialog {
 
     static AlertDialog show(Context context, String packageName, String address, boolean blocked,
                             SaveGuard guard, Runnable onDismiss) {
+        return show(context, packageName, address, blocked, false, guard, onDismiss);
+    }
+
+    /** Unidentified traffic cannot safely target an individual app. Make global scope explicit. */
+    static void showGlobal(Context context, String address, boolean blocked) {
+        show(context, null, address, blocked, true, () -> true, () -> { });
+    }
+
+    static boolean canBlockGlobally(String address) {
+        try {
+            rule(null, DomainInput.normalize(address), true, true);
+            return true;
+        } catch (IllegalArgumentException invalid) { return false; }
+    }
+
+    private static AlertDialog show(Context context, String packageName, String address, boolean blocked,
+                                    boolean globalOnly, SaveGuard guard, Runnable onDismiss) {
         View view = LayoutInflater.from(context).inflate(R.layout.allowhost, null, false);
         EditText input = view.findViewById(R.id.allow_new_access_daddr);
         TextView title = view.findViewById(R.id.allow_new_access_title);
@@ -40,14 +57,20 @@ final class DomainRuleDialog {
         ImageButton parents = view.findViewById(R.id.domain_parent_choices);
         ImageView appIcon = view.findViewById(R.id.domain_scope_icon);
         TemporaryRuleControls temporary = new TemporaryRuleControls(view);
-        boolean[] applyGlobally = {false};
+        boolean[] applyGlobally = {globalOnly};
         input.setText(address);
         input.clearFocus();
-        title.setText(blocked ? R.string.domain_block_title : R.string.domain_allow_title);
-        String app = appName(context, packageName);
-        try { appIcon.setImageDrawable(context.getPackageManager().getApplicationIcon(packageName)); }
-        catch (android.content.pm.PackageManager.NameNotFoundException missing) { appIcon.setImageResource(R.drawable.ic_globe_compact); }
+        String app = globalOnly ? null : appName(context, packageName);
+        if (!globalOnly) {
+            try { appIcon.setImageDrawable(context.getPackageManager().getApplicationIcon(packageName)); }
+            catch (android.content.pm.PackageManager.NameNotFoundException missing) { appIcon.setImageResource(R.drawable.ic_globe_compact); }
+        }
+        global.setEnabled(!globalOnly);
+        view.findViewById(R.id.domain_scope_notice).setVisibility(globalOnly ? View.VISIBLE : View.GONE);
         Runnable refresh = () -> {
+            title.setText(applyGlobally[0]
+                    ? (blocked ? R.string.title_block_globally : R.string.title_allow_globally)
+                    : (blocked ? R.string.domain_block_title : R.string.domain_allow_title));
             scope.setText(applyGlobally[0] ? context.getString(R.string.scope_all_apps) : app);
             appIcon.setVisibility(applyGlobally[0] ? View.GONE : View.VISIBLE);
             global.setSelected(applyGlobally[0]);
@@ -64,7 +87,10 @@ final class DomainRuleDialog {
             delay.setText(context.getString(R.string.domain_delay, RuleDelay.duration(context, seconds)));
             delay.setVisibility(seconds > 0 ? View.VISIBLE : View.GONE);
         };
-        global.setOnClickListener(button -> { applyGlobally[0] = !applyGlobally[0]; input.setError(null); refresh.run(); });
+        global.setOnClickListener(button -> {
+            if (globalOnly) return;
+            applyGlobally[0] = !applyGlobally[0]; input.setError(null); refresh.run();
+        });
         parents.setOnClickListener(button -> {
             List<String> choices = parents(context, input.getText().toString());
             View field = view.findViewById(R.id.domain_input_row);

@@ -1,12 +1,25 @@
 # DomainGuard
 
-Version **2.94** distinguishes the default rule delay, each app's Default or
+Version **2.95** explains when an app delay extends the wait to turn off or
+pause DomainGuard, including a red warning with the extended and default delays.
+Recent traffic offers clearly labeled global Allow/Block actions for unknown or
+removed apps, while preserving the parent picker, temporary rules and rule delays.
+Identified apps still start with app-only scope; global block priority is unchanged.
+
+Version `2.94` distinguishes the default rule delay, each app's Default or
 Custom delay, and pause/temporary-rule durations. Automatic resume changes the
 confirmation to **Pause DomainGuard?**, with **Pause for**, **Pauses in** and
 **Resumes in** wording. Duration picker accessibility labels match their purpose.
 Android backup now restores the Automatic backup choice and clears the old
 installation's request timestamp. Fresh-install restore tests include missing
 apps, per-app delays, rules and timer deadlines; Google cloud delivery is not verified.
+
+An app delay longer than the default also increases the wait before turning off
+or pausing all of DomainGuard. The app-delay editor warns before saving it;
+Settings shows the effective turn-off/pause wait, and those confirmations show a
+red warning with the extended wait and default delay when an app delay is responsible.
+Pending delay reductions keep the current
+longer wait until they take effect.
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
@@ -54,6 +67,12 @@ still means a global block. The Legend explains each icon.
 **Recent traffic > Clear shown traffic** deletes the currently loaded, filtered
 results from shared traffic history after confirmation. Hidden and unloaded rows,
 new requests received after the confirmation opens, and rules remain intact.
+
+**Recent traffic > tap a domain** offers Allow and Block for identified apps.
+Unknown or removed apps instead offer **Allow globally** and **Block globally**,
+with **All apps** clearly shown in the rule dialog. The parent-domain picker,
+Temporary option and rule delay work as usual. Raw IP addresses support global
+allow rules only. Global block rules retain their existing priority over allows.
 
 **Recent traffic > tap a domain > Reset** opens the same rule-removal review as
 the per-app domain list. Matching global blacklist rules (including parent domains)

@@ -161,8 +161,8 @@ public class RecentTrafficDeviceTest {
         db.getWritableDatabase().update("access", dns, "uid=-1 AND daddr=?", new String[]{"play." + HOST});
         open(); await(() -> count() == 1);
         showFirstActions();
-        assertFalse(device.hasObject(By.text(context.getString(R.string.title_allow))));
-        assertFalse(device.hasObject(By.text(context.getString(R.string.title_block))));
+        assertTrue(device.hasObject(By.text(context.getString(R.string.title_allow_globally))));
+        assertTrue(device.hasObject(By.text(context.getString(R.string.title_block_globally))));
         selectAction(R.string.menu_reset);
         assertEquals("- " + global, find("etAddMultipleRules").getText().trim());
         find("cancel_button").click();
@@ -257,6 +257,120 @@ public class RecentTrafficDeviceTest {
         assertEquals(Collections.singletonList("- " + pending), rules.getRulesToReset(context, uid, "pending." + HOST, 1));
         assertEquals(Collections.singletonList("- " + parent), rules.getRulesToReset(context, uid, "pending." + HOST, 0));
         assertTrue(rules.getRulesToReset(context, -1, "pending." + HOST, 1).isEmpty());
+    }
+
+    // Test: Unknown owners offer explicit global actions, parent selection and temporary rules; Cancel saves nothing.
+    // Why: Recent traffic must allow unknown-owner destinations without inventing an app or bypassing the rule delay.
+    @Test public void unknownAllowKeepsScopeParentsTemporaryAndDelay() throws Exception {
+        fixtureRule("delay 120"); reloadRules();
+        insert(-1, "downloads.family-trail", System.currentTimeMillis(), false);
+        String text = TemporaryRuleText.text("allow host:" + HOST, 300);
+        ownedRules.add(text);
+        open(); await(() -> count() == 1);
+        for (boolean dark : new boolean[]{false, true}) {
+            preferences.edit().putBoolean("dark_theme", dark).commit();
+            recreate(); await(() -> count() == 1);
+            showFirstActions(); selectAction(R.string.title_allow_globally);
+            assertGlobalRuleDialog(false);
+            assertEquals("downloads.family-trail." + HOST, find("allow_new_access_daddr").getText());
+            assertEquals(context.getString(R.string.domain_delay, RuleDelay.duration(context, 120)),
+                    find("domain_action_delay").getText());
+            find("domain_parent_choices").click();
+            UiObject2 parent = device.wait(Until.findObject(By.text(HOST)), 5000);
+            assertNotNull(parent); parent.click();
+            assertEquals(HOST, find("allow_new_access_daddr").getText());
+            find("temporary_rule_enabled").click();
+            find("temporary_rule_amount");
+            device.takeScreenshot(new File(context.getExternalFilesDir(null), "recent-global-allow-" + dark + ".png"));
+            clickRuleDialogButton("button2");
+            assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "allow_new_access_title")), 5000));
+            barrier();
+            try (Cursor rows = db.getRuleMatchingRuletext(text)) { assertFalse(rows.moveToFirst()); }
+        }
+        showFirstActions(); selectAction(R.string.title_allow_globally);
+        assertGlobalRuleDialog(false);
+        // Each new dialog starts from the tapped destination, with Temporary off.
+        assertFalse(find("temporary_rule_enabled").isChecked());
+        find("domain_parent_choices").click();
+        UiObject2 parent = device.wait(Until.findObject(By.text(HOST)), 5000);
+        assertNotNull(parent); parent.click();
+        find("temporary_rule_enabled").click();
+        long before = System.currentTimeMillis();
+        clickRuleDialogButton("button1");
+        assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "allow_new_access_title")), 5000));
+        barrier();
+        try (Cursor rows = db.getRuleMatchingRuletext(text)) {
+            assertTrue(rows.moveToFirst());
+            assertEquals(0, rows.getInt(rows.getColumnIndexOrThrow("enacted")));
+            assertTrue(rows.getLong(rows.getColumnIndexOrThrow("enact_time")) >= before + 120000);
+        }
+        assertEquals(1, fixtureCount());
+        await(() -> count() == 1);
+    }
+
+    // Test: A missing installed owner can create a global block, with explicit scope and no fabricated package rule.
+    // Why: An old access record remains actionable after its originating app is removed.
+    @Test public void missingOwnerCanBlockGlobally() throws Exception {
+        assertNull(context.getPackageManager().getPackagesForUid(99191));
+        insert(99191, "removed", System.currentTimeMillis(), false);
+        String text = "blockdomain removed." + HOST;
+        ownedRules.add(text);
+        open(); await(() -> count() == 1);
+        showFirstActions(); selectAction(R.string.title_block_globally);
+        assertGlobalRuleDialog(true);
+        assertEquals("removed." + HOST, find("allow_new_access_daddr").getText());
+        device.takeScreenshot(new File(context.getExternalFilesDir(null), "recent-global-block.png"));
+        clickRuleDialogButton("button1");
+        assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "allow_new_access_title")), 5000));
+        barrier();
+        try (Cursor rows = db.getRuleMatchingRuletext(text)) { assertTrue(rows.moveToFirst()); }
+        assertTrue(rules.isGlobalDomainBlocked("removed." + HOST));
+        assertEquals(1, fixtureCount());
+    }
+
+    // Test: Unknown-owner IPv4/IPv6 rows allow global IP rules, but never offer unsupported global IP blocks.
+    // Why: Recent traffic also contains raw IPs; global actions must use the existing parser's supported rule types.
+    @Test public void unknownIpOffersSupportedGlobalAllowOnly() throws Exception {
+        for (String address : new String[]{"192.0.2.81", "2001:db8::81"}) {
+            insert(-1, "ip", System.currentTimeMillis(), false);
+            ContentValues value = new ContentValues(); value.put("daddr", address);
+            db.getWritableDatabase().update("access", value, "uid=-1 AND daddr=?", new String[]{"ip." + HOST});
+            String text = "allow " + DomainInput.destination(address);
+            ownedRules.add(text);
+            try {
+                if (activity == null) open(); else recreate();
+                await(() -> count() == 1);
+                showFirstActions();
+                assertFalse(device.hasObject(By.text(context.getString(R.string.title_block_globally))));
+                selectAction(R.string.title_allow_globally);
+                assertGlobalRuleDialog(false);
+                assertEquals(address, find("allow_new_access_daddr").getText());
+                assertFalse(find("domain_parent_choices").isEnabled());
+                clickRuleDialogButton("button1");
+                assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "allow_new_access_title")), 5000));
+                barrier();
+                try (Cursor rows = db.getRuleMatchingRuletext(text)) { assertTrue(rows.moveToFirst()); }
+                assertEquals(1, count());
+            } finally {
+                db.getWritableDatabase().delete("access", "uid=-1 AND daddr=?", new String[]{address});
+            }
+        }
+    }
+
+    private void clickRuleDialogButton(String id) {
+        UiObject2 button = device.wait(Until.findObject(By.res("android", id).enabled(true)), 5000);
+        assertNotNull(id, button);
+        button.click();
+    }
+
+    private void assertGlobalRuleDialog(boolean blocked) {
+        assertEquals(context.getString(blocked ? R.string.title_block_globally : R.string.title_allow_globally),
+                find("allow_new_access_title").getText());
+        assertEquals(context.getString(R.string.scope_all_apps), find("allow_new_access_package_label").getText());
+        assertEquals(context.getString(R.string.domain_scope_unknown), find("domain_scope_notice").getText());
+        UiObject2 global = find("allow_new_access_global");
+        assertEquals(context.getString(R.string.scope_on), global.getContentDescription());
+        assertFalse(global.isEnabled());
     }
 
     private void fixtureRule(String text) {

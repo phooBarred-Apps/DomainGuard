@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.95",
+    "name": "DomainGuard 2.95",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-06",
+    "body": "DomainGuard 2.95\n\n- The app-delay editor explains when a longer app delay also extends the wait to turn off or pause DomainGuard. Settings shows the effective wait, and the turn-off/pause dialog displays a red warning with both the extended and default delays.\n- Recent traffic now offers Allow globally and Block globally when the requesting app is unknown or no longer installed. The rule dialog clearly shows All apps, with the parent-domain picker, Temporary option and normal rule delay available. Global blocking is supported for domain names; raw IP addresses support global allow rules.\n- Rule-dialog titles now explicitly say Allow globally or Block globally whenever global scope is selected. Identified apps still start with app-only scope.\n\nExisting delay enforcement, global block priority and traffic history are preserved.\n\nInstall DomainGuard.apk from the assets below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.94",
     "name": "DomainGuard 2.94",
     "draft": false,
