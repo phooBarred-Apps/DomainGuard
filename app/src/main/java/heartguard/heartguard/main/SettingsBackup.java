@@ -20,7 +20,7 @@ final class SettingsBackup {
     }
 
     static SharedPreferences controls(Context context) {
-        // Device-local backup controls and timestamps are not restored onto a new phone.
+        // The backup choice is portable; the agent clears device-local request timestamps on restore.
         return context.getSharedPreferences("backup_control", Context.MODE_PRIVATE);
     }
 

@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="temporary_rule">Temporary</string>
+    <string name="temporary_duration_label">Lasts</string>
+    <string name="temporary_unit_label">Rule duration unit</string>
+    <string name="traffic_window_unit_label">Time window unit</string>
     <string name="temporary_summary">Lasts %1$s after it starts. Then your other rules apply. Existing blocks still take priority.</string>
     <string name="temporary_invalid">Enter a duration from 1 second to 7 days.</string>
     <string name="temporary_remaining">Expires in %1$s</string>

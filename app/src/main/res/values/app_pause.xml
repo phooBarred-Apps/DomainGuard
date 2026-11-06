@@ -7,7 +7,8 @@
     <string name="app_pause_resume">Resume now</string>
     <string name="app_pause_cancel_pending">Cancel pending pause</string>
     <string name="app_pause_description">Allow all traffic, including domains blocked by global rules. Your rules return automatically when the pause ends.</string>
-    <string name="app_pause_duration_label">Duration</string>
+    <string name="app_pause_duration_label">Pause for</string>
+    <string name="app_pause_unit_label">Pause duration unit</string>
     <string name="app_pause_duration">Pause for %1$s</string>
     <string name="app_pause_maximum">Up to 7 days</string>
     <string name="app_pause_invalid">Enter a duration from 1 second to 7 days.</string>

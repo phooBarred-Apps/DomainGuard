@@ -1145,6 +1145,10 @@ public class RulesManager {
     }
 
     // Some apps may have lowered delays so that they can be in trial mode
+    boolean hasCustomDelay(String packageName) {
+        return m_packageDelays.containsKey(packageName);
+    }
+
     int getPauseDelay(String packageName) {
         // Even an otherwise allowed app may have domain blocks: bypassing those still waits.
         Integer specific = m_packageDelays.get(packageName);

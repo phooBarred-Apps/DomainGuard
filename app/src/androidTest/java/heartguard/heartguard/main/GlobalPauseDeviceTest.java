@@ -145,6 +145,7 @@ public class GlobalPauseDeviceTest {
             PreferenceManager.getDefaultSharedPreferences(context).edit().putBoolean("dark_theme", dark).commit();
             launch();
             onMain(() -> GlobalPauseDialog.show(activity));
+            assertTrue(device.hasObject(By.text("Turn off DomainGuard?")));
             assertFalse(find("global_pause_auto_resume").isChecked());
             assertFalse(device.hasObject(By.res(context.getPackageName(), "global_pause_amount")));
             assertTrue(find("delay_notice_timing").getText().contains("35 minutes"));
@@ -153,10 +154,13 @@ public class GlobalPauseDeviceTest {
             find("delay_notice_explanation");
             shot("off-explained-" + dark);
             find("global_pause_auto_resume").click();
+            assertTrue(device.wait(Until.hasObject(By.text("Pause DomainGuard?")), 5000));
             find("global_pause_amount");
+            assertEquals("Pause duration unit", find("global_pause_unit").getContentDescription());
             find("global_pause_unit").click();
             unitChoice("Days").click();
             setAmount("global_pause_amount", "3");
+            assertEquals("Pause for 3 days", find("global_pause_preview").getText());
             assertTrue(find("delay_notice_explanation").getText().contains("3 day"));
             shot("pause-form-" + dark);
             owned.add(AppPauseRule.text(null, 259200));
@@ -164,6 +168,7 @@ public class GlobalPauseDeviceTest {
             assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "global_pause_auto_resume")), 5000));
             find("globalPauseAction");
             assertTrue(find("globalPauseText").getText().contains("35 min"));
+            assertTrue(find("globalPauseText").getText().contains("pauses in"));
             onMain(() -> assertEquals("Normal font strip stays on one line", 1,
                     ((android.widget.TextView) activity.findViewById(R.id.globalPauseText)).getLineCount()));
             shot("pending-" + dark);
@@ -194,7 +199,7 @@ public class GlobalPauseDeviceTest {
         add("blockdomain " + HOST);
         add(AppPauseRule.text(null, 259200));
         launch();
-        assertTrue(find("globalPauseText").getText().contains("3 days left"));
+        assertTrue(find("globalPauseText").getText().contains("resumes in 3 days"));
         shot("active");
         find("globalPauseAction").click();
         assertEquals("Yes", positive().getText());
@@ -217,8 +222,20 @@ public class GlobalPauseDeviceTest {
     @Test public void appDelayEditorAndAllowNotice() throws Exception {
         add("delay 21600");
         launch();
+        if (!device.wait(Until.hasObject(By.res(context.getPackageName(), "appOptionsButton")), 5000)) {
+            UiObject2 chrome = device.wait(Until.findObject(By.res(context.getPackageName(), "tvName").text("Chrome")), 5000);
+            assertNotNull("Chrome app row", chrome);
+            chrome.click();
+        }
         find("appOptionsButton").click();
+        assertTrue(device.wait(Until.hasObject(By.res(context.getPackageName(), "appOptionsButton").selected(true)), 5000));
+        new androidx.test.uiautomator.UiScrollable(new androidx.test.uiautomator.UiSelector()
+                .resourceId(context.getPackageName() + ":id/rvApplication"))
+                .scrollIntoView(new androidx.test.uiautomator.UiSelector()
+                        .resourceId(context.getPackageName() + ":id/appDelayButton"));
+        assertTrue(find("appDelayButton").getText().contains("Default: 6 hours"));
         find("appDelayButton").click();
+        assertTrue(device.wait(Until.hasObject(By.text("App rule delay")), 5000));
         assertTrue(find("rule_delay_inherit").isChecked());
         find("rule_delay_inherit").click();
         find("rule_delay_unit").click(); unitChoice("Hours").click();
@@ -227,6 +244,7 @@ public class GlobalPauseDeviceTest {
         owned.add("delay package:" + PKG + " 25200");
         positive().click();
         await(() -> RuleDelay.read(context, PKG).seconds == 25200, 5000);
+        assertTrue(device.wait(Until.hasObject(By.res(context.getPackageName(), "appDelayButton").textContains("Custom: 7 hours")), 5000));
         onMain(() -> {
             Rule app = Rule.getRules(false, context).stream().filter(r -> r.packageName.equals(PKG)).findFirst().get();
             AppAccessDialog.show(activity, app, true);
@@ -248,6 +266,10 @@ public class GlobalPauseDeviceTest {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(new Intent(context, ActivityMain.class)
                 .putExtra(ActivityMain.EXTRA_SEARCH, "Chrome").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         device.waitForIdle();
+        if (device.hasObject(By.res(context.getPackageName(), "tvFirst"))) {
+            positive().click();
+            assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "tvFirst")), 5000));
+        }
         if (device.hasObject(By.res(context.getPackageName(), "cbDontAsk"))) negative().click();
     }
     private void add(String text) throws Exception { owned.add(text); rules.queueRuleText(context, text); barrier(); }
@@ -269,6 +291,11 @@ public class GlobalPauseDeviceTest {
     }
     private UiObject2 find(String id) {
         UiObject2 view = device.wait(Until.findObject(By.res(context.getPackageName(), id)), 5000);
+        if (view == null) {
+            shot("missing-" + id);
+            try { device.dumpWindowHierarchy(new File(context.getExternalFilesDir(null), "missing-" + id + ".xml")); }
+            catch (java.io.IOException ignored) { }
+        }
         assertNotNull(id, view); return view;
     }
     private UiObject2 positive() {

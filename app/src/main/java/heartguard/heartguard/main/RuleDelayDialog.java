@@ -60,8 +60,9 @@ public class RuleDelayDialog extends DialogFragment {
                 RulesManager.getInstance(requireContext()).queueRuleText(requireContext(), "abandon " + pending.rule);
             cancelPending.setEnabled(false);
         });
-        View title = CompactUi.header(requireContext(), R.string.rule_delay_title, R.drawable.ic_info_compact,
-                R.string.help_title, view -> CompactUi.help(requireContext(), R.string.rule_delay_title,
+        int titleText = packageName == null ? R.string.rule_delay_title : R.string.app_delay_title;
+        View title = CompactUi.header(requireContext(), titleText, R.drawable.ic_info_compact,
+                R.string.help_title, view -> CompactUi.help(requireContext(), titleText,
                         getString(packageName == null ? R.string.rule_delay_explanation : R.string.app_delay_help)));
         if (packageName != null) {
             TextView appName = content.findViewById(R.id.rule_delay_app);

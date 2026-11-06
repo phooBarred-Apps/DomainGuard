@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="rule_delay_title">Rule delay</string>
+    <string name="rule_delay_title">Default rule delay</string>
     <string name="rule_delay_input_label">Delay</string>
     <string name="rule_delay_unit_label">Delay unit</string>
     <string name="rule_delay_none">No delay</string>
@@ -8,7 +8,7 @@
     <string name="rule_delay_pending">Pending: %1$s — takes effect %2$s</string>
     <string name="rule_delay_pending_removal">Pending removal of %1$s delay — takes effect %2$s</string>
     <string name="rule_delay_reduction">This reduction takes effect after %1$s.</string>
-    <string name="rule_delay_explanation">Default waiting time for rule changes. Some changes, such as increasing the delay or blocking access, take effect immediately.\n\nEnter 0 to turn the delay off. Maximum: 7 days. Reducing or turning off the delay still requires the existing waiting period.</string>
+    <string name="rule_delay_explanation">Default waiting time before a permissive change takes effect, including turning off or pausing protection. An app can have its own rule delay. Blocking access or increasing a delay takes effect immediately.\n\nEnter 0 for no delay. Maximum: 7 days. Reducing a delay waits for the difference: 6 hours to 4 hours waits 2 hours. A pause or temporary rule starts its duration after the waiting period.</string>
     <string name="rule_delay_invalid">Enter 0 or more, up to 7 days. Use at most 3 digits before the decimal and 2 after it.</string>
     <string name="rule_delay_cancel_pending">Cancel pending delay changes</string>
     <string name="rule_delay_save">Save</string>

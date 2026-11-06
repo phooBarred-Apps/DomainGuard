@@ -20,6 +20,7 @@ final class GlobalPauseDialog {
         DurationInput[] input = new DurationInput[1];
         Runnable refresh = () -> {
             boolean pause = autoResume.isChecked();
+            dialog.setTitle(pause ? R.string.global_pause_title : R.string.global_off_title);
             view.findViewById(R.id.global_off_description).setVisibility(pause ? View.GONE : View.VISIBLE);
             view.findViewById(R.id.global_pause_duration).setVisibility(pause ? View.VISIBLE : View.GONE);
             int seconds = 300;
@@ -27,7 +28,7 @@ final class GlobalPauseDialog {
             try {
                 if (input[0] != null) seconds = input[0].seconds();
                 if (seconds < 1) throw new IllegalArgumentException();
-                preview.setText(RuleDelay.duration(context, seconds));
+                preview.setText(context.getString(R.string.app_pause_duration, RuleDelay.duration(context, seconds)));
             } catch (IllegalArgumentException invalid) { preview.setText(R.string.app_pause_invalid); }
             int delay = RulesManager.getInstance(context).getGlobalProtectionDelay();
             String detail = pause ? context.getString(R.string.delay_notice_pause_explanation, RuleDelay.duration(context, seconds, true))

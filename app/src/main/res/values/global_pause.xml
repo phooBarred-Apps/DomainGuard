@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_delay_summary">Rule delay: %1$s</string>
-    <string name="app_delay_help">Use the general delay, or choose a shorter or longer delay for this app. Increasing a delay takes effect immediately. Reducing it waits for the difference: changing 6 hours to 4 hours waits 2 hours. Returning to a shorter general delay follows the same rule. Changes that affect every app use the longest applicable delay.</string>
+    <string name="app_delay_summary_default">Rule delay · Default: %1$s</string>
+    <string name="app_delay_summary_custom">Rule delay · Custom: %1$s</string>
+    <string name="app_delay_title">App rule delay</string>
+    <string name="app_delay_help">Use the default delay, or choose a shorter or longer delay for this app. Increasing a delay takes effect immediately. Reducing it waits for the difference: changing 6 hours to 4 hours waits 2 hours. Returning to a shorter default delay follows the same rule. Changes that affect every app use the longest applicable delay.</string>
     <string name="global_off_title">Turn off DomainGuard?</string>
+    <string name="global_pause_title">Pause DomainGuard?</string>
     <string name="global_off_action">Turn off</string>
     <string name="global_auto_resume">Resume automatically</string>
     <string name="global_off_description">Protection stays off until you enable it.</string>
     <string name="global_pause_pending">DomainGuard pauses in %1$s</string>
-    <string name="global_pause_active">DomainGuard paused · %1$s left</string>
+    <string name="global_pause_active">DomainGuard resumes in %1$s</string>
     <string name="global_pause_cancel">Cancel</string>
     <string name="global_pause_resume">Resume</string>
     <string name="global_pause_cancel_title">Cancel pending pause?</string>
@@ -24,7 +27,7 @@
     <string name="delay_notice_collapse">Hide delay explanation</string>
     <string name="app_allow_title">Allow %1$s?</string>
     <string name="app_block_title">Block %1$s?</string>
-    <string name="app_delay_default">Use general delay — %1$s</string>
+    <string name="app_delay_default">Use default delay — %1$s</string>
     <string name="global_pause_legend">DomainGuard pause: countdown and Cancel while pending; countdown and Resume while paused. Both actions ask for confirmation.</string>
     <plurals name="pause_short_days"><item quantity="one">%d day</item><item quantity="other">%d days</item></plurals>
     <plurals name="pause_short_hours"><item quantity="one">%d hr</item><item quantity="other">%d hr</item></plurals>

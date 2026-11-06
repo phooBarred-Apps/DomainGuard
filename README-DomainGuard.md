@@ -1,8 +1,16 @@
 # DomainGuard
 
+Version **2.94** distinguishes the default rule delay, each app's Default or
+Custom delay, and pause/temporary-rule durations. Automatic resume changes the
+confirmation to **Pause DomainGuard?**, with **Pause for**, **Pauses in** and
+**Resumes in** wording. Duration picker accessibility labels match their purpose.
+Android backup now restores the Automatic backup choice and clears the old
+installation's request timestamp. Fresh-install restore tests include missing
+apps, per-app delays, rules and timer deadlines; Google cloud delivery is not verified.
+
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: November 4, 2026.
+Latest changes: November 6, 2026.
 
 Version `2.93` adds **Reset** to Recent traffic, including matching global rules
 for Unknown app entries. Both traffic views now include global blacklist and
@@ -288,7 +296,24 @@ The instrumentation tests create and remove their own example-domain rules.
 After installing the debug app and test APK, run `python scripts/test-pause-network.py`
 to verify real TCP and UDP connections stop at pause expiry, using host-local echo servers.
 Run `./scripts/test-backup.ps1` to exercise Android's backup and restore agent
-using the emulator's local transport. This does not test a Google account upload.
+using the emulator's local transport. This replaces all DomainGuard data on the
+selected disposable emulator, uninstalls/reinstalls the app, and restores settings,
+global/app rules, missing-app rules, per-app delays, pending activation times,
+temporary durations and the hosts file. Run again with `-AutomaticBackup $false`
+to verify that an off backup preference also survives. It uses the shared runtime
+result validator, so skipped or missing fixture tests fail the check.
+This does not test a Google account upload or physical-device migration.
+
+Backup includes the default preferences, per-app apply/roaming/lockdown preferences,
+rules (including partner configuration and timing metadata), hosts file, and the
+Automatic backup choice. Older backups without that choice leave it off on a
+fresh installation. The previous installation's backup-request timestamp is cleared.
+Traffic/DNS history, downloaded APKs, caches and session-only view state are excluded.
+Normal app rules retain package names and resolve the installed app's current UID;
+missing apps retain their saved rules without applying those rules globally.
+Manually entered numeric UID rules are device-specific and are not remapped.
+Android VPN consent and other operating-system permissions must be handled on the
+new device. Android controls backup scheduling and whether a cloud restore is available.
 Run `./scripts/test-updater.ps1` with the same signing environment for upgrade
 verification and Android installer tests. This installs an older-version fixture
 on the disposable emulator. Rebuild normally afterward before distributing an APK.
