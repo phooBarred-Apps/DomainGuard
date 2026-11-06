@@ -14,6 +14,7 @@ import androidx.core.graphics.ColorUtils;
 final class DelayNotice extends LinearLayout {
     private final TextView timing;
     private final TextView explanation;
+    private final TextView reason;
     private final ImageView chevron;
     private final View row;
     private boolean expanded;
@@ -44,6 +45,20 @@ final class DelayNotice extends LinearLayout {
         header.addView(chevron, new LayoutParams(CompactUi.dp(context, 20), CompactUi.dp(context, 20)));
         addView(header);
         row = header;
+        reason = new TextView(context);
+        reason.setId(R.id.delay_notice_reason);
+        reason.setTextAppearance(context, R.style.TextSmall);
+        int warningColor = CompactUi.color(context, R.attr.colorActionDestructive);
+        int noticeBackground = surface(context);
+        int contrastTarget = ColorUtils.calculateLuminance(noticeBackground) < .5 ? Color.WHITE : Color.BLACK;
+        // The notice surface differs from the dialog background used by the theme's action colors.
+        for (int i = 0; i < 20 && ColorUtils.calculateContrast(warningColor, noticeBackground) < 4.5; i++)
+            warningColor = ColorUtils.blendARGB(warningColor, contrastTarget, .1f);
+        reason.setTextColor(warningColor);
+        reason.setPadding(CompactUi.dp(context, 32), 0, 0, CompactUi.dp(context, 12));
+        reason.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        reason.setVisibility(GONE);
+        addView(reason);
         explanation = new TextView(context);
         explanation.setId(R.id.delay_notice_explanation);
         explanation.setTextAppearance(context, R.style.TextSmall);
@@ -62,6 +77,11 @@ final class DelayNotice extends LinearLayout {
         timing.setText(seconds == 0 ? getContext().getString(R.string.delay_notice_now)
                 : getContext().getString(R.string.domain_delay, RuleDelay.duration(getContext(), seconds)));
         explanation.setText(seconds == 0 ? getContext().getString(R.string.delay_notice_immediate_explanation) : detail);
+    }
+
+    void setReason(String detail) {
+        reason.setText(detail);
+        reason.setVisibility(detail == null ? GONE : VISIBLE);
     }
 
     private void render() {

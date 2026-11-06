@@ -15,6 +15,7 @@ public class RuleDelayDialog extends DialogFragment {
     private Spinner unit;
     private TextView preview;
     private TextView current;
+    private TextView globalWarning;
     private View cancelPending;
     private View durationFields;
     private SwitchCompat inherit;
@@ -42,6 +43,8 @@ public class RuleDelayDialog extends DialogFragment {
         unit = content.findViewById(R.id.rule_delay_unit);
         preview = content.findViewById(R.id.rule_delay_preview);
         current = content.findViewById(R.id.rule_delay_current);
+        globalWarning = content.findViewById(R.id.rule_delay_global_warning);
+        globalWarning.setBackgroundColor(DelayNotice.surface(requireContext()));
         cancelPending = content.findViewById(R.id.rule_delay_cancel_pending);
         durationFields = content.findViewById(R.id.rule_delay_fields);
         inherit = content.findViewById(R.id.rule_delay_inherit);
@@ -122,8 +125,11 @@ public class RuleDelayDialog extends DialogFragment {
     private void updatePreview() {
         if (duration == null) return;
         durationFields.setVisibility(useGeneral() ? View.GONE : View.VISIBLE);
+        // Keep the warning while a longer active delay awaits a reduction or removal.
+        boolean longerAppDelay = packageName != null && state.overridden && state.seconds > state.generalSeconds;
         try {
             int seconds = useGeneral() ? state.generalSeconds : duration.seconds();
+            longerAppDelay |= packageName != null && !useGeneral() && seconds > state.generalSeconds;
             String text = RuleDelay.duration(requireContext(), seconds);
             if (seconds < state.seconds)
                 text += "\n" + getString(R.string.rule_delay_reduction,
@@ -132,6 +138,7 @@ public class RuleDelayDialog extends DialogFragment {
         } catch (IllegalArgumentException invalid) {
             preview.setText(R.string.rule_delay_invalid);
         }
+        globalWarning.setVisibility(longerAppDelay ? View.VISIBLE : View.GONE);
     }
 
     private void save() {

@@ -540,13 +540,13 @@ public class ActivityRecentTraffic extends AppCompatActivity {
         for (String name : entry.app.packages) {
             try {
                 if (getPackageManager().getApplicationInfo(name, 0).uid == entry.uid) availablePackages.add(name);
-            } catch (PackageManager.NameNotFoundException removed) { /* Keep copy available for removed apps. */ }
+            } catch (PackageManager.NameNotFoundException removed) { /* Global actions remain available. */ }
         }
+        boolean globalOnly = availablePackages.isEmpty();
         List<Integer> actions = new ArrayList<>();
-        if (!availablePackages.isEmpty()) {
-            actions.add(R.string.title_allow);
-            actions.add(R.string.title_block);
-        }
+        actions.add(globalOnly ? R.string.title_allow_globally : R.string.title_allow);
+        if (!globalOnly || DomainRuleDialog.canBlockGlobally(entry.destination))
+            actions.add(globalOnly ? R.string.title_block_globally : R.string.title_block);
         // Unknown/removed apps can still have matching global rules to reset.
         actions.add(R.string.menu_reset);
         actions.add(R.string.title_log_copy);
@@ -562,7 +562,9 @@ public class ActivityRecentTraffic extends AppCompatActivity {
                     } else if (action == R.string.title_log_copy) {
                         ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(
                                 ClipData.newPlainText(getString(R.string.recent_traffic_title), entry.destination));
-                    } else if (availablePackages.size() == 1)
+                    } else if (globalOnly)
+                        DomainRuleDialog.showGlobal(this, entry.destination, action == R.string.title_block_globally);
+                    else if (availablePackages.size() == 1)
                         DomainRuleDialog.show(this, availablePackages.get(0), entry.destination, action == R.string.title_block);
                     else choosePackage(entry, availablePackages, action == R.string.title_block);
                 }).setNegativeButton(android.R.string.cancel, null).create();

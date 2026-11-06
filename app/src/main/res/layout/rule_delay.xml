@@ -12,6 +12,7 @@
             </LinearLayout>
         </LinearLayout>
         <TextView android:id="@+id/rule_delay_preview" android:layout_width="match_parent" android:layout_height="wrap_content" android:accessibilityLiveRegion="polite" android:textAppearance="@style/TextMedium" />
+        <TextView android:id="@+id/rule_delay_global_warning" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:padding="12dp" android:text="@string/app_delay_global_warning" android:textAppearance="@style/TextSmall" android:accessibilityLiveRegion="polite" android:visibility="gone" />
         <Button android:id="@+id/rule_delay_cancel_pending" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/rule_delay_cancel_pending" android:visibility="gone" android:background="?attr/selectableItemBackgroundBorderless" android:textAllCaps="false" />
     </LinearLayout>
 </ScrollView>

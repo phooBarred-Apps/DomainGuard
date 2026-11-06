@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "heartguard.heartguard.main.mw"
-        versionName = "2.94"
+        versionName = "2.95"
         minSdkVersion 22
         targetSdkVersion 31
-        versionCode = 2026110601
+        versionCode = 2026110602
         archivesBaseName = "DomainGuard"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

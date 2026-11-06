@@ -149,6 +149,8 @@ public class GlobalPauseDeviceTest {
             assertFalse(find("global_pause_auto_resume").isChecked());
             assertFalse(device.hasObject(By.res(context.getPackageName(), "global_pause_amount")));
             assertTrue(find("delay_notice_timing").getText().contains("35 minutes"));
+            assertFalse("Default-only delay needs no extension warning",
+                    device.hasObject(By.res(context.getPackageName(), "delay_notice_reason")));
             shot("off-" + dark);
             find("delay_notice_toggle").click();
             find("delay_notice_explanation");
@@ -260,6 +262,79 @@ public class GlobalPauseDeviceTest {
         positive().click();
         await(() -> !RuleDelay.read(context, PKG).pending.isEmpty(), 5000);
         assertEquals(25200, rules.getPauseDelay(PKG));
+    }
+
+    // Test: Warn before saving a custom delay longer than the default, in both themes.
+    // Why: A user must see that the new app delay also affects turning off all protection before committing it.
+    @Test public void longerAppDelayWarnsBeforeSaving() throws Exception {
+        add("delay 1");
+        for (boolean dark : new boolean[]{false, true}) {
+            PreferenceManager.getDefaultSharedPreferences(context).edit().putBoolean("dark_theme", dark).commit();
+            launch();
+            onMain(() -> RuleDelayDialog.forApp(PKG, "Chrome")
+                    .show(((ActivityMain) activity).getSupportFragmentManager(), "app-rule-delay"));
+            find("rule_delay_inherit").click();
+            assertFalse(device.hasObject(By.res(context.getPackageName(), "rule_delay_global_warning")));
+            setAmount("rule_delay_input", "0");
+            assertFalse(device.hasObject(By.res(context.getPackageName(), "rule_delay_global_warning")));
+            find("rule_delay_unit").click(); unitChoice("Hours").click();
+            setAmount("rule_delay_input", "6");
+            assertTrue(find("rule_delay_global_warning").getText().contains("Turning off or pausing DomainGuard"));
+            assertEquals(1, rules.getGlobalProtectionDelay());
+            shot("longer-app-warning-" + dark);
+            find("rule_delay_inherit").click();
+            assertTrue(device.wait(Until.gone(By.res(context.getPackageName(), "rule_delay_global_warning")), 5000));
+            negative().click();
+            assertFalse(RuleDelay.read(context, PKG).overridden);
+            onMain(() -> activity.finish()); activity = null;
+        }
+    }
+
+    // Test: A one-second default plus a six-hour app delay explains the effective global wait without extra taps.
+    // Why: Settings and both off/pause confirmations must explain the reported mismatch without weakening protection.
+    @Test public void longerAppDelayExplainsGlobalWait() throws Exception {
+        add("delay 1");
+        add("delay package:" + PKG + " 21600");
+        assertEquals(21600, rules.previewDelay(context, "- feature enabled"));
+        assertEquals(21600, rules.previewDelay(context, AppPauseRule.text(null, 60)));
+        String summary = RuleDelay.read(context).summary(context);
+        assertTrue(summary.contains("Current delay: 1 second"));
+        assertTrue(summary.contains("Turn off or pause: 6 hours (longer app delay)"));
+        for (boolean dark : new boolean[]{false, true}) {
+            PreferenceManager.getDefaultSharedPreferences(context).edit().putBoolean("dark_theme", dark).commit();
+            launch();
+            onMain(() -> GlobalPauseDialog.show(activity));
+            assertTrue(find("delay_notice_timing").getText().contains("6 hours"));
+            assertTrue(find("delay_notice_reason").getText().contains("Default delay: 1 second."));
+            assertTrue(find("delay_notice_reason").getText().startsWith("Wait extended to 6 hours"));
+            assertFalse(device.hasObject(By.res(context.getPackageName(), "delay_notice_explanation")));
+            shot("longer-delay-off-" + dark);
+            find("global_pause_auto_resume").click();
+            assertTrue(device.wait(Until.hasObject(By.text("Pause DomainGuard?")), 5000));
+            // Scroll normally when the duration fields move the persistent reason below the fold.
+            if (!device.wait(Until.hasObject(By.res(context.getPackageName(), "delay_notice_reason")), 5000))
+                new androidx.test.uiautomator.UiScrollable(new androidx.test.uiautomator.UiSelector().scrollable(true))
+                        .scrollIntoView(new androidx.test.uiautomator.UiSelector()
+                                .resourceId(context.getPackageName() + ":id/delay_notice_reason"));
+            assertEquals("Wait extended to 6 hours by a longer app delay. Default delay: 1 second.",
+                    find("delay_notice_reason").getText());
+            shot("longer-delay-pause-" + dark);
+            negative().click();
+            onMain(() -> RuleDelayDialog.forApp(PKG, "Chrome")
+                    .show(((ActivityMain) activity).getSupportFragmentManager(), "app-rule-delay"));
+            find("rule_delay_inherit").click();
+            // Returning to the default still waits; the warning must remain until the longer delay is gone.
+            assertTrue(find("rule_delay_global_warning").getText().contains("longest app delay"));
+            negative().click();
+            onMain(() -> new RuleDelayDialog().show(((ActivityMain) activity).getSupportFragmentManager(), "rule_delay"));
+            assertTrue(find("rule_delay_current").getText().contains("Turn off or pause: 6 hours"));
+            shot("longer-delay-default-" + dark);
+            negative().click();
+            onMain(() -> activity.finish()); activity = null;
+        }
+        add("delay package:" + PKG + " 14400");
+        assertTrue("A pending reduction must not lower the displayed global wait early",
+                RuleDelay.read(context).summary(context).contains("Turn off or pause: 6 hours"));
     }
 
     private void launch() {

@@ -30,10 +30,14 @@ final class GlobalPauseDialog {
                 if (seconds < 1) throw new IllegalArgumentException();
                 preview.setText(context.getString(R.string.app_pause_duration, RuleDelay.duration(context, seconds)));
             } catch (IllegalArgumentException invalid) { preview.setText(R.string.app_pause_invalid); }
-            int delay = RulesManager.getInstance(context).getGlobalProtectionDelay();
+            RulesManager rules = RulesManager.getInstance(context);
+            int delay = rules.getGlobalProtectionDelay();
             String detail = pause ? context.getString(R.string.delay_notice_pause_explanation, RuleDelay.duration(context, seconds, true))
                     : context.getString(R.string.delay_notice_explanation, context.getString(R.string.global_off_action));
             notice.setDelay(delay, detail);
+            notice.setReason(delay > rules.getDefaultDelay()
+                    ? context.getString(R.string.global_delay_app_reason, RuleDelay.duration(context, delay),
+                            RuleDelay.duration(context, rules.getDefaultDelay())) : null);
             if (dialog.isShowing()) {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setText(pause ? R.string.app_pause_action : R.string.global_off_action);
                 CompactUi.destructiveButton(dialog.getButton(AlertDialog.BUTTON_POSITIVE));

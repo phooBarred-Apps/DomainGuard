@@ -14,8 +14,8 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class ActionColorDeviceTest {
-    // Test: Positive, destructive and dismissal text meets 4.5:1 contrast in every light/dark app theme.
-    // Why: Action meanings must stay recognizable and readable when users change the theme.
+    // Test: Actions and the red extended-delay warning meet 4.5:1 contrast in every light/dark app theme.
+    // Why: Action meanings and the longer wait caused by an app delay must stay recognizable and readable.
     @Test public void actionColorsRemainReadableInEveryTheme() {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
@@ -36,6 +36,11 @@ public class ActionColorDeviceTest {
                 int destructive = button.getCurrentTextColor();
                 assertTrue(Color.red(destructive) > Color.green(destructive));
                 assertContrast(theme, destructive, background);
+                DelayNotice notice = new DelayNotice(themed);
+                notice.setReason("Wait extended to 6 hours by a longer app delay.");
+                int warning = ((android.widget.TextView) notice.findViewById(R.id.delay_notice_reason)).getCurrentTextColor();
+                assertTrue("Longer-wait warning is red", Color.red(warning) > Color.green(warning));
+                assertContrast(theme, warning, DelayNotice.surface(themed));
                 CompactUi.dismissButton(button);
                 int neutral = button.getCurrentTextColor();
                 assertEquals(Color.red(neutral), Color.green(neutral));

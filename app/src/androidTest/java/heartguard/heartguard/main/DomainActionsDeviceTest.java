@@ -142,6 +142,12 @@ public class DomainActionsDeviceTest {
                 assertFalse(toggle.isSelected());
                 assertEquals(context.getString(R.string.scope_off), toggle.getContentDescription());
                 if (global) toggle.click();
+                UiObject2 title = device.wait(Until.findObject(By.res(context.getPackageName(), "allow_new_access_title")), 5000);
+                assertNotNull(title);
+                assertEquals(context.getString(global
+                        ? (block ? R.string.title_block_globally : R.string.title_allow_globally)
+                        : (block ? R.string.domain_block_title : R.string.domain_allow_title)), title.getText());
+                assertFalse(device.hasObject(By.res(context.getPackageName(), "domain_scope_notice")));
                 String expected = block && global ? "blockdomain " + host
                         : (block ? "block " : "allow ") + (global ? "" : "package:" + app.packageName + " ") + "host:" + host;
                 ownedRules.add(expected);
