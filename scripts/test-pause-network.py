@@ -13,6 +13,7 @@ from pathlib import Path
 import socketserver
 import subprocess
 import threading
+from release_runtime import instrumentation_passes
 
 
 class TcpEcho(socketserver.BaseRequestHandler):
@@ -101,8 +102,9 @@ def main():
                     'heartguard.heartguard.main.mw.test/androidx.test.runner.AndroidJUnitRunner',
                 ], capture_output=True, text=True, timeout=240)
                 print(result.stdout)
-                if result.returncode or not re.search(r'OK \(\d+ tests?\)', result.stdout):
+                if result.returncode:
                     raise SystemExit(result.stderr or 'Native VPN test failed.')
+                instrumentation_passes(result.stdout)
             finally:
                 tcp.shutdown()
                 udp.shutdown()

@@ -327,6 +327,9 @@ commits directly to `main`.
 Use the single publisher, `scripts/publish-release.py`, for new APK releases.
 See [Publishing releases](docs/releases.md) for preparation, verification and
 publication. It builds from merged source and uploads only with `--publish`.
+Publication requires passing Android runtime checks tied to that exact source,
+configuration and signed APK; see the required emulator setup and enforcement
+limits in the release guide.
 
 The source code and development history are public in
 [`phooBarred-Apps/DomainGuard`](https://github.com/phooBarred-Apps/DomainGuard).
