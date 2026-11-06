@@ -9,6 +9,14 @@ public final class NativeTrafficClient {
     public static void main(String[] args) throws Exception {
         if (args.length != 3) throw new IllegalArgumentException();
         int port = Integer.parseInt(args[0]);
+        if ("route".equals(args[2])) {
+            // UDP connect selects the shell UID's route without sending a payload.
+            try (DatagramSocket socket = new DatagramSocket()) {
+                socket.connect(InetAddress.getByName("10.0.2.2"), port);
+                System.out.println("fixture-route:" + socket.getLocalAddress().getHostAddress());
+            }
+            return;
+        }
         byte[] data;
         try (FileInputStream input = new FileInputStream(args[1]); ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
             byte[] chunk = new byte[1024]; int count;
