@@ -14,7 +14,7 @@ POLICY = 1
 NETWORK_TESTS = tuple(PREFIX + "AppPauseNetworkDeviceTest#" + name for name in (
     "nativeBlockedDnsIsVisible", "nativeConnectionsStopAtPauseExpiry",
     "nativeConnectionsStopAtTemporaryAllowExpiry", "nativeConnectionsStopAtGlobalPauseExpiry",
-    "nativeHostnameEvidence"))
+    "nativeHostnameEvidence", "nativeStartupWaitsForVpn", "nativeRoutingTransitionEnforcesBlock"))
 JAVA_TESTS = tuple(PREFIX + cls + "#" + name for cls, names in (
     ("DomainAttributionDeviceTest", ("enrichWithoutChangingPolicyAndSearchObservedName",
         "clearedHistoryStaysDeleted", "newerFlowWins", "dnsOwnershipAndActualTtl", "migrationPreservesHistory")),

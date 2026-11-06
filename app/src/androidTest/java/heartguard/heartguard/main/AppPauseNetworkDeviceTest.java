@@ -3,6 +3,9 @@ package heartguard.heartguard.main;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.VpnService;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
@@ -16,14 +19,79 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeoutException;
+import org.junit.Before;
+import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import static org.junit.Assert.*;
-import static org.junit.Assume.assumeTrue;
 
 /** Requires a TCP/UDP echo server on the host port passed as pauseNetworkPort. */
 @RunWith(AndroidJUnit4.class)
 public class AppPauseNetworkDeviceTest {
+    private boolean hadUpdateCheck;
+    private boolean updateCheck;
+    private boolean changedPreferences;
+
+    @Before public void isolateNetworkFixture() {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
+        android.content.SharedPreferences prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context);
+        hadUpdateCheck = prefs.contains("update_check");
+        updateCheck = prefs.getBoolean("update_check", true);
+        // The service's update check uses the command queue. An external GitHub request
+        // must not determine when a host-local VPN fixture becomes ready.
+        prefs.edit().putBoolean("update_check", false).commit();
+        changedPreferences = true;
+        assertTrue("No inherited global pause", AppPause.read(context, null).isEmpty());
+        assertTrue("No inherited app pause", AppPause.read(context, "com.android.shell").isEmpty());
+    }
+
+    @After public void restoreNetworkFixture() {
+        if (!changedPreferences) return;
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences.Editor prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context).edit();
+        if (hadUpdateCheck) prefs.putBoolean("update_check", updateCheck);
+        else prefs.remove("update_check");
+        prefs.commit();
+    }
+
+    // Test: Rule processing can finish while Android has not yet delivered VPN startup.
+    // Why: A rules-handler barrier or a fixed sleep does not establish a ready VPN.
+    @Test public void nativeStartupWaitsForVpn() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        RulesManager rules = RulesManager.getInstance(context);
+        assertFalse("Start with the disposable VPN stopped", rules.getPreferenceEnabled(context));
+        awaitVpn(context, false);
+        List<String> owned = new ArrayList<>();
+        CountDownLatch mainHeld = new CountDownLatch(1), releaseMain = new CountDownLatch(1);
+        FutureTask<Void> ready = new FutureTask<>(() -> { awaitVpnReady(context); return null; });
+        Thread waiter = new Thread(ready, "VPN readiness test");
+        try {
+            shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
+            assertNull(VpnService.prepare(context));
+            add(context, rules, owned, "feature capture_all_traffic");
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                mainHeld.countDown();
+                try { releaseMain.await(3, TimeUnit.SECONDS); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            });
+            assertTrue(mainHeld.await(2, TimeUnit.SECONDS));
+            add(context, rules, owned, "feature enabled");
+            assertTrue("Rule is already enacted", rules.getPreferenceEnabled(context));
+            waiter.start();
+            try { ready.get(200, TimeUnit.MILLISECONDS); fail("VPN readiness must wait for Android startup"); }
+            catch (TimeoutException expected) { /* Rules ready, but the VPN is not ready. */ }
+            releaseMain.countDown();
+            ready.get(20, TimeUnit.SECONDS);
+        } finally {
+            releaseMain.countDown();
+            waiter.interrupt(); waiter.join(2000);
+            cleanup(context, rules, owned, false);
+        }
+    }
+
     // Test: Rejected DNS responses cross the native bridge into Recent traffic with their name and owner.
     // Why: Capture-all with system apps allowed used to suppress DNS blocks even with every display filter off.
     @Test public void nativeBlockedDnsIsVisible() throws Exception {
@@ -52,6 +120,7 @@ public class AppPauseNetworkDeviceTest {
             add(context, rules, owned, "blockdomain dns.native.invalid");
             if (!wasEnabled) add(context, rules, owned, "feature enabled");
             ServiceSinkhole.start("blocked DNS fixture", context);
+            awaitVpnReady(context);
             long ready = SystemClock.elapsedRealtime() + 20000;
             String reply = "";
             while (!reply.contains("fixture-dns-rcode-3-answers-0") && SystemClock.elapsedRealtime() < ready)
@@ -105,17 +174,7 @@ public class AppPauseNetworkDeviceTest {
             assertTrue("Logging and reviewing do not weaken the global block", rules.isGlobalDomainBlocked("dns.native.invalid"));
             String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort");
             add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
-            assertFalse("Explicit exception blocks an otherwise allowed system app", hostnameProbe(port).contains("fixture-received"));
-            long end = SystemClock.elapsedRealtime() + 5000;
-            boolean recorded = false;
-            while (!recorded && SystemClock.elapsedRealtime() < end) {
-                try (Cursor rows = db.getReadableDatabase().rawQuery(
-                        "SELECT ID FROM access WHERE uid=2000 AND dport=? AND allowed=0", new String[]{port})) {
-                    recorded = rows.moveToFirst();
-                }
-                if (!recorded) SystemClock.sleep(100);
-            }
-            assertTrue("Capture-all must not hide the explicit block", recorded);
+            assertBlocked(context, port, false, true, "Explicit exception blocks an otherwise allowed system app");
         } finally {
             if (activity != null) { final android.app.Activity open = activity; InstrumentationRegistry.getInstrumentation().runOnMainSync(open::finish); }
             cleanup(context, rules, owned, wasEnabled);
@@ -181,6 +240,38 @@ public class AppPauseNetworkDeviceTest {
         verifyExpiry(false, true);
     }
 
+    // Test: Adding an app block brings an excluded system app into the replacement VPN.
+    // Why: Stable-routing policy tests must not replace coverage of automatic capture changes.
+    @Test public void nativeRoutingTransitionEnforcesBlock() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        RulesManager rules = RulesManager.getInstance(context);
+        assertFalse("Start without capture-all", rules.getPreferenceCaptureAllTraffic(context));
+        assertFalse("System apps initially bypass the VPN", rules.getPreferenceManageSystem(context));
+        boolean wasEnabled = rules.getPreferenceEnabled(context);
+        List<String> owned = new ArrayList<>();
+        String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
+        try {
+            shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
+            assertNull(VpnService.prepare(context));
+            if (!wasEnabled) add(context, rules, owned, "feature enabled");
+            ServiceSinkhole.start("routing transition fixture", context);
+            awaitVpn(context, true);
+            Network previous = vpnNetwork(context);
+            assertNotNull(previous);
+            assertTrue("Excluded app initially reaches fixture", hostnameProbe(port).contains("fixture-received"));
+            add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
+            assertTrue("App block automatically enables capture", rules.getPreferenceCaptureAllTraffic(context));
+            long deadline = SystemClock.elapsedRealtime() + 15000;
+            while ((vpnNetwork(context) == null || previous.equals(vpnNetwork(context)))
+                    && SystemClock.elapsedRealtime() < deadline) Thread.sleep(50);
+            assertNotNull("Replacement VPN established", vpnNetwork(context));
+            assertNotEquals("Routing exclusions updated", previous, vpnNetwork(context));
+            awaitVpnReady(context);
+            assertBlocked(context, port, false, true, "Replacement VPN blocks TCP");
+            assertBlocked(context, port, true, false, "Replacement VPN blocks UDP");
+        } finally { cleanup(context, rules, owned, wasEnabled); }
+    }
+
     // Test: HTTP and TLS names cross the native VPN bridge; ECH stays uncertain and blocked flows stay blocked.
     // Why: Parser-only tests cannot catch JNI signature, ownership, ordering or forwarding mistakes.
     @Test public void nativeHostnameEvidence() throws Exception {
@@ -195,10 +286,15 @@ public class AppPauseNetworkDeviceTest {
         try {
             shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
             assertNull(VpnService.prepare(context));
+            // Keep routing stable when the explicit block is added: this test checks
+            // native rule enforcement, not traffic sent while Android replaces a VPN.
+            if (!rules.hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC))
+                add(context, rules, owned, "feature capture_all_traffic");
             if (!rules.hasFeatureRule(FeatureRule.FEATURE_NAME_MANAGE_SYSTEM)) add(context, rules, owned, "feature manage_system");
             add(context, rules, owned, "allow package:com.android.shell ip:10.0.2.2");
             if (!wasEnabled) add(context, rules, owned, "feature enabled");
             ServiceSinkhole.start("hostname network fixture", context);
+            awaitVpnReady(context);
             long ready = SystemClock.elapsedRealtime() + 20000;
             boolean recorded = false;
             while (!recorded && SystemClock.elapsedRealtime() < ready) {
@@ -255,9 +351,7 @@ public class AppPauseNetworkDeviceTest {
             }
             add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
             assertNotNull("Explicit block enacted", WhitelistManager.getInstance(context).getExplicitBlock(context, "10.0.2.2", 2000));
-            long blocked = SystemClock.elapsedRealtime() + 10000;
-            while (hostnameProbe(port).contains("fixture-received") && SystemClock.elapsedRealtime() < blocked) SystemClock.sleep(100);
-            assertFalse("Attribution must not bypass a block", hostnameProbe(port).contains("fixture-received"));
+            assertBlocked(context, port, false, true, "Attribution must not bypass a block");
         } finally { cleanup(context, rules, owned, wasEnabled); }
     }
 
@@ -280,7 +374,7 @@ public class AppPauseNetworkDeviceTest {
 
     private void verifyExpiry(boolean temporaryAllow, boolean global) throws Exception {
         String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
-        assumeTrue(port.matches("[0-9]{1,5}"));
+        assertTrue("Host-local fixture required", port.matches("[0-9]{1,5}"));
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         RulesManager rules = RulesManager.getInstance(context);
@@ -292,14 +386,16 @@ public class AppPauseNetworkDeviceTest {
         try {
             shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
             assertNull(VpnService.prepare(context));
+            if (!rules.hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC))
+                add(context, rules, owned, "feature capture_all_traffic");
             if (!temporaryAllow) add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
             else if (!rules.hasFeatureRule(FeatureRule.FEATURE_NAME_MANAGE_SYSTEM))
                 add(context, rules, owned, "feature manage_system");
             if (!wasEnabled) add(context, rules, owned, "feature enabled");
             ServiceSinkhole.start("pause network fixture", context);
-            SystemClock.sleep(2500);
-            assertFalse("TCP blocked before pause", probe(port, false).contains("probe"));
-            assertFalse("UDP blocked before pause", probe(port, true).contains("probe"));
+            awaitVpnReady(context);
+            assertBlocked(context, port, false, false, "TCP blocked before pause");
+            assertBlocked(context, port, true, false, "UDP blocked before pause");
             String timed = temporaryAllow ? TemporaryRuleText.text("allow package:com.android.shell ip:10.0.2.2", 15)
                     : AppPauseRule.text(global ? null : "com.android.shell", 15);
             add(context, rules, owned, timed);
@@ -329,8 +425,8 @@ public class AppPauseNetworkDeviceTest {
                         flow.lastReply <= deadline + 1500);
             }
             assertFalse(rules.isUidPaused(2000));
-            assertFalse("Fresh TCP blocked after pause", probe(port, false).contains("probe"));
-            assertFalse("Fresh UDP blocked after pause", probe(port, true).contains("probe"));
+            assertBlocked(context, port, false, false, "Fresh TCP blocked after pause");
+            assertBlocked(context, port, true, false, "Fresh UDP blocked after pause");
             try (Cursor cursor = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(timed)) {
                 assertTrue("Expiry enforcement must succeed before cleanup removes the rule", cursor.moveToFirst());
             }
@@ -354,7 +450,82 @@ public class AppPauseNetworkDeviceTest {
             WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
             rules.startTrueTimeRequest(context); barrier(rules);
             if (wasEnabled) ServiceSinkhole.reload("pause network fixture cleanup", context, false);
-            else ServiceSinkhole.stop("pause network fixture cleanup", context, false);
+            else {
+                // Finish teardown before another test can enqueue its own startup.
+                // stopService alone cannot close a VPN still bound by Android.
+                ServiceSinkhole.stop("pause network fixture cleanup", context, false);
+                awaitVpn(context, false);
+                InstrumentationRegistry.getInstrumentation().runOnMainSync(() ->
+                        context.stopService(new android.content.Intent(context, ServiceSinkhole.class)));
+                awaitServiceStopped(context);
+            }
+    }
+
+    private static void awaitServiceStopped(Context context) throws InterruptedException {
+        android.app.ActivityManager manager = (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        long deadline = SystemClock.elapsedRealtime() + 15000;
+        do {
+            boolean running = false;
+            for (android.app.ActivityManager.RunningServiceInfo info : manager.getRunningServices(Integer.MAX_VALUE))
+                if (ServiceSinkhole.class.getName().equals(info.service.getClassName())) running = true;
+            if (!running) return;
+            Thread.sleep(50);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        fail("Previous VPN service did not finish teardown");
+    }
+
+    private static void awaitVpnReady(Context context) throws Exception {
+        awaitVpn(context, true);
+        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
+        long deadline = SystemClock.elapsedRealtime() + 15000;
+        String route = "";
+        do {
+            route = sendFixture(context, port, new byte[0], "route").trim();
+            for (Network network : manager.getAllNetworks()) {
+                NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
+                android.net.LinkProperties link = manager.getLinkProperties(network);
+                if (capabilities == null || !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) || link == null) continue;
+                for (android.net.LinkAddress address : link.getLinkAddresses())
+                    if (route.equals("fixture-route:" + address.getAddress().getHostAddress())) return;
+            }
+            Thread.sleep(50);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        fail("Shell UID route did not enter the VPN: " + route);
+    }
+
+    private static void awaitVpn(Context context, boolean expected) throws InterruptedException {
+        long deadline = SystemClock.elapsedRealtime() + 15000;
+        do {
+            if ((vpnNetwork(context) != null) == expected) return;
+            Thread.sleep(50);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        fail("VPN did not become " + (expected ? "ready" : "stopped"));
+    }
+
+    private static Network vpnNetwork(Context context) {
+        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        for (Network network : manager.getAllNetworks()) {
+            NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
+            if (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return network;
+        }
+        return null;
+    }
+
+    private static void assertBlocked(Context context, String port, boolean udp, boolean hostname, String message) throws Exception {
+        long sent = System.currentTimeMillis();
+        String response = hostname ? hostnameProbe(port) : probe(port, udp);
+        assertFalse(message + ": " + response, response.contains(hostname ? "fixture-received" : "probe"));
+        long deadline = SystemClock.elapsedRealtime() + 5000;
+        do {
+            try (Cursor rows = DatabaseHelper.getInstance(context).getReadableDatabase().rawQuery(
+                    "SELECT ID FROM access WHERE uid=2000 AND dport=? AND protocol=? AND allowed=0 AND time>=?",
+                    new String[]{port, udp ? "17" : "6", Long.toString(sent)})) {
+                if (rows.moveToFirst()) return;
+            }
+            Thread.sleep(50);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        fail(message + ": no fresh blocked request owned by shell UID 2000; a timeout alone is not proof of VPN enforcement");
     }
 
     private static void add(Context context, RulesManager rules, List<String> owned, String text) throws Exception {

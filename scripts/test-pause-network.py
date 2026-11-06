@@ -103,8 +103,25 @@ def main():
                 ], capture_output=True, text=True, timeout=240)
                 print(result.stdout)
                 if result.returncode:
-                    raise SystemExit(result.stderr or 'Native VPN test failed.')
+                    raise RuntimeError(result.stderr or 'Native VPN test failed.')
                 instrumentation_passes(result.stdout)
+            except (RuntimeError, subprocess.TimeoutExpired) as error:
+                if isinstance(error, subprocess.TimeoutExpired) and error.stdout:
+                    output = error.stdout
+                    print(output.decode('utf-8', errors='replace') if isinstance(output, bytes) else output)
+                # Keep the first failure's service lifecycle evidence; never rerun to hide it.
+                print('\nNative VPN failure diagnostics:', flush=True)
+                try:
+                    diagnostic = subprocess.run([
+                        args.adb, '-s', args.serial, 'logcat', '-d', '-v', 'threadtime', '-t', '600',
+                        'NetGuard.Service:I', 'NetGuard.RulesManager:W', 'NetGuard.JNI:W', 'TestRunner:I', '*:S',
+                    ], capture_output=True, text=True, timeout=15)
+                    print(diagnostic.stdout)
+                    if diagnostic.returncode:
+                        print('Diagnostics unavailable: ' + diagnostic.stderr)
+                except subprocess.TimeoutExpired:
+                    print('Diagnostics timed out.')
+                raise
             finally:
                 tcp.shutdown()
                 udp.shutdown()

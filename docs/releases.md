@@ -71,12 +71,27 @@ checks the foreground activity and watches for crashes. Test failures, skips,
 assumption failures, missing methods/results, disconnected emulators, nonzero
 commands and timeouts all prevent publication. There is no skip flag.
 
-Use an isolated emulator with no personal data, no configured rule delay and
-Manage system apps off, such as `DomainGuard_Attribution_Test`. The native tests
+Use an isolated emulator with no personal data, DomainGuard initially stopped,
+no active pauses, no configured rule delay and Manage system apps off, such as
+`DomainGuard_Attribution_Test`. The native tests
 temporarily grant VPN permission within that emulator and restore their rules;
 the runner stops the app afterward. Host loopback port 53 must be available for
 the synthetic DNS fixture. The runner neither launches an emulator nor saves
 snapshots. A missing prerequisite is a failed gate, not a skipped pass.
+
+Native tests check the shell client's actual route into Android's VPN and finish
+service teardown before the next test. Rule tests keep routing inside the VPN
+throughout the change; a separate transition test checks automatic capture of a
+previously excluded app after the VPN is replaced. Blocking assertions require a
+fresh blocked access record for the fixture's UID and protocol, so a network
+timeout alone cannot pass a blocking check. A startup regression holds Android's
+main queue to verify that an enacted rule is not mistaken for a ready VPN.
+The route probe connects a UDP socket without sending a payload; it does not
+retry a blocked request until a test happens to pass.
+Automatic update checks are disabled only for the fixture and restored afterward.
+Failures retain bounded service/native diagnostics in the runtime log; tests are
+not automatically retried. These checks do not promise uninterrupted protection
+while Android replaces a VPN interface.
 
 The gate covers Android framework/SQLite/JNI/native VPN behavior on the debug
 build plus release packaging/startup on the signed APK. It is not full functional
