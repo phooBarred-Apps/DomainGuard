@@ -568,7 +568,17 @@ public class ActivityRulesList extends AppCompatActivity {
         String ruletext = cursor.getString(colRuleText);
         int enacted = cursor.getInt(colEnacted);
         long enactTime = cursor.getLong(colEnactTime);
-
+        if (enacted == 0 && ruletext.startsWith("- ") && cursor.getColumnIndex("global_waits") >= 0) {
+            GlobalRuleSchedule timing = RulesManager.schedule(cursor);
+            if (timing.hasDefault()) {
+                long now = System.currentTimeMillis();
+                return "### " + RulesManager.sanitizeRuletext(ruletext) + (timing.defaultAt() > now
+                        ? " (global removal at " + GlobalProtectionStatus.date(timing.defaultAt()) + ")"
+                        : " (global removal applied)")
+                        + "\n" + timing.waitingCount(now) + " app waits remaining; all finish at "
+                        + GlobalProtectionStatus.date(enactTime);
+            }
+        }
         return getDisplayTextFromRuletext(ruletext, enacted, enactTime);
     }
 

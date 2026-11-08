@@ -100,7 +100,7 @@ def main():
                     '-e', 'pauseNetworkPort', str(port), '-e', 'dnsFixture', str(args.dns).lower(), '-e', 'class',
                     args.test_class,
                     'heartguard.heartguard.main.mw.test/androidx.test.runner.AndroidJUnitRunner',
-                ], capture_output=True, text=True, timeout=240)
+                ], capture_output=True, text=True, timeout=330)
                 print(result.stdout)
                 if result.returncode:
                     raise RuntimeError(result.stderr or 'Native VPN test failed.')

@@ -43,7 +43,7 @@ final class RulesBackup {
                         .put("enactAt", row.enactAt).put("enacted", row.enacted)
                         .put("major", row.major).put("minor", row.minor)
                         .put("globalWaits", row.globalWaits == null ? JSONObject.NULL : row.globalWaits));
-            byte[] bytes = new JSONObject().put("version", 2).put("rules", values)
+            byte[] bytes = new JSONObject().put("version", 3).put("rules", values)
                     .toString().getBytes(StandardCharsets.UTF_8);
             if (bytes.length > MAX_BYTES) throw new IOException("Rules exceed the backup size limit");
             return bytes;
@@ -56,7 +56,7 @@ final class RulesBackup {
         if (bytes.length > MAX_BYTES) throw new IOException("Rule backup is too large");
         try {
             JSONObject data = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-            if (data.getInt("version") != 1 && data.getInt("version") != 2)
+            if (data.getInt("version") < 1 || data.getInt("version") > 3)
                 throw new IOException("Unsupported rule backup version");
             JSONArray values = data.getJSONArray("rules");
             List<Row> rows = new ArrayList<>();
@@ -66,7 +66,7 @@ final class RulesBackup {
                 Row row = new Row(value.getString("text"), value.getLong("created"), value.getLong("enactAt"),
                         value.getInt("enacted"), value.getInt("major"), value.getInt("minor"),
                         value.isNull("globalWaits") ? null : value.getString("globalWaits"));
-                GlobalAllowSchedule.parse(row.globalWaits);
+                GlobalRuleSchedule.parse(row.globalWaits);
                 if (row.text.trim().isEmpty() || row.created < 0 || row.enactAt < 0 ||
                         (row.enacted != 0 && row.enacted != 1) || !texts.add(row.text))
                     throw new IOException("Invalid rule backup");

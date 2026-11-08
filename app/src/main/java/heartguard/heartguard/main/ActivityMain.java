@@ -90,6 +90,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     private boolean searchExpanded;
     private boolean resumed;
     private GlobalPauseBar globalPauseBar;
+    private GlobalProtectionStatus globalProtectionStatus;
     private String domainQuery = "";
     private AlertDialog dialogFirst = null;
     private AlertDialog dialogVpn = null;
@@ -218,6 +219,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         TextView tvDisabled = findViewById(R.id.tvDisabled);
         tvDisabled.setVisibility(enabled ? View.GONE : View.VISIBLE);
         globalPauseBar = new GlobalPauseBar(this);
+        globalProtectionStatus = new GlobalProtectionStatus(this, swEnabled);
 
         // Application list
         RecyclerView rvApplication = findViewById(R.id.rvApplication);
@@ -368,6 +370,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
     // HeartGuard function
     // Asks for VPN permission, if necessary, and calls itself again
     private void userToggledEnabled() {
+        if (globalProtectionStatus != null && globalProtectionStatus.showIfChanging()) return;
         Intent prepare = null;
         // If the switch state doesn't match the set state, then that means the user touched it
 
@@ -451,6 +454,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         super.onResume();
         resumed = true;
         if (globalPauseBar != null) globalPauseBar.start();
+        if (globalProtectionStatus != null) globalProtectionStatus.start();
         if (adapter != null) adapter.refreshTraffic();
     }
 
@@ -460,6 +464,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
         super.onPause();
         resumed = false;
         if (globalPauseBar != null) globalPauseBar.stop();
+        if (globalProtectionStatus != null) globalProtectionStatus.stop();
 
         if (Build.VERSION.SDK_INT < MIN_SDK || Util.hasXposed(this))
             return;
@@ -669,6 +674,7 @@ public class ActivityMain extends AppCompatActivity implements SharedPreferences
             // HeartGuard change - rules changes can also include main UI changes
             updateMainUi();
             if (globalPauseBar != null) globalPauseBar.refresh();
+            if (globalProtectionStatus != null) globalProtectionStatus.refresh();
         }
     };
 

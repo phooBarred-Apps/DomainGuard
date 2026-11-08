@@ -13,16 +13,20 @@ PREFIX = "heartguard.heartguard.main."
 POLICY = 1
 NETWORK_TESTS = tuple(PREFIX + "AppPauseNetworkDeviceTest#" + name for name in (
     "nativeBlockedDnsIsVisible", "nativeConnectionsStopAtPauseExpiry",
-    "nativeConnectionsStopAtTemporaryAllowExpiry", "nativeConnectionsStopAtGlobalPauseExpiry", "nativeStagedGlobalAllowUsesSharedExpiry",
-    "nativeHostnameEvidence", "nativeStartupWaitsForVpn", "nativeRoutingTransitionEnforcesBlock"))
+    "nativeConnectionsStopAtTemporaryAllowExpiry", "nativeConnectionsStopAtGlobalPauseExpiry", "nativeStagedGlobalAllowUsesSharedExpiry", "nativeStagedGlobalPauseUsesSharedExpiry",
+    "nativeHostnameEvidence", "nativeStartupWaitsForVpn", "nativeQueuedStopsKeepNewerStartsAlive", "nativeRoutingTransitionEnforcesBlock"))
 JAVA_TESTS = tuple(PREFIX + cls + "#" + name for cls, names in (
-    ("GlobalPauseDeviceTest", ("globalAllowDialogExplainsIndependentWaits",)),
+    ("GlobalPauseDeviceTest", ("globalAllowDialogExplainsIndependentWaits", "longerAppDelayExplainsGlobalWait", "longerAppDelayWarnsBeforeSaving", "overridesAndGlobalActionsRespectEffectiveDelays")),
     ("StagedGlobalAllowDeviceTest", ("globalActivationKeepsLongerAppWaiting", "sharedExpiryAndAppSpecificFullDuration",
-        "restoreAndLegacyRulesKeepTheirTiming")),
+        "restoreAndLegacyRulesKeepTheirTiming", "globalOffStagesAndCancellationRestoresProtection",
+        "globalPauseUsesOneWindowAndNoLateActivation", "globalBlockRemovalUsesDefaultThenAppWaits", "ruleFamilyTimingAudit")),
     ("DomainAttributionDeviceTest", ("enrichWithoutChangingPolicyAndSearchObservedName",
         "clearedHistoryStaysDeleted", "newerFlowWins", "dnsOwnershipAndActualTtl", "migrationPreservesHistory")),
     ("DomainActionsDeviceTest", ("globalBlockPreservesAllHistoryAndStillBlocksDomains",
         "allowAndBlockMenusDefaultToAppAndSaveSelectedScope")),
+    ("AccessNotificationDeviceTest", ("globalParentAllowRespectsAppExceptions",
+        "globalAndAddressBlocksKeepAlertsUntilResolved", "explicitBlocksAddressExistingAlertsAcrossTheirScope",
+        "globalBlockNotificationsAreOptIn")),
     ("RecentTrafficDeviceTest", ("unknownDnsResetReviewsGlobalBlockAndHonorsDelay",
         "resetPreservesOtherActionsAndPolicyIdentity", "resetMatchesGlobalAndLocalScopesWithoutUnrelatedRules"))
 ) for name in names)
@@ -94,7 +98,7 @@ def run_checks(root, directory, apk, commit, inputs, serial):
             run(target + ["install", "-r", str(path)], root, 90)
         print("Running mandatory native VPN/DNS checks.", flush=True)
         native = run([sys.executable, "-B", str(root / "scripts/test-pause-network.py"),
-                      "--adb", adb, "--serial", serial, "--dns"], root, 270, directory / LOGS[0])
+                      "--adb", adb, "--serial", serial, "--dns"], root, 360, directory / LOGS[0])
         instrumentation_passes(native, NETWORK_TESTS)
         print("Running mandatory Android database and rule-action checks.", flush=True)
         java = run(target + ["shell", "am", "instrument", "-w", "-r", "-e", "class", ",".join(JAVA_TESTS),

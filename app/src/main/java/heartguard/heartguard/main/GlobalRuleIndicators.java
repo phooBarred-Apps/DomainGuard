@@ -16,6 +16,7 @@ final class GlobalRuleIndicators {
     private final Set<String> active;
     private final List<String> blockedDomains = new ArrayList<>();
     private final Map<Integer, List<ScopedBlock>> appBlocks = new HashMap<>();
+    private RulesManager manager;
 
     GlobalRuleIndicators(Collection<String> rules) {
         active = new HashSet<>(rules);
@@ -28,6 +29,7 @@ final class GlobalRuleIndicators {
 
     GlobalRuleIndicators(Context context, Collection<String> rules, Map<String, Long> expirations) {
         this(rules);
+        manager = RulesManager.getInstance(context);
         for (String text : rules) {
             String base = TemporaryRuleText.base(text);
             if (!base.startsWith("block ")) continue;
@@ -61,11 +63,19 @@ final class GlobalRuleIndicators {
     }
 
     int scope(int block, String ruleText, String address) {
+        return scope(block, ruleText, address, -1);
+    }
+
+    int scope(int block, String ruleText, String address, int uid) {
         if (block > 0 && address != null) {
-            String host = address.toLowerCase(Locale.ROOT);
-            if (host.endsWith(".")) host = host.substring(0, host.length() - 1);
-            for (String domain : blockedDomains)
-                if (host.equals(domain) || host.endsWith("." + domain)) return BLOCKED;
+            if (manager != null) {
+                if (!manager.isUidPaused(uid) && manager.isGlobalDomainBlocked(address, uid)) return BLOCKED;
+            } else {
+                String host = address.toLowerCase(Locale.ROOT);
+                if (host.endsWith(".")) host = host.substring(0, host.length() - 1);
+                for (String domain : blockedDomains)
+                    if (host.equals(domain) || host.endsWith("." + domain)) return BLOCKED;
+            }
         }
         String base = TemporaryRuleText.base(ruleText);
         if (block == 0 && base != null && active.contains(ruleText) && base.startsWith("allow ")) {

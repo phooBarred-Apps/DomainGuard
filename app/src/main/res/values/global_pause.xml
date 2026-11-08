@@ -3,9 +3,10 @@
     <string name="app_delay_summary_default">Rule delay · Default: %1$s</string>
     <string name="app_delay_summary_custom">Rule delay · Custom: %1$s</string>
     <string name="app_delay_title">App rule delay</string>
-    <string name="app_delay_help">Use the default delay, or choose a shorter or longer delay for this app. Turning off or pausing DomainGuard also waits for the longest app delay, so a longer override increases that wait for all of DomainGuard. Increasing a delay takes effect immediately. Reducing it waits for the difference: changing 6 hours to 4 hours waits 2 hours. Returning to a shorter default delay follows the same rule.</string>
-    <string name="app_delay_global_warning">Turning off or pausing DomainGuard also waits for the longest app delay, even when the default delay is shorter.</string>
-    <string name="global_delay_app_reason">Wait extended to %1$s by a longer app delay. Default delay: %2$s.</string>
+    <string name="app_delay_help">Use the default delay, or choose a shorter or longer delay for this app. Global changes wait for the default delay first. This app waits longer only if its own delay is longer; shorter app delays cannot start a global change early. An app-only change uses this app’s own delay. Temporary global changes have one shared end time, so this app may get less time or none. Increasing a delay takes effect immediately. Reducing it waits for the difference: changing 6 hours to 4 hours waits 2 hours. Returning to a shorter default delay follows the same rule.</string>
+    <string name="app_delay_global_warning">Global changes use the default delay. This app stays protected until its longer wait ends. App-only changes use this app’s delay.</string>
+    <string name="global_change_timing">This global change waits for the default delay. Apps with longer delays stay protected until their own wait ends. Shorter app delays cannot start a global change early. A temporary global pause has one shared end time.</string>
+    <string name="global_delay_app_reason">Apps with longer delays stay protected. Tap the main switch to see their end times.</string>
     <string name="global_off_title">Turn off DomainGuard?</string>
     <string name="global_pause_title">Pause DomainGuard?</string>
     <string name="global_off_action">Turn off</string>
@@ -30,7 +31,7 @@
     <string name="app_allow_title">Allow %1$s?</string>
     <string name="app_block_title">Block %1$s?</string>
     <string name="app_delay_default">Use default delay — %1$s</string>
-    <string name="global_pause_legend">DomainGuard pause: countdown and Cancel while pending; countdown and Resume while paused. Both actions ask for confirmation.</string>
+    <string name="global_pause_legend">DomainGuard pause: countdown and Cancel while pending; countdown and Resume while paused. Both actions ask for confirmation. The main switch gently fades while a global change is pending or active; tap it to see which apps remain protected and their end times.</string>
     <plurals name="pause_short_days"><item quantity="one">%d day</item><item quantity="other">%d days</item></plurals>
     <plurals name="pause_short_hours"><item quantity="one">%d hr</item><item quantity="other">%d hr</item></plurals>
     <plurals name="pause_short_minutes"><item quantity="one">%d min</item><item quantity="other">%d min</item></plurals>

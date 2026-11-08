@@ -77,10 +77,17 @@ public class BackupDeviceTest {
             java.util.Map<String, Integer> delays = new java.util.HashMap<>();
             delays.put(INSTALLED, 25200); delays.put(MISSING, 28800);
             android.content.ContentValues timing = new android.content.ContentValues();
-            timing.put("global_waits", GlobalAllowSchedule.capture(now, 21600, delays).encode());
+            timing.put("global_waits", GlobalRuleSchedule.capture(now, 21600, delays).encode());
             DatabaseHelper.getInstance(context).updateRuleWithCV(row.getString(row.getColumnIndexOrThrow("_id")), timing);
         }
         addRule(RULE, now, now + 86400000, 0);
+        java.util.Map<String, Integer> stages = new java.util.HashMap<>();
+        stages.put(INSTALLED, 25200); stages.put(MISSING, 28800);
+        String savedStages = GlobalRuleSchedule.capture(now, 21600, stages).encode();
+        DatabaseHelper.getInstance(context).addNewRule("- blockdomain global-block.invalid", now, now + 28800000,
+                0, 0, 0, savedStages);
+        DatabaseHelper.getInstance(context).addNewRule(AppPauseRule.text(null, 86400), now, now + 21600000,
+                0, 0, 0, savedStages);
         try (FileOutputStream output = new FileOutputStream(new File(context.getFilesDir(), "hosts.txt"))) {
             output.write(HOSTS.getBytes(StandardCharsets.UTF_8));
         }
@@ -96,6 +103,7 @@ public class BackupDeviceTest {
             context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().remove(MISSING).commit();
         List<Long> ids = new ArrayList<>();
         List<String> owned = new ArrayList<>(activeRules()); owned.add(RULE);
+        owned.add("- blockdomain global-block.invalid"); owned.add(AppPauseRule.text(null, 86400));
         try (Cursor cursor = DatabaseHelper.getInstance(context).getAllRules()) {
             while (cursor.moveToNext())
                 if (owned.contains(cursor.getString(cursor.getColumnIndexOrThrow("ruletext"))))
@@ -161,10 +169,20 @@ public class BackupDeviceTest {
                 "allow package:" + INSTALLED + " host:installed-allow.invalid");
         assertEquals(context.getPackageManager().getApplicationInfo(INSTALLED, 0).uid, installed.getUid());
         assertFalse("Missing-app pause must not pause an installed app", rules.isUidPaused(installed.getUid()));
+        for (String stagedText : new String[]{"- blockdomain global-block.invalid", AppPauseRule.text(null, 86400)}) {
+            try (Cursor row = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(stagedText)) {
+                assertTrue("Staged operation restored", row.moveToFirst());
+                assertEquals(0, row.getInt(row.getColumnIndexOrThrow("enacted")));
+                GlobalRuleSchedule waits = RulesManager.schedule(row);
+                assertEquals(created + 21600000, waits.defaultAt());
+                assertEquals(created + 25200000, waits.readyAt(new String[]{INSTALLED}));
+                assertEquals(created + 28800000, waits.readyAt(new String[]{MISSING}));
+            }
+        }
         String staged = TemporaryRuleText.text("allow host:staged-backup.invalid", 86400);
         try (Cursor row = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(staged)) {
             assertTrue(row.moveToFirst());
-            GlobalAllowSchedule waits = GlobalAllowSchedule.parse(row.getString(row.getColumnIndexOrThrow("global_waits")));
+            GlobalRuleSchedule waits = GlobalRuleSchedule.parse(row.getString(row.getColumnIndexOrThrow("global_waits")));
             assertEquals(created + 25200000, waits.readyAt(new String[]{INSTALLED}));
             assertEquals(created + 28800000, waits.readyAt(new String[]{MISSING}));
         }

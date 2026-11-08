@@ -89,8 +89,6 @@ final class RuleDelay {
                 if (!positive.matches("delay (package:\\S+ )?[0-9]+")) continue;
                 DelayRule delay = new DelayRule(positive);
                 boolean active = cursor.getInt(activeCol) > 0;
-                if (!removal && active)
-                    state.globalSeconds = Math.max(state.globalSeconds, delay.getDelay());
                 if (!removal && active && delay.getPackageName() == null)
                     state.generalSeconds = Math.max(state.generalSeconds, delay.getDelay());
                 if (!java.util.Objects.equals(packageName, delay.getPackageName())) continue;
@@ -109,7 +107,6 @@ final class RuleDelay {
     static final class State {
         int seconds;
         int generalSeconds;
-        int globalSeconds;
         String packageName;
         boolean overridden;
         final List<String> activeRules = new ArrayList<>();
@@ -119,8 +116,6 @@ final class RuleDelay {
             List<String> lines = new ArrayList<>();
             if (packageName == null || !pending.isEmpty())
                 lines.add(context.getString(R.string.rule_delay_current, duration(context, seconds)));
-            if (packageName == null && globalSeconds > seconds)
-                lines.add(context.getString(R.string.rule_delay_global_wait, duration(context, globalSeconds)));
             for (Pending change : pending)
                 lines.add(context.getString(change.removal ? R.string.rule_delay_pending_removal : R.string.rule_delay_pending,
                         duration(context, change.seconds),

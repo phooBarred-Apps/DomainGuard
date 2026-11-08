@@ -148,26 +148,32 @@ final class GlobalListsDialog {
     private void refresh() {
         entries.clear();
         java.util.Map<String, Long> removing = new java.util.HashMap<>();
+        java.util.Map<String, GlobalRuleSchedule> removalWaits = new java.util.HashMap<>();
         try (Cursor cursor = DatabaseHelper.getInstance(context).getAllRulesSorted()) {
             int textCol = cursor.getColumnIndexOrThrow("ruletext");
             int enactedCol = cursor.getColumnIndexOrThrow("enacted");
             while (cursor.moveToNext()) {
                 String text = cursor.getString(textCol);
                 boolean active = cursor.getInt(enactedCol) > 0;
-                if (!active && text.startsWith("- ") && domain(text.substring(2)) != null)
+                if (!active && text.startsWith("- ") && domain(text.substring(2)) != null) {
                     removing.put(text.substring(2), cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")));
+                    removalWaits.put(text.substring(2), RulesManager.schedule(cursor));
+                }
                 String domain = domain(text);
                 if (domain != null) {
                     Entry entry = new Entry(text, domain, active, cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")));
-                    try { entry.waits = GlobalAllowSchedule.parse(cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))); }
-                    catch (IllegalArgumentException invalid) { entry.waits = GlobalAllowSchedule.INVALID; }
+                    try { entry.waits = GlobalRuleSchedule.parse(cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))); }
+                    catch (IllegalArgumentException invalid) { entry.waits = GlobalRuleSchedule.INVALID; }
                     entries.add(entry);
                 }
             }
         }
         for (Entry entry : entries) {
             entry.removing = removing.containsKey(entry.rule);
-            if (entry.removing) entry.enactTime = removing.get(entry.rule);
+            if (entry.removing) {
+                entry.waits = removalWaits.get(entry.rule);
+                entry.enactTime = entry.waits.hasDefault() ? entry.waits.defaultAt() : removing.get(entry.rule);
+            }
         }
         filter();
     }
@@ -179,7 +185,9 @@ final class GlobalListsDialog {
             if (!search.matchesRule(entry.domain)) continue;
             visibleEntries.add(entry);
             String label = entry.domain;
-            if (entry.removing || !entry.active) {
+            if (entry.removing && entry.waits.hasDefault() && entry.enactTime <= System.currentTimeMillis()) {
+                label += "\n◷ " + context.getString(R.string.global_removal_applied, entry.waits.waitingCount(System.currentTimeMillis()));
+            } else if (entry.removing || !entry.active) {
                 long seconds = Math.max(0, (entry.enactTime - System.currentTimeMillis() + 999) / 1000);
                 String duration = seconds == 0 ? getString(R.string.pending_due) : RuleDelay.duration(context, (int) Math.min(Integer.MAX_VALUE, seconds));
                 label += "\n◷ " + context.getString(entry.removing ? R.string.pending_removing : R.string.pending_adding, duration);
@@ -333,7 +341,7 @@ final class GlobalListsDialog {
         boolean removing;
         long enactTime;
         final long activatedAt;
-        GlobalAllowSchedule waits = GlobalAllowSchedule.NONE;
+        GlobalRuleSchedule waits = GlobalRuleSchedule.NONE;
         Entry(String rule, String domain, boolean active, long enactTime) {
             this.enactTime = enactTime;
             this.activatedAt = enactTime;

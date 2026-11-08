@@ -5,7 +5,6 @@
     <string name="rule_delay_unit_label">Delay unit</string>
     <string name="rule_delay_none">No delay</string>
     <string name="rule_delay_current">Current delay: %1$s</string>
-    <string name="rule_delay_global_wait">Turn off or pause: %1$s (longer app delay)</string>
     <string name="rule_delay_pending">Pending: %1$s — takes effect %2$s</string>
     <string name="rule_delay_pending_removal">Pending removal of %1$s delay — takes effect %2$s</string>
     <string name="rule_delay_reduction">This reduction takes effect after %1$s.</string>

@@ -12,7 +12,7 @@ public class RulesBackupTest {
     // Test: Both active and pending global waits survive backup, while version-one snapshots retain legacy timing.
     // Why: A restore must not turn a staged global allow into an immediate allow for every app.
     @Test public void globalWaitsRoundTripAndLegacyBackupsRemainReadable() throws Exception {
-        String waits = GlobalAllowSchedule.capture(1000, 1, Collections.singletonMap("missing.app", 21600)).encode();
+        String waits = GlobalRuleSchedule.capture(1000, 1, Collections.singletonMap("missing.app", 21600)).encode();
         RulesBackup.Row source = new RulesBackup.Row("temporary seconds:14400 allow host:example.org", 1000, 2000, 1, 200, 10, waits);
         RulesBackup.Row restored = RulesBackup.decode(RulesBackup.encode(Collections.singletonList(source))).get(0);
         assertEquals(waits, restored.globalWaits);
@@ -49,7 +49,7 @@ public class RulesBackupTest {
     // Test: Reject malformed data, unknown versions and invalid activation states.
     // Why: Validate the entire snapshot before replacing saved rules.
     @Test public void rejectsUnknownAndCorruptBackupsBeforeRestore() {
-        for (String value : new String[]{"", "{", "{\"version\":3,\"rules\":[]}",
+        for (String value : new String[]{"", "{", "{\"version\":4,\"rules\":[]}",
                 "{\"version\":1,\"rules\":[{}]}",
                 "{\"version\":1,\"rules\":[{\"text\":\"delay 0\",\"created\":0,\"enactAt\":0,\"enacted\":2,\"major\":0,\"minor\":0}]}"}) {
             try {

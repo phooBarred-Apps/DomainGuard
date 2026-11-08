@@ -12,6 +12,7 @@ final class AppPause {
         final AppPauseRule rule;
         final boolean active;
         final long time;
+        long created;
         Entry(AppPauseRule rule, boolean active, long time) {
             this.rule = rule; this.active = active; this.time = time;
         }
@@ -31,11 +32,16 @@ final class AppPause {
                 MyRule parsed = MyRule.getRuleFromText(context, text);
                 if (!(parsed instanceof AppPauseRule)) continue;
                 AppPauseRule rule = (AppPauseRule) parsed;
+                rule.globalWaits = RulesManager.schedule(cursor);
                 if (!java.util.Objects.equals(rule.packageName, packageName)) continue;
                 boolean active = cursor.getInt(cursor.getColumnIndexOrThrow("enacted")) != 0;
                 long time = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"));
                 if (active) time += rule.seconds * 1000L;
-                if (!active || time > System.currentTimeMillis()) entries.add(new Entry(rule, active, time));
+                if (!active || time > System.currentTimeMillis()) {
+                    Entry entry = new Entry(rule, active, time);
+                    entry.created = cursor.getLong(cursor.getColumnIndexOrThrow("create_time"));
+                    entries.add(entry);
+                }
             }
         }
         return entries;

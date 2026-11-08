@@ -715,7 +715,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
                     boolean dnsEvent = packet.attribution != null && DomainAttribution.dnsEvent(packet.attribution.source);
                     RuleAllowData match = wm.isAllowed(context, dnsEvent ? dname : packet.daddr, packet.uid);
-                    if (dnsEvent && RulesManager.getInstance(context).isGlobalDomainBlocked(dname)) match = null;
+                    if (dnsEvent && RulesManager.getInstance(context).isGlobalDomainBlocked(dname, packet.uid)) match = null;
                     putAccessDecision(cv, match);
                     if (match != null && match.allowed == 1)
                     {
@@ -936,7 +936,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try (Cursor source = rows) {
             while (visible.getCount() < limit && source.moveToNext()) {
                 int scope = indicators.scope(source.getInt(source.getColumnIndexOrThrow("block")),
-                        source.getString(source.getColumnIndexOrThrow("ruletext")), source.getString(source.getColumnIndexOrThrow("daddr")));
+                        source.getString(source.getColumnIndexOrThrow("ruletext")), source.getString(source.getColumnIndexOrThrow("daddr")),
+                        source.getInt(source.getColumnIndexOrThrow("uid")));
                 if (!filters.includes(filters.category(source.getInt(source.getColumnIndexOrThrow("allowed")),
                         source.getInt(source.getColumnIndexOrThrow("block")), scope))) continue;
                 Object[] values = new Object[source.getColumnCount()];
@@ -1701,7 +1702,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
-    public Cursor getStagedGlobalAllows() {
+    public Cursor getStagedGlobalRules() {
         lock.readLock().lock();
         try {
             return getReadableDatabase().query("rules", null, "enacted=1 AND global_waits IS NOT NULL", null, null, null, null);
