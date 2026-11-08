@@ -157,7 +157,12 @@ final class GlobalListsDialog {
                 if (!active && text.startsWith("- ") && domain(text.substring(2)) != null)
                     removing.put(text.substring(2), cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")));
                 String domain = domain(text);
-                if (domain != null) entries.add(new Entry(text, domain, active, cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))));
+                if (domain != null) {
+                    Entry entry = new Entry(text, domain, active, cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")));
+                    try { entry.waits = GlobalAllowSchedule.parse(cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))); }
+                    catch (IllegalArgumentException invalid) { entry.waits = GlobalAllowSchedule.INVALID; }
+                    entries.add(entry);
+                }
             }
         }
         for (Entry entry : entries) {
@@ -187,6 +192,15 @@ final class GlobalListsDialog {
                         RuleDelay.duration(context, (int) remaining));
             }
             if (search.coversSearch(entry.domain)) label += " \u00b7 " + getString(R.string.global_search_parent);
+            if (entry.active && !entry.removing && !blocked) {
+                long now = System.currentTimeMillis();
+                long expiry = TemporaryRuleText.isTemporary(entry.rule)
+                        ? TemporaryRuleText.parse(entry.rule).expiresAt(entry.activatedAt) : Long.MAX_VALUE;
+                int excluded = entry.waits.excludedCount(now, expiry);
+                int waiting = entry.waits.waitingCount(now) - excluded;
+                if (waiting > 0) label += "\n◷ " + context.getResources().getQuantityString(R.plurals.global_allow_waiting, waiting, waiting);
+                if (excluded > 0) label += "\n◷ " + context.getResources().getQuantityString(R.plurals.global_allow_excluded, excluded, excluded);
+            }
             labels.add(label);
         }
         int pending = 0;
@@ -230,6 +244,13 @@ final class GlobalListsDialog {
         delay.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_history_compact, 0, 0, 0);
         delay.setCompoundDrawablePadding(CompactUi.dp(context, 8));
         content.addView(delay);
+        if (!blocked) {
+            android.widget.TextView timing = new android.widget.TextView(context);
+            timing.setText(R.string.global_allow_timing);
+            timing.setTextAppearance(context, R.style.TextSmall);
+            timing.setPadding(0, CompactUi.dp(context, 8), 0, 0);
+            content.addView(timing);
+        }
         Runnable preview = () -> {
             int seconds = 0;
             for (String line : input.getText().toString().split("\\r?\\n")) {
@@ -312,6 +333,7 @@ final class GlobalListsDialog {
         boolean removing;
         long enactTime;
         final long activatedAt;
+        GlobalAllowSchedule waits = GlobalAllowSchedule.NONE;
         Entry(String rule, String domain, boolean active, long enactTime) {
             this.enactTime = enactTime;
             this.activatedAt = enactTime;

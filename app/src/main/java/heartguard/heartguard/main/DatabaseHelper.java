@@ -49,7 +49,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DB_NAME = "Netguard";
     // HeartGuard change - version 22 adds rules table
-    private static final int DB_VERSION = 26;
+    private static final int DB_VERSION = 27;
 
     private static boolean once = true;
     private static List<LogChangedListener> logChangedListeners = new ArrayList<>();
@@ -236,6 +236,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 ", enacted INTEGER NOT NULL" +
                 ", major_category INTEGER NOT NULL" +
                 ", minor_category INTEGER NOT NULL" +
+                ", global_waits TEXT" +
                 ");");
     }
 
@@ -457,6 +458,16 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 oldVersion = 26;
             }
 
+            if (oldVersion < 27) {
+                // Older CREATE paths use the current schema; avoid adding its column twice.
+                boolean present = false;
+                try (Cursor columns = db.rawQuery("PRAGMA table_info(rules)", null)) {
+                    while (columns.moveToNext())
+                        present |= "global_waits".equals(columns.getString(columns.getColumnIndexOrThrow("name")));
+                }
+                if (!present) db.execSQL("ALTER TABLE rules ADD COLUMN global_waits TEXT");
+                oldVersion = 27;
+            }
             if (oldVersion == DB_VERSION) {
                 db.setVersion(oldVersion);
                 db.setTransactionSuccessful();
@@ -1690,6 +1701,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
+    public Cursor getStagedGlobalAllows() {
+        lock.readLock().lock();
+        try {
+            return getReadableDatabase().query("rules", null, "enacted=1 AND global_waits IS NOT NULL", null, null, null, null);
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
+
     public Map<Long, String> getEnactedRulesMap() {
         Map<Long, String> enacted_rules = new HashMap<>();
 
@@ -1747,6 +1767,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                     values.put("enacted", row.enacted);
                     values.put("major_category", row.major);
                     values.put("minor_category", row.minor);
+                    values.put("global_waits", row.globalWaits);
                     db.insertOrThrow("rules", null, values);
                 }
                 db.setTransactionSuccessful();
@@ -1789,6 +1810,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     // HeartGuard change - add new rule, enacted or not
     public void addNewRule(String ruletext, long create_time, long enact_time, int enacted, int major_category, int minor_category) {
+        addNewRule(ruletext, create_time, enact_time, enacted, major_category, minor_category, null);
+    }
+
+    void addNewRule(String ruletext, long create_time, long enact_time, int enacted, int major_category, int minor_category, String globalWaits) {
         ContentValues cv = new ContentValues();
         cv.put("ruletext", ruletext);
         cv.put("create_time", create_time);
@@ -1796,6 +1821,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         cv.put("enacted", enacted);
         cv.put("major_category", major_category);
         cv.put("minor_category", minor_category);
+        cv.put("global_waits", globalWaits);
 
         lock.writeLock().lock();
         try {
@@ -1838,6 +1864,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
         if (cv.containsKey("ruletext") || cv.containsKey("enacted"))
             synchronized (indicatorLock) { globalRuleIndicators = null; }
+        if (cv.containsKey("global_waits")) notifyRuleChanged();
     }
 
     public void removeRulesById(Long[] ids) {

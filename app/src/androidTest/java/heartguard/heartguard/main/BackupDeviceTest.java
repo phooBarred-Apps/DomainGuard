@@ -40,6 +40,7 @@ public class BackupDeviceTest {
                 "allow package:" + INSTALLED + " host:installed-allow.invalid",
                 "block package:" + INSTALLED + " host:installed-block.invalid",
                 "allow host:global-allow.invalid", "blockdomain global-block.invalid",
+                TemporaryRuleText.text("allow host:staged-backup.invalid", 86400),
                 TemporaryRuleText.text("allow package:" + MISSING + " host:temporary-backup.invalid", 86400),
                 AppPauseRule.text(MISSING, 86400));
     }
@@ -70,6 +71,15 @@ public class BackupDeviceTest {
         for (String name : new String[]{"apply", "roaming", "lockdown"})
             context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().putBoolean(MISSING, true).commit();
         for (String text : activeRules()) addRule(text, now, now, 1);
+        try (Cursor row = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(
+                TemporaryRuleText.text("allow host:staged-backup.invalid", 86400))) {
+            assertTrue(row.moveToFirst());
+            java.util.Map<String, Integer> delays = new java.util.HashMap<>();
+            delays.put(INSTALLED, 25200); delays.put(MISSING, 28800);
+            android.content.ContentValues timing = new android.content.ContentValues();
+            timing.put("global_waits", GlobalAllowSchedule.capture(now, 21600, delays).encode());
+            DatabaseHelper.getInstance(context).updateRuleWithCV(row.getString(row.getColumnIndexOrThrow("_id")), timing);
+        }
         addRule(RULE, now, now + 86400000, 0);
         try (FileOutputStream output = new FileOutputStream(new File(context.getFilesDir(), "hosts.txt"))) {
             output.write(HOSTS.getBytes(StandardCharsets.UTF_8));
@@ -151,6 +161,15 @@ public class BackupDeviceTest {
                 "allow package:" + INSTALLED + " host:installed-allow.invalid");
         assertEquals(context.getPackageManager().getApplicationInfo(INSTALLED, 0).uid, installed.getUid());
         assertFalse("Missing-app pause must not pause an installed app", rules.isUidPaused(installed.getUid()));
+        String staged = TemporaryRuleText.text("allow host:staged-backup.invalid", 86400);
+        try (Cursor row = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(staged)) {
+            assertTrue(row.moveToFirst());
+            GlobalAllowSchedule waits = GlobalAllowSchedule.parse(row.getString(row.getColumnIndexOrThrow("global_waits")));
+            assertEquals(created + 25200000, waits.readyAt(new String[]{INSTALLED}));
+            assertEquals(created + 28800000, waits.readyAt(new String[]{MISSING}));
+        }
+        assertFalse("A restored staged allow cannot bypass the app's wait", rules.isGlobalAllowReady(context, staged, installed.getUid()));
+        assertNull(WhitelistManager.getInstance(context).isAllowed(context, "staged-backup.invalid", installed.getUid()));
         android.app.Activity main = InstrumentationRegistry.getInstrumentation().startActivitySync(
                 new android.content.Intent(context, ActivityMain.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));
         InstrumentationRegistry.getInstrumentation().runOnMainSync(main::finish);

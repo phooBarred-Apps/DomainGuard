@@ -92,12 +92,15 @@ public class DomainAttributionDeviceTest {
             legacy.execSQL("CREATE TABLE rules (ruletext TEXT)");
             legacy.execSQL("INSERT INTO access VALUES(7,'old.invalid')"); legacy.execSQL("INSERT INTO log VALUES(8,'old.invalid')");
             legacy.execSQL("INSERT INTO rules VALUES('allow host:old.invalid')");
-            db.onUpgrade(legacy,25,26);
+            db.onUpgrade(legacy,25,27);
             try(Cursor rows=legacy.rawQuery("SELECT ID,daddr,name_source FROM access",null)) {
                 assertTrue(rows.moveToFirst());assertEquals(7,rows.getInt(0));assertEquals("old.invalid",rows.getString(1));assertEquals(DomainAttribution.LEGACY,rows.getInt(2));
             }
-            try(Cursor rows=legacy.rawQuery("SELECT ruletext FROM rules",null)) {assertTrue(rows.moveToFirst());assertEquals("allow host:old.invalid",rows.getString(0));}
-            assertEquals(26,legacy.getVersion());
+            try(Cursor rows=legacy.rawQuery("SELECT ruletext,global_waits FROM rules",null)) {
+                assertTrue(rows.moveToFirst());assertEquals("allow host:old.invalid",rows.getString(0));
+                assertTrue("Existing rules must not acquire new app waits",rows.isNull(1));
+            }
+            assertEquals(27,legacy.getVersion());
         }
     }
 }

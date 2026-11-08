@@ -28,7 +28,7 @@ public class SettingsBackupAgent extends BackupAgentHelper {
     @Override public void onRestoreFinished() {
         // Keep the user's backup choice, but do not report a request made on another installation.
         SettingsBackup.controls(this).edit().remove("last_requested").commit();
-        RulesManager.getInstance(this).startTrueTimeRequest(this);
+        RulesManager.getInstance(this).reloadAfterRestore(this);
     }
 
     @Override public void onBackup(ParcelFileDescriptor oldState, BackupDataOutput output,
@@ -42,7 +42,8 @@ public class SettingsBackupAgent extends BackupAgentHelper {
                         cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")),
                         cursor.getInt(cursor.getColumnIndexOrThrow("enacted")),
                         cursor.getInt(cursor.getColumnIndexOrThrow("major_category")),
-                        cursor.getInt(cursor.getColumnIndexOrThrow("minor_category"))));
+                        cursor.getInt(cursor.getColumnIndexOrThrow("minor_category")),
+                        cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))));
         }
         byte[] bytes = RulesBackup.encode(rows);
         File file = new File(getFilesDir(), RULES_FILE);

@@ -99,6 +99,11 @@ testing of minified code, older Android versions, ARM or physical devices.
 Add feature-specific runtime checks when changing affected boundaries, including
 installer, backup, notification presentation and lifecycle behavior. This app has
 no deployed Node/Workers backend; tests for those runtimes would not apply here.
+Staged global allows are checked through native TCP/UDP, shared expiry while
+cleanup is held, Android database/restore logic, legacy rules and both dialog
+themes. When changing the backup payload, also run `scripts/test-backup.ps1`
+for a fresh-install Android local-transport round trip; this does not verify
+Google's cloud service.
 
 When publication is authorized, pass the output directory printed by preparation:
 
