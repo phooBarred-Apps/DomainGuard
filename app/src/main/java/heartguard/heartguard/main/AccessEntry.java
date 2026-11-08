@@ -37,7 +37,8 @@ final class AccessEntry {
         destinationIp = optionalString(cursor, "destination_ip");
         nameCandidates = optionalString(cursor, "name_candidates");
         globalScope = indicators == null ? GlobalRuleIndicators.LOCAL
-                : indicators.scope(block, cursor.getString(cursor.getColumnIndexOrThrow("ruletext")), originalAddress);
+                : indicators.scope(block, cursor.getString(cursor.getColumnIndexOrThrow("ruletext")), originalAddress,
+                        cursor.getInt(cursor.getColumnIndexOrThrow("uid")));
         explicitBlock = indicators != null && block > 0 && globalScope == GlobalRuleIndicators.LOCAL
                 && indicators.explicitlyBlocked(cursor.getInt(cursor.getColumnIndexOrThrow("uid")), originalAddress,
                 cursor.getString(cursor.getColumnIndexOrThrow("ruletext")));

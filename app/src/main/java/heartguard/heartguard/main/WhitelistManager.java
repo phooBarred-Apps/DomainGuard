@@ -43,7 +43,7 @@ class RuleAndPackage extends MyRule {
     private String m_packagename;
     private int m_uid;
     private final boolean m_blocked;
-    GlobalAllowSchedule globalWaits = GlobalAllowSchedule.NONE;
+    GlobalRuleSchedule globalWaits = GlobalRuleSchedule.NONE;
 
     boolean isGlobalAllow() { return !m_blocked && m_packagename == null; }
 
@@ -51,8 +51,8 @@ class RuleAndPackage extends MyRule {
         if (temporarySeconds > 0)
             temporaryExpiresAt = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) + temporarySeconds * 1000L;
         if (!isGlobalAllow()) return;
-        try { globalWaits = GlobalAllowSchedule.parse(cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))); }
-        catch (IllegalArgumentException invalid) { globalWaits = GlobalAllowSchedule.INVALID; }
+        try { globalWaits = GlobalRuleSchedule.parse(cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))); }
+        catch (IllegalArgumentException invalid) { globalWaits = GlobalRuleSchedule.INVALID; }
     }
 
     long readyAt(Context context, int uid) {
@@ -92,10 +92,10 @@ class RuleAndPackage extends MyRule {
     public int getDelayToRemove(Context context, int main_delay) {
         if (m_blocked) {
             RulesManager rm = RulesManager.getInstance(context);
-            return m_packagename == null ? rm.getGlobalProtectionDelay() : rm.getSharedUidDelay(context, m_packagename, false);
+            return m_packagename == null ? main_delay : rm.getSharedUidDelay(context, m_packagename, false);
         }
         if (m_sticky) {
-            return main_delay;
+            return m_packagename == null ? main_delay : RulesManager.getInstance(context).getSharedUidDelay(context, m_packagename, false);
         } else {
             return 0;
         }
@@ -552,11 +552,14 @@ public class WhitelistManager {
     public RuleAllowData isAllowed(Context context, String daddr, int uid) {
         lock.readLock().lock();
         try {
+            RulesManager manager = RulesManager.getInstance(context);
+            if (manager.isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_LOCKDOWN, uid)) return null;
             long now = System.currentTimeMillis();
             return RuleDecision.resolve(app_specific_rules.get(uid), global_rules,
                     daddr, getNames(context, daddr), rule -> {
                         RuleAndPackage timing = globalTiming.get(rule.getRuletext());
-                        return timing == null || timing.appliesNow(context, uid, now);
+                        return manager.isRuleEffectiveForUid(rule.getRuletext(), uid)
+                                && (timing == null || timing.appliesNow(context, uid, now));
                     });
         } finally {
             lock.readLock().unlock();
@@ -586,6 +589,7 @@ public class WhitelistManager {
     }
 
     public RuleAllowData isPendingAllowed(Context context, String daddr, int uid) {
+        if (RulesManager.getInstance(context).isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_LOCKDOWN, uid)) return null;
         if (getExplicitBlock(context, daddr, uid) != null)
             return null;
         lock.readLock().lock();

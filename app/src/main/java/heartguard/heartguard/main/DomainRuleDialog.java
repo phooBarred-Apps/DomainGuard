@@ -88,7 +88,7 @@ final class DomainRuleDialog {
             delay.setVisibility(seconds > 0 ? View.VISIBLE : View.GONE);
             RulesManager rules = RulesManager.getInstance(context);
             view.findViewById(R.id.global_allow_timing).setVisibility(!blocked && applyGlobally[0]
-                    && rules.getGlobalProtectionDelay() > rules.getDefaultDelay() ? View.VISIBLE : View.GONE);
+                    && rules.getLongestConfiguredDelay() > rules.getDefaultDelay() ? View.VISIBLE : View.GONE);
         };
         global.setOnClickListener(button -> {
             if (globalOnly) return;

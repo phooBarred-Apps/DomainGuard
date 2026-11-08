@@ -73,7 +73,11 @@ public class RulesManager {
     private volatile long m_globalPauseUntil;
     private volatile Map<String, Long> m_temporaryRules = Collections.emptyMap();
     private volatile Map<String, RuleAndPackage> m_stagedGlobalAllows = Collections.emptyMap();
-    private volatile Map<String, Long> m_blockedDomainExpiries = Collections.emptyMap();
+    private volatile Map<String, GlobalRuleSchedule> m_globalRemovals = Collections.emptyMap();
+    private volatile List<AppPauseRule> m_globalPauses = Collections.emptyList();
+    private volatile Map<String, List<BlockedDomainRule>> m_domainBlocks = Collections.emptyMap();
+    private Map<String, Integer> lastGlobalPhase = Collections.emptyMap();
+    private final Context appContext;
     private Runnable temporaryExpiryTask;
     private List<String> m_dnses;
     private Map<String, FeatureRule> m_featureRules = new HashMap<>();
@@ -99,6 +103,7 @@ public class RulesManager {
     }
 
     public RulesManager(Context context) {
+        appContext = context.getApplicationContext();
         backgroundThread = new HandlerThread("HeartGuard RM bg");
         backgroundThread.start();
         handler = new Handler(backgroundThread.getLooper());
@@ -285,9 +290,6 @@ public class RulesManager {
 
     // Give a copy of the current whitelist rules
     public List<RuleAndPackage> getCurrentRules(Context context) {
-        if (hasFeatureRule(FeatureRule.FEATURE_NAME_LOCKDOWN)) {
-            return Collections.EMPTY_LIST;
-        }
         lock.readLock().lock();
         List<RuleAndPackage> results = new ArrayList<>();
 
@@ -302,9 +304,6 @@ public class RulesManager {
     }
 
     public List<RuleAndPackage> getPendingRules() {
-        if (hasFeatureRule(FeatureRule.FEATURE_NAME_LOCKDOWN)) {
-            return Collections.EMPTY_LIST;
-        }
         lock.readLock().lock();
         List<RuleAndPackage> results = new ArrayList<>();
 
@@ -381,7 +380,7 @@ public class RulesManager {
     public boolean getPreferenceCaptureAllTraffic(Context context) {
         // Fully allowed apps must still pass through the VPN for their domain exceptions.
         // Paused apps stay inside the VPN so expiry cannot leave them excluded from filtering.
-        return isGloballyPaused() || !m_pausedUids.isEmpty() || m_hasAppSpecificBlocks || hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
+        return isGloballyPaused() || !m_globalRemovals.isEmpty() || !m_pausedUids.isEmpty() || m_hasAppSpecificBlocks || hasFeatureRule(FeatureRule.FEATURE_NAME_CAPTURE_ALL_TRAFFIC);
     }
     public boolean getPreferenceAllowLogging(Context context) { return hasFeatureRule(FeatureRule.FEATURE_NAME_ALLOW_LOGGING);}
 
@@ -395,7 +394,7 @@ public class RulesManager {
     // Note: by NetGuard terminology, this boolean value is wifiBlocked, not wifiEnabled
     // False = package is whitelisted!
     public boolean getWifiEnabledForApp(Context context, String packagename, int uid, boolean defaultVal) {
-        if (hasFeatureRule(FeatureRule.FEATURE_NAME_LOCKDOWN)) {
+        if (isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_LOCKDOWN, uid)) {
             return true;
         }
         if (m_allowedUids.containsKey(uid)) {
@@ -439,7 +438,7 @@ public class RulesManager {
 
     private void setAlarmForPending(Context context, long realTime, long systemTime) {
         long next = nextTemporaryExpiry();
-        long globalAllow = nextGlobalAllowDeadline(System.currentTimeMillis());
+        long globalAllow = nextGlobalRuleDeadline(System.currentTimeMillis());
         if (globalAllow > 0) next = next == 0 ? globalAllow : Math.min(next, globalAllow);
         if (temporaryExpiryTask != null) handler.removeCallbacks(temporaryExpiryTask);
         DatabaseHelper dh = DatabaseHelper.getInstance(context);
@@ -572,6 +571,10 @@ public class RulesManager {
     // Called for each ruletext string that succeeds, but after the RM and WM have updated.
     // These actions should generally tend to the access rules
     private Set<String> postAddActionsForRuletext(Context context, String ruletext) {
+        if (ruletext.startsWith("abandon - ")) {
+            MyRule restored = MyRule.getRuleFromText(context, ruletext.substring(10));
+            return restored == null ? Collections.singleton("reload") : restored.getActionsAfterAdd(context);
+        }
         if (ruletext.matches("- .*")) {
             String neg_ruletext = ruletext.substring(2);
             MyRule rule = MyRule.getRuleFromText(context, neg_ruletext);
@@ -605,7 +608,14 @@ public class RulesManager {
             if (rule instanceof AppPauseRule || (rule != null && rule.temporarySeconds > 0)) {
                 // The duration starts on activation, not while the rule is waiting for its delay.
                 ContentValues activated = new ContentValues();
-                activated.put("enact_time", System.currentTimeMillis());
+                long starts = System.currentTimeMillis();
+                try (Cursor row = dh.getRuleMatchingRuletext(ruletext)) {
+                    if (row.moveToFirst()) {
+                        GlobalRuleSchedule timing = schedule(row);
+                        if (timing.hasDefault()) starts = timing.defaultAt();
+                    }
+                }
+                activated.put("enact_time", starts);
                 dh.updateRuleWithCV(Long.toString(id), activated);
             }
             dh.setRuleEnacted(Long.toString(id), 1);
@@ -714,8 +724,9 @@ public class RulesManager {
             Log.w(TAG, String.format("Removing IDs %d and %d due to abandon rule", id, otherid));
             dh.removeRulesById(new Long[]{id, otherid});
 
-            // Never makes runtime changes, since we can only abandon pending rules
-            return ENACT_RESULT_ABANDON_RULE;
+            // A staged removal can already have affected some apps. Canceling restores protection.
+            return ENACT_RESULT_ABANDON_RULE | (m_globalRemovals.containsKey(otherruletext.startsWith("- ")
+                    ? otherruletext.substring(2) : "") ? ENACT_RESULT_ADD_RULE : 0);
         } finally {
             lock.writeLock().unlock();
         }
@@ -759,11 +770,8 @@ public class RulesManager {
         // Those rules may be pending, but we want to load them and give them to WM for pending colors
         getAllEnactedRulesFromDb(context);
         WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
-        for (String text : rulesToCommit)
-            if (text.startsWith("pause ") || text.startsWith("- pause ") || text.startsWith("abandon pause ")) {
-                LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
-                break;
-            }
+        if (!rulesToCommit.isEmpty())
+            LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
     }
 
     // Commits a rule to the database, but uses realTime to be sure
@@ -840,10 +848,28 @@ public class RulesManager {
 
         long enact_time = realTime + (delay * 1000L);
         Log.w(TAG, String.format("Queueing new rule \"%s\" with %d delay (enact_time %d)", sanitizeRuletext(ruletext), delay, enact_time));
-        MyRule parsed = MyRule.getRuleFromText(context, ruletext);
-        String waits = parsed instanceof RuleAndPackage && ((RuleAndPackage) parsed).isGlobalAllow()
-                ? GlobalAllowSchedule.capture(realTime, m_delay, m_packageDelays).encode() : null;
+        boolean removing = ruletext.startsWith("- ");
+        MyRule parsed = MyRule.getRuleFromText(context, removing ? ruletext.substring(2) : ruletext);
+        boolean staged = isGlobalPermissionChange(parsed, removing);
+        GlobalRuleSchedule schedule = staged ? GlobalRuleSchedule.capture(realTime, delay, m_packageDelays) : GlobalRuleSchedule.NONE;
+        String waits = schedule.encode();
+        if (staged && removing) enact_time = schedule.latest();
         dh.addNewRule(ruletext, realTime, enact_time, 0, major_category, minor_category, waits);
+    }
+
+    private boolean isGlobalPermissionChange(MyRule rule, boolean removing) {
+        if (rule instanceof RuleAndPackage) {
+            RuleAndPackage scoped = (RuleAndPackage) rule;
+            return scoped.getUid() == RuleAndPackage.UID_GLOBAL && (removing ? scoped.isBlocked() : !scoped.isBlocked());
+        }
+        if (rule instanceof AppPauseRule) return !removing && ((AppPauseRule) rule).packageName == null;
+        if (rule instanceof BlockedDomainRule) return removing;
+        if (rule instanceof FeatureRule && removing) {
+            String name = ((FeatureRule) rule).getFeatureName();
+            return name.equals(FeatureRule.FEATURE_NAME_ENABLED) || name.equals(FeatureRule.FEATURE_NAME_MANAGE_SYSTEM)
+                    || name.equals(FeatureRule.FEATURE_NAME_LOCKDOWN);
+        }
+        return false;
     }
 
     public void setPackageAllowed(Context context, String packagename) {
@@ -879,6 +905,7 @@ public class RulesManager {
                     continue;
                 }
                 if (rule instanceof RuleAndPackage) ((RuleAndPackage) rule).readGlobalTiming(cursor);
+                if (rule instanceof AppPauseRule) ((AppPauseRule) rule).globalWaits = schedule(cursor);
                 if (enacted > 0) {
                     if (rule.temporarySeconds > 0)
                         rule.temporaryExpiresAt = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time"))
@@ -916,11 +943,15 @@ public class RulesManager {
 
             // Read all rules from DB into list
             List<MyRule> allPendingRules = new ArrayList<>();
+            Map<String, GlobalRuleSchedule> removals = new HashMap<>();
             while (cursor.moveToNext()) {
                 String ruletext = cursor.getString(col_ruletext);
 
-                if (ruletext.startsWith("- "))
+                if (ruletext.startsWith("- ")) {
+                    GlobalRuleSchedule timing = schedule(cursor);
+                    if (timing.hasWaits()) removals.put(ruletext.substring(2), timing);
                     continue;
+                }
                 MyRule rule = MyRule.getRuleFromText(context, ruletext);
                 if (rule == null) {
                     Log.e(TAG, "Rule \"" + ruletext + "\" isn't a rule");
@@ -931,6 +962,7 @@ public class RulesManager {
             }
 
             m_allPendingRules = allPendingRules;
+            m_globalRemovals = Collections.unmodifiableMap(removals);
 
             Log.w(TAG, "Got " + Integer.toString(m_allCurrentRules.size()) + " rules from DB");
         } finally {
@@ -954,7 +986,8 @@ public class RulesManager {
         long globalPauseUntil = 0;
         Map<String, Long> temporaryRules = new HashMap<>();
         Map<String, RuleAndPackage> stagedGlobalAllows = new HashMap<>();
-        Map<String, Long> blockedDomainExpiries = new HashMap<>();
+        List<AppPauseRule> globalPauses = new ArrayList<>();
+        Map<String, List<BlockedDomainRule>> domainBlocks = new HashMap<>();
 
         for (MyRule rule : m_allCurrentRules) {
             if (rule.temporarySeconds > 0) {
@@ -965,6 +998,7 @@ public class RulesManager {
                 AppPauseRule pause = (AppPauseRule) rule;
                 if (pause.packageName == null) {
                     globalPauseUntil = Math.max(globalPauseUntil, pause.expiresAt);
+                    globalPauses.add(pause);
                     continue;
                 }
                 try {
@@ -1016,11 +1050,11 @@ public class RulesManager {
                 }
             } else if (rule instanceof BlockedDomainRule) {
                 BlockedDomainRule blockedDomainRule = (BlockedDomainRule)rule;
+                String name = blockedDomainRule.getDomainName().toLowerCase(java.util.Locale.ROOT);
+                List<BlockedDomainRule> matching = domainBlocks.get(name);
+                if (matching == null) { matching = new ArrayList<>(); domainBlocks.put(name, matching); }
+                matching.add(blockedDomainRule);
                 newBlockedDomains.add(blockedDomainRule.getDomainName());
-                String domain = blockedDomainRule.getDomainName().toLowerCase(java.util.Locale.ROOT);
-                Long previous = blockedDomainExpiries.get(domain);
-                blockedDomainExpiries.put(domain, previous == null ? rule.temporaryExpiresAt
-                        : Math.max(previous, rule.temporaryExpiresAt));
             } else if (rule instanceof DNSRule) {
                 DNSRule dnsrule = (DNSRule)rule;
                 for (String name : dnsrule.getDomains()) {
@@ -1054,9 +1088,10 @@ public class RulesManager {
         m_hasAppSpecificBlocks = hasAppSpecificBlocks;
         m_pausedUids = java.util.Collections.unmodifiableMap(pausedUids);
         m_globalPauseUntil = globalPauseUntil;
+        m_globalPauses = Collections.unmodifiableList(globalPauses);
+        m_domainBlocks = Collections.unmodifiableMap(domainBlocks);
         m_temporaryRules = Collections.unmodifiableMap(temporaryRules);
         m_stagedGlobalAllows = Collections.unmodifiableMap(stagedGlobalAllows);
-        m_blockedDomainExpiries = Collections.unmodifiableMap(blockedDomainExpiries);
 
         // Make sure to turn the logging toggle switch off if you're not allow to reach it
         if (!getPreferenceAllowLogging(context)) {
@@ -1186,7 +1221,7 @@ public class RulesManager {
         return m_delay;
     }
 
-    int getGlobalProtectionDelay() {
+    int getLongestConfiguredDelay() {
         int delay = m_delay;
         for (int specific : m_packageDelays.values()) delay = Math.max(delay, specific);
         return delay;
@@ -1210,13 +1245,51 @@ public class RulesManager {
 
     boolean isUidPaused(int uid) {
         Long until = m_pausedUids.get(uid);
-        return isGloballyPaused() || (until != null && until > System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        if (until != null && until > now) return true;
+        GlobalRuleSchedule off = m_globalRemovals.get("feature enabled");
+        if (off != null && readyAt(off, uid) <= now) return true;
+        GlobalRuleSchedule system = m_globalRemovals.get("feature manage_system");
+        if (system != null && readyAt(system, uid) <= now && isSystemUid(uid)) return true;
+        for (AppPauseRule pause : m_globalPauses)
+            if (pause.expiresAt > now && readyAt(pause.globalWaits, uid) <= now) return true;
+        return false;
+    }
+
+    long readyAt(GlobalRuleSchedule schedule, int uid) {
+        return schedule.hasWaits() ? schedule.readyAt(uid < 0 ? null : appContext.getPackageManager().getPackagesForUid(uid)) : 0;
+    }
+
+    private boolean isSystemUid(int uid) {
+        String[] packages = appContext.getPackageManager().getPackagesForUid(uid);
+        if (packages == null) return false;
+        for (String name : packages) try {
+            if ((appContext.getPackageManager().getApplicationInfo(name, 0).flags
+                    & android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0) return false;
+        } catch (android.content.pm.PackageManager.NameNotFoundException missing) { return false; }
+        return true;
+    }
+
+    boolean isRuleEffectiveForUid(String text, int uid) {
+        GlobalRuleSchedule removal = m_globalRemovals.get(text);
+        return removal == null || readyAt(removal, uid) > System.currentTimeMillis();
+    }
+
+    boolean isFeatureEffectiveForUid(String name, int uid) {
+        FeatureRule feature = getFeatureRule(name);
+        return feature != null && isRuleEffectiveForUid(feature.getRuleText(), uid);
+    }
+
+    static GlobalRuleSchedule schedule(Cursor row) {
+        try { return GlobalRuleSchedule.parse(row.getString(row.getColumnIndexOrThrow("global_waits"))); }
+        catch (IllegalArgumentException corrupt) { return GlobalRuleSchedule.INVALID; }
     }
 
     long nextTemporaryExpiry() {
         long next = 0;
         long now = System.currentTimeMillis();
-        if (m_globalPauseUntil > now) next = m_globalPauseUntil;
+        for (AppPauseRule pause : m_globalPauses)
+            if (pause.expiresAt > now && (next == 0 || pause.expiresAt < next)) next = pause.expiresAt;
         for (long until : m_pausedUids.values())
             if (until > now && (next == 0 || until < next)) next = until;
         for (long until : m_temporaryRules.values())
@@ -1234,52 +1307,77 @@ public class RulesManager {
         return rule == null || rule.appliesNow(context, uid, System.currentTimeMillis());
     }
 
-    private long nextGlobalAllowDeadline(long now) {
+    private long nextGlobalRuleDeadline(long now) {
         long next = 0;
         for (RuleAndPackage rule : m_stagedGlobalAllows.values()) {
             long deadline = rule.globalWaits.next(now, rule.expiresAt());
+            if (deadline > 0 && (next == 0 || deadline < next)) next = deadline;
+        }
+        for (GlobalRuleSchedule schedule : m_globalRemovals.values()) {
+            long deadline = schedule.next(now, Long.MAX_VALUE);
+            if (deadline > 0 && (next == 0 || deadline < next)) next = deadline;
+        }
+        for (AppPauseRule pause : m_globalPauses) {
+            long deadline = pause.globalWaits.next(now, pause.expiresAt);
             if (deadline > 0 && (next == 0 || deadline < next)) next = deadline;
         }
         return next;
     }
 
     /** Complete only elapsed app waits; the global rule and its shared expiry stay unchanged. */
-    private void finishGlobalAllowWaits(Context context, long now) {
-        if (m_stagedGlobalAllows.isEmpty()) return;
+    private void finishGlobalRuleWaits(Context context, long now) {
+        Map<String, Integer> phase = new HashMap<>();
+        for (RuleAndPackage rule : m_stagedGlobalAllows.values()) phase.put(rule.getRuleText(), rule.globalWaits.phase(now));
+        for (Map.Entry<String, GlobalRuleSchedule> entry : m_globalRemovals.entrySet())
+            phase.put("- " + entry.getKey(), entry.getValue().phase(now));
+        for (AppPauseRule pause : m_globalPauses)
+            if (pause.globalWaits.hasWaits()) phase.put(pause.getRuleText(), pause.globalWaits.phase(now));
+        if (phase.equals(lastGlobalPhase)) return;
+        Map<String, Integer> previous = lastGlobalPhase;
+        lastGlobalPhase = phase;
         DatabaseHelper db = DatabaseHelper.getInstance(context);
         List<RuleAndPackage> changed = new ArrayList<>();
-        try (Cursor rows = db.getStagedGlobalAllows()) {
+        try (Cursor rows = db.getStagedGlobalRules()) {
             while (rows.moveToNext()) {
                 String text = rows.getString(rows.getColumnIndexOrThrow("ruletext"));
                 MyRule parsed = MyRule.getRuleFromText(context, text);
-                if (!(parsed instanceof RuleAndPackage) || !((RuleAndPackage) parsed).isGlobalAllow()) continue;
-                RuleAndPackage rule = (RuleAndPackage) parsed;
-                rule.readGlobalTiming(rows);
-                GlobalAllowSchedule remaining = rule.globalWaits.retire(now);
-                if (remaining == rule.globalWaits) continue;
-                ContentValues values = new ContentValues(); values.put("global_waits", remaining.encode());
-                db.updateRuleWithCV(rows.getString(rows.getColumnIndexOrThrow("_id")), values);
-                changed.add(rule);
+                GlobalRuleSchedule timing = schedule(rows);
+                GlobalRuleSchedule remaining = timing.retire(now);
+                if (remaining != timing) {
+                    ContentValues values = new ContentValues(); values.put("global_waits", remaining.encode());
+                    db.updateRuleWithCV(rows.getString(rows.getColumnIndexOrThrow("_id")), values);
+                }
+                if (parsed instanceof RuleAndPackage && !java.util.Objects.equals(phase.get(text), previous.get(text)))
+                    changed.add((RuleAndPackage) parsed);
             }
         }
-        if (changed.isEmpty()) return;
+        for (String text : m_globalRemovals.keySet()) {
+            if (java.util.Objects.equals(phase.get("- " + text), previous.get("- " + text))) continue;
+            MyRule parsed = MyRule.getRuleFromText(context, text);
+            if (parsed instanceof RuleAndPackage) changed.add((RuleAndPackage) parsed);
+        }
         getAllEnactedRulesFromDb(context);
         WhitelistManager whitelist = WhitelistManager.getInstance(context);
         whitelist.updateRulesFromRulesManager(context);
         for (RuleAndPackage rule : changed) whitelist.writeAccessRulesForAddition(context, rule, false, 0);
         LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent(ActivityMain.ACTION_RULES_CHANGED));
-        if (getPreferenceEnabled(context)) ServiceSinkhole.reload("global allow wait finished", context, false);
+        if (getPreferenceEnabled(context)) ServiceSinkhole.reload("global change phase", context, false);
     }
 
     boolean isGlobalDomainBlocked(String name) {
+        return isGlobalDomainBlocked(name, -1);
+    }
+
+    boolean isGlobalDomainBlocked(String name, int uid) {
         if (name == null) return false;
         String host = name.toLowerCase(java.util.Locale.ROOT);
         if (host.endsWith(".")) host = host.substring(0, host.length() - 1);
-        Map<String, Long> deadlines = m_blockedDomainExpiries;
         long now = System.currentTimeMillis();
+        Map<String, List<BlockedDomainRule>> blocks = m_domainBlocks;
         while (!host.isEmpty()) {
-            Long until = deadlines.get(host);
-            if (until != null && until > now) return true;
+            List<BlockedDomainRule> matching = blocks.get(host);
+            if (matching != null) for (BlockedDomainRule rule : matching)
+                if (rule.temporaryExpiresAt > now && isRuleEffectiveForUid(rule.getRuleText(), uid)) return true;
             int dot = host.indexOf('.');
             if (dot < 0) break;
             host = host.substring(dot + 1);
@@ -1437,7 +1535,7 @@ public class RulesManager {
                     }
                     activateRulesUpTo(context, realTime, false);
                     expireTemporaryRules(context, System.currentTimeMillis());
-                    finishGlobalAllowWaits(context, System.currentTimeMillis());
+                    finishGlobalRuleWaits(context, System.currentTimeMillis());
                     setAlarmForPending(context, realTime, systemTime);
 
                     AccessNotification.refresh(context);
@@ -1798,7 +1896,7 @@ class AllowedPackageRule extends MyRule {
     }
     public int getDelayToRemove(Context context, int main_delay) {
         if (m_sticky) {
-            return main_delay;
+            return RulesManager.getInstance(context).getSharedUidDelay(context, m_packagename, false);
         } else {
             return 0;
         }
@@ -1865,7 +1963,7 @@ class AllowedUidRule extends MyRule {
     @Override
     public int getDelayToRemove(Context context, int main_delay) {
         if (m_sticky) {
-            return main_delay;
+            return getDelayToAdd(context, main_delay);
         } else {
             return 0;
         }
@@ -1951,7 +2049,7 @@ class FeatureRule extends MyRule {
 
     public int getDelayToRemove(Context context, int main_delay) {
         if ((m_featuretype == FeatureType.feature_restrictive) || (m_featuretype == FeatureType.feature_both)) {
-            return RulesManager.getInstance(context).getGlobalProtectionDelay();
+            return main_delay;
         } else if (m_featuretype == FeatureType.feature_permissive) {
             return 0;
         } else {
@@ -2291,7 +2389,7 @@ class BlockedDomainRule extends MyRule {
         // Removing 'try' rules is free unless we have feature 'no_try'
         if (m_try && (!RulesManager.getInstance(context).hasFeatureRule(FeatureRule.FEATURE_NAME_NO_TRY)))
             return 0;
-        return RulesManager.getInstance(context).getGlobalProtectionDelay();
+        return main_delay;
     }
 
     public String getDomainName() {

@@ -265,6 +265,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
     private final class CommandHandler extends Handler {
         public int queue = 0;
+        private int currentStartId;
 
         public CommandHandler(Looper looper) {
             super(looper);
@@ -292,6 +293,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         public void handleMessage(Message msg) {
             try {
                 synchronized (ServiceSinkhole.this) {
+                    currentStartId = ((Intent) msg.obj).getIntExtra("dg_service_start_id", 0);
                     handleIntent((Intent) msg.obj);
                 }
             } catch (Throwable ex) {
@@ -635,7 +637,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                 vpn = null;
                 unprepare();
             }
-            if (state == State.enforcing && !temporary) {
+            if (!temporary) {
                 Log.d(TAG, "Stop foreground state=" + state.toString());
                 last_allowed = -1;
                 last_blocked = -1;
@@ -650,7 +652,9 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
                     Log.d(TAG, "Start foreground state=" + state.toString());
                 } else {
                     state = State.none;
-                    stopSelf();
+                    // A newer start may already be pending in Android but not delivered here yet.
+                    // Never tear it down while it still owes Android its foreground notification.
+                    if (currentStartId > 0) stopSelfResult(currentStartId);
                 }
             }
         }
@@ -1994,7 +1998,8 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
     // Called from native code
     private void dnsResolved(ResourceRecord rr) {
         // HeartGuard change - let's not log this DNS if it's blocked
-        if (isDomainBlocked(rr.QName))
+        if (!RulesManager.getInstance(this).isUidPaused(rr.Uid)
+                && RulesManager.getInstance(this).isGlobalDomainBlocked(rr.QName, rr.Uid))
         {
             return;
         }
@@ -2006,17 +2011,13 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
     // Called from native code
     private boolean isDnsBlocked(String name, int uid, boolean serviceBinding) {
-        return !RulesManager.getInstance(this).isUidPaused(uid) && (serviceBinding || isDomainBlocked(name));
+        return !RulesManager.getInstance(this).isUidPaused(uid)
+                && (serviceBinding || RulesManager.getInstance(this).isGlobalDomainBlocked(name, uid));
     }
 
     // The native loop also enforces expiry, even if Android postpones an alarm during sleep.
     private long nextTemporaryExpiry() {
         return RulesManager.getInstance(this).nextTemporaryExpiry();
-    }
-
-    // Called from native code
-    private boolean isDomainBlocked(String name) {
-        return RulesManager.getInstance(this).isGlobalDomainBlocked(name);
     }
 
     // Called from native code
@@ -2058,6 +2059,8 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
             // https://android.googlesource.com/platform/system/core/+/master/include/private/android_filesystem_config.h
             if (rm.isUidPaused(packet.uid)) {
                 packet.allowed = true;
+            } else if (rm.isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_LOCKDOWN, packet.uid)) {
+                packet.allowed = false;
             } else if (WhitelistManager.getInstance(this).getExplicitBlock(this, packet.daddr, packet.uid) != null) {
                 // Explicit app exceptions override cached/global/whole-app allows.
                 packet.allowed = false;
@@ -2826,6 +2829,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
         Log.i(TAG, "Start intent=" + intent + " command=" + cmd + " reason=" + reason +
                 " vpn=" + (vpn != null) + " user=" + (Process.myUid() / 100000));
 
+        intent.putExtra("dg_service_start_id", startId);
         commandHandler.queue(intent);
 
         return START_STICKY;
@@ -3394,6 +3398,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         public boolean isExpired() {
             return System.currentTimeMillis() > (this.time + this.ttl * 2)
+                    || !RulesManager.getInstance(ServiceSinkhole.this).isRuleEffectiveForUid(sourceRule, key.uid)
                     || !RulesManager.getInstance(ServiceSinkhole.this).isGlobalAllowReady(ServiceSinkhole.this, sourceRule, key.uid)
                     || (TemporaryRuleText.isTemporary(sourceRule)
                     && !RulesManager.getInstance(ServiceSinkhole.this).isTemporaryRuleActive(sourceRule));

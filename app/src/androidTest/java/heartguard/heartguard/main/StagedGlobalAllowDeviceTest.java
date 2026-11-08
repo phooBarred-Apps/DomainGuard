@@ -51,7 +51,7 @@ public class StagedGlobalAllowDeviceTest {
         assertEquals(1, rules.previewDelay(context, text));
         add(text); awaitActive(text);
         RulesBackup.Row saved = row(text);
-        assertEquals(saved.created + 21600000, GlobalAllowSchedule.parse(saved.globalWaits).readyAt(new String[]{APP}));
+        assertEquals(saved.created + 21600000, GlobalRuleSchedule.parse(saved.globalWaits).readyAt(new String[]{APP}));
         assertNotNull(whitelist.isAllowed(context, HOST, context.getApplicationInfo().uid));
         assertNull(whitelist.isAllowed(context, HOST, 2000));
         assertNotNull(whitelist.isPendingAllowed(context, HOST, 2000));
@@ -59,7 +59,7 @@ public class StagedGlobalAllowDeviceTest {
         assertTrue(rules.getRulesToReset(context, 2000, HOST, 1).contains("- " + text));
         int records = countAccess();
         ContentValues values = new ContentValues();
-        values.put("global_waits", GlobalAllowSchedule.capture(System.currentTimeMillis() - 21601000,
+        values.put("global_waits", GlobalRuleSchedule.capture(System.currentTimeMillis() - 21601000,
                 1, Collections.singletonMap(APP, 21600)).encode());
         update(text, values); reload();
         assertNotNull(whitelist.isAllowed(context, HOST, 2000));
@@ -130,6 +130,134 @@ public class StagedGlobalAllowDeviceTest {
         ContentValues invalid = new ContentValues(); invalid.put("global_waits", "corrupt");
         update(text, invalid); reload();
         assertFalse("Corrupt saved timing fails closed", rules.isGlobalAllowReady(context, text, 2000));
+    }
+
+    // Test: Global off leaves the longer-delay app protected, then stops fully; cancel restores protection immediately.
+    // Why: Removing feature enabled must obey the same per-app staging as a global domain allow.
+    @Test public void globalOffStagesAndCancellationRestoresProtection() throws Exception {
+        add("delay 600"); add("delay package:" + APP + " 21600"); add("feature enabled");
+        add("- feature enabled");
+        String off = "- feature enabled";
+        RulesBackup.Row saved = row(off);
+        assertEquals(21600000, saved.enactAt - saved.created);
+        assertEquals(saved.created + 600000, GlobalRuleSchedule.parse(saved.globalWaits).defaultAt());
+        assertFalse(rules.isUidPaused(context.getApplicationInfo().uid));
+        age(off, 601000); reload();
+        assertTrue("VPN still needed for the long app", rules.getPreferenceEnabled(context));
+        assertTrue(rules.isUidPaused(context.getApplicationInfo().uid));
+        assertFalse(rules.isUidPaused(2000));
+        assertTrue(rules.getPreferenceCaptureAllTraffic(context));
+        GlobalProtectionStatus.Snapshot status = GlobalProtectionStatus.read(context);
+        assertNotNull(status); assertTrue(status.starts <= System.currentTimeMillis());
+        add("abandon - feature enabled");
+        assertFalse(rules.isUidPaused(context.getApplicationInfo().uid));
+        assertFalse(rules.isUidPaused(2000));
+        assertTrue(rules.getPreferenceEnabled(context));
+        add(off); age(off, 21601000); reload();
+        assertFalse("Only after the last wait may the VPN stop", rules.getPreferenceEnabled(context));
+        assertNull(GlobalProtectionStatus.read(context));
+    }
+
+    // Test: A global pause uses one default-delay floor and one shared end; shorter overrides never start it early.
+    // Why: The user's 10-minute/1-minute/6-hour example must survive restart and never trigger after expiry.
+    @Test public void globalPauseUsesOneWindowAndNoLateActivation() throws Exception {
+        String shortApp = context.getPackageName();
+        List<RulesBackup.Row> fixture = snapshot();
+        long now = System.currentTimeMillis();
+        fixture.add(new RulesBackup.Row("delay 600", now, now, 1, MyRule.MAJOR_CATEGORY_DELAY, 100));
+        fixture.add(new RulesBackup.Row("delay package:" + shortApp + " 60", now, now, 1, MyRule.MAJOR_CATEGORY_DELAY, 200));
+        fixture.add(new RulesBackup.Row("delay package:" + APP + " 21600", now, now, 1, MyRule.MAJOR_CATEGORY_DELAY, 200));
+        db.restoreRules(fixture); reload();
+        assertEquals(60, rules.previewDelay(context, AppPauseRule.text(shortApp, 14400)));
+        String pause = AppPauseRule.text(null, 14400);
+        add(pause); age(pause, 61000); reload();
+        assertFalse(rules.isUidPaused(context.getApplicationInfo().uid));
+        age(pause, 540000); reload();
+        assertTrue(rules.isUidPaused(context.getApplicationInfo().uid));
+        assertFalse(rules.isUidPaused(2000));
+        long end = AppPause.read(context, null).get(0).time;
+        assertEquals(row(pause).created + 15000000, end);
+        byte[] backup = RulesBackup.encode(snapshot());
+        db.restoreRules(RulesBackup.decode(backup)); reload();
+        assertEquals(end, AppPause.read(context, null).get(0).time);
+        age(pause, 21600000); reload();
+        assertFalse(rules.isUidPaused(2000));
+        assertFalse(rules.isUidPaused(context.getApplicationInfo().uid));
+        assertTrue(AppPause.read(context, null).isEmpty());
+        String eight = AppPauseRule.text(null, 28800);
+        add(eight); age(eight, 21601000); reload();
+        assertTrue(rules.isUidPaused(2000));
+        long remaining = AppPause.read(context, null).get(0).time - System.currentTimeMillis();
+        assertTrue("Six-hour app gets the remaining shared window", remaining > 7790000 && remaining <= 7800000);
+        AppPause.resume(context, null); barrier(); reload();
+        assertFalse(rules.isUidPaused(2000));
+        assertTrue(AppPause.read(context, null).isEmpty());
+    }
+
+    // Test: Resetting a global DNS block and disabling global protection features change only eligible apps; cancellation restores them.
+    // Why: Reset, raw commands, icons and enforcement must agree during partial removal without erasing traffic.
+    @Test public void globalBlockRemovalUsesDefaultThenAppWaits() throws Exception {
+        add("delay 600"); add("delay package:" + APP + " 21600");
+        add("blockdomain " + HOST);
+        assertEquals(Collections.singletonList("- blockdomain " + HOST), rules.getRulesToReset(context, -1, HOST, 0));
+        String removal = "- blockdomain " + HOST;
+        assertEquals(600, rules.previewDelay(context, removal));
+        add(removal); age(removal, 601000); reload();
+        int normal = context.getApplicationInfo().uid;
+        assertFalse(rules.isGlobalDomainBlocked(HOST, normal));
+        assertTrue(rules.isGlobalDomainBlocked(HOST, 2000));
+        assertTrue(rules.isGlobalDomainBlocked(HOST, -1));
+        GlobalRuleIndicators indicators = db.getGlobalRuleIndicators();
+        assertEquals(GlobalRuleIndicators.LOCAL, indicators.scope(1, "", HOST, normal));
+        assertEquals(GlobalRuleIndicators.BLOCKED, indicators.scope(1, "", HOST, 2000));
+        try (Cursor c = db.getRuleMatchingRuletext(removal)) {
+            assertTrue(c.moveToFirst()); assertTrue(ActivityRulesList.getDisplayTextFromRuleCursor(c).contains("global removal applied"));
+        }
+        byte[] backup = RulesBackup.encode(snapshot()); db.restoreRules(RulesBackup.decode(backup)); reload();
+        assertFalse(rules.isGlobalDomainBlocked(HOST, normal)); assertTrue(rules.isGlobalDomainBlocked(HOST, 2000));
+        add("abandon " + removal); assertTrue(rules.isGlobalDomainBlocked(HOST, normal));
+        add("feature lockdown"); add("- feature lockdown");
+        age("- feature lockdown", 601000); reload();
+        assertFalse(rules.isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_LOCKDOWN, normal));
+        assertTrue(rules.isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_LOCKDOWN, 2000));
+        add("abandon - feature lockdown");
+        assertTrue(rules.isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_LOCKDOWN, normal));
+        add("feature manage_system"); add("- feature manage_system");
+        age("- feature manage_system", 601000); reload();
+        assertFalse(rules.isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_MANAGE_SYSTEM, normal));
+        assertTrue(rules.isFeatureEffectiveForUid(FeatureRule.FEATURE_NAME_MANAGE_SYSTEM, 2000));
+
+    }
+
+    // Test: Every parsed rule family uses the intended global/local delay or existing restriction/reduction policy.
+    // Why: The prior release covered only global allows and missed other permissive entry points.
+    @Test public void ruleFamilyTimingAudit() throws Exception {
+        add("delay 600"); add("delay package:" + APP + " 21600");
+        for (String text : new String[]{"allow host:" + HOST, "allow ip:192.0.2.42", "- blockdomain " + HOST,
+                "- feature enabled", "- feature manage_system",
+                "- feature lockdown", "- feature capture_all_traffic", "- feature no_try", "- feature no_static_ip",
+                "feature allow_logging", "dns 192.0.2.53 192.0.2.54"}) assertEquals(text, 600, rules.previewDelay(context, text));
+        for (String text : new String[]{"allow package:" + APP, "allow uid:2000", "allow package:" + APP + " host:" + HOST,
+                "- block package:" + APP + " host:" + HOST, "- allow package:" + APP + " sticky",
+                "- allow uid:2000 sticky", "- allow package:" + APP + " host:" + HOST + " sticky", AppPauseRule.text(APP, 60)})
+            assertEquals(text, 21600, rules.previewDelay(context, text));
+        for (String text : new String[]{"blockdomain " + HOST, "feature enabled",
+                "feature manage_system", "feature lockdown", "- allow host:" + HOST, "- " + AppPauseRule.text(null, 60)})
+            assertEquals(text, 0, rules.previewDelay(context, text));
+        assertEquals(7200, rules.previewDelay(context, "delay package:" + APP + " 14400"));
+    }
+
+    private void age(String text, long milliseconds) {
+        RulesBackup.Row saved = row(text);
+        org.json.JSONObject json;
+        try {
+            json = new org.json.JSONObject(saved.globalWaits);
+            java.util.Iterator<String> keys = json.keys();
+            while (keys.hasNext()) { String key = keys.next(); json.put(key, json.getLong(key) - milliseconds); }
+        } catch (org.json.JSONException error) { throw new AssertionError(error); }
+        ContentValues values = new ContentValues();
+        values.put("global_waits", json.toString()); values.put("enact_time", saved.enactAt - milliseconds);
+        values.put("create_time", saved.created - milliseconds); update(text, values);
     }
 
     private void add(String text) throws Exception { rules.queueRuleText(context, text); barrier(); }

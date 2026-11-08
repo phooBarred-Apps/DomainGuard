@@ -209,9 +209,9 @@ public class DomainActionsDeviceTest {
         Method prepare = ServiceSinkhole.class.getDeclaredMethod("prepareHostsBlocked");
         prepare.setAccessible(true);
         prepare.invoke(service[0]);
-        Method check = ServiceSinkhole.class.getDeclaredMethod("isDomainBlocked", String.class);
+        Method check = ServiceSinkhole.class.getDeclaredMethod("isDnsBlocked", String.class, int.class, boolean.class);
         check.setAccessible(true);
-        assertEquals(host, expected, check.invoke(service[0], host));
+        assertEquals(host, expected, check.invoke(service[0], host, -1, false));
     }
 
     private boolean active(String text) {

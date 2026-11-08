@@ -11,6 +11,7 @@ final class AppPauseRule extends MyRule {
     final String packageName;
     final int seconds;
     long expiresAt;
+    GlobalRuleSchedule globalWaits = GlobalRuleSchedule.NONE;
 
     AppPauseRule(String text) throws RuleParseNoMatchException {
         super(text, MAJOR_CATEGORY_ALLOW);
@@ -33,7 +34,7 @@ final class AppPauseRule extends MyRule {
 
     @Override public int getDelayToAdd(Context context, int mainDelay) {
         RulesManager rules = RulesManager.getInstance(context);
-        return packageName == null ? rules.getGlobalProtectionDelay() : rules.getSharedUidDelay(context, packageName, false);
+        return packageName == null ? mainDelay : rules.getSharedUidDelay(context, packageName, false);
     }
 
     @Override public int getDelayToRemove(Context context, int mainDelay) { return 0; }

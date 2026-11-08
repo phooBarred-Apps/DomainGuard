@@ -551,7 +551,7 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> {
                     if (names == null) { names = new HashMap<>(); rows.put(uid, names); }
                     // Multiple ports may have different outcomes; keep a host if any row is visible.
                     int category = categories.category(cursor.getInt(3), cursor.getInt(5),
-                            indicators.scope(cursor.getInt(5), cursor.getString(6), cursor.getString(7)));
+                            indicators.scope(cursor.getInt(5), cursor.getString(6), cursor.getString(7), uid));
                     names.put(host, category | (names.containsKey(host) ? names.get(host) : 0));
                 }
             }

@@ -44,7 +44,7 @@ final class AccessNotification {
         String[] packages = context.getPackageManager().getPackagesForUid(uid);
         // Android attributes shared-UID traffic to several apps; require review for that case.
         String packageName = packages != null && packages.length == 1 ? packages[0] : "";
-        if (shouldHideGlobalBlock(context, host)) {
+        if (shouldHideGlobalBlock(context, host, uid)) {
             NotificationGroup.cancel(context, tag(uid, packageName, host), ID);
             return;
         }
@@ -102,15 +102,14 @@ final class AccessNotification {
         String host = intent.getStringExtra("host");
         String address = intent.getStringExtra("address");
 
-        if (shouldHideGlobalBlock(context, host)) {
+        if (shouldHideGlobalBlock(context, host, uid)) {
             NotificationGroup.cancel(context, tag(uid, packageName, host), ID);
             return;
         }
         WhitelistManager whitelist = WhitelistManager.getInstance(context);
         boolean explicitBlock = whitelist.getExplicitBlock(context, address, uid) != null
                 || whitelist.getExplicitBlock(context, host, uid) != null;
-        for (String blocked : RulesManager.getInstance(context).getBlockedDomains())
-            explicitBlock |= Util.isAddressInsideDomain(host, blocked);
+        explicitBlock |= RulesManager.getInstance(context).isGlobalDomainBlocked(host, uid);
         if (state(context, uid, host, address) == State.ALLOWED) {
             NotificationGroup.cancel(context, tag(uid, packageName, host), ID);
             return;
@@ -152,7 +151,7 @@ final class AccessNotification {
             // Notifications posted before this feature still identify their app and domain in the tag.
             String address = current.extras.getString(ADDRESS, host);
             State state = state(context, uid, host, address);
-            if (state == State.ALLOWED || shouldHideGlobalBlock(context, host)) {
+            if (state == State.ALLOWED || shouldHideGlobalBlock(context, host, uid)) {
                 NotificationGroup.cancel(context, tag, ID);
             } else if (current.extras.getBoolean(PENDING, false) != (state == State.PENDING)) {
                 NotificationCompat.Builder updated = accessBuilder(context, uid, pkg, host, address, state,
@@ -168,7 +167,7 @@ final class AccessNotification {
         RulesManager rules = RulesManager.getInstance(context);
         WhitelistManager whitelist = WhitelistManager.getInstance(context);
         if (rules.isUidPaused(uid)) return State.ALLOWED;
-        if (rules.isGlobalDomainBlocked(host)
+        if (rules.isGlobalDomainBlocked(host, uid)
                 || whitelist.getExplicitBlock(context, host, uid) != null
                 || whitelist.getExplicitBlock(context, address, uid) != null) return State.BLOCKED;
         RuleAllowData hostRule = whitelist.isAllowed(context, host, uid);
@@ -228,11 +227,9 @@ final class AccessNotification {
                 PendingIntent.getActivity(context, 0, options, flags()));
     }
 
-    private static boolean shouldHideGlobalBlock(Context context, String host) {
+    private static boolean shouldHideGlobalBlock(Context context, String host, int uid) {
         if (PreferenceManager.getDefaultSharedPreferences(context).getBoolean(NOTIFY_GLOBAL_BLOCKS, false)) return false;
-        for (String blocked : RulesManager.getInstance(context).getBlockedDomains())
-            if (Util.isAddressInsideDomain(host, blocked)) return true;
-        return false;
+        return RulesManager.getInstance(context).isGlobalDomainBlocked(host, uid);
     }
 
     static void hideExistingGlobalBlocks(Context context) {
@@ -243,7 +240,9 @@ final class AccessNotification {
             if (notification.getId() != ID || tag == null || !tag.startsWith(PREFIX)) continue;
             // Limit the split so an IPv6 destination remains intact.
             String[] identity = tag.substring(PREFIX.length()).split(":", 3);
-            if (identity.length == 3 && shouldHideGlobalBlock(context, identity[2])) NotificationGroup.cancel(context, tag, ID);
+            if (identity.length == 3) try {
+                if (shouldHideGlobalBlock(context, identity[2], Integer.parseInt(identity[0]))) NotificationGroup.cancel(context, tag, ID);
+            } catch (NumberFormatException malformed) { /* Ignore unknown tags. */ }
         }
     }
 

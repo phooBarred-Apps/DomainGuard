@@ -92,6 +92,32 @@ public class AppPauseNetworkDeviceTest {
         }
     }
 
+    // Test: Older stop commands cannot destroy a service with newer foreground starts pending.
+    // Why: Rapid global phase/cancel transitions exposed an Android foreground-service teardown race.
+    @Test public void nativeQueuedStopsKeepNewerStartsAlive() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        RulesManager rules = RulesManager.getInstance(context);
+        assertFalse(rules.getPreferenceEnabled(context));
+        List<String> owned = new ArrayList<>();
+        try {
+            shell("appops set " + context.getPackageName() + " ACTIVATE_VPN allow");
+            add(context, rules, owned, "feature capture_all_traffic");
+            add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
+            add(context, rules, owned, "feature enabled");
+            awaitVpnReady(context);
+            for (int i = 0; i < 6; i++) {
+                ServiceSinkhole.stop("queued stop fixture", context, false);
+                ServiceSinkhole.reload("newer start fixture", context, false);
+            }
+            // A command at the end reports through the main screen; service teardown must settle first.
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            awaitVpnReady(context);
+            String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
+            assertBlocked(context, port, false, false, "Newest command still enforces TCP");
+            assertBlocked(context, port, true, false, "Newest command still enforces UDP");
+        } finally { cleanup(context, rules, owned, false); }
+    }
+
     // Test: Rejected DNS responses cross the native bridge into Recent traffic with their name and owner.
     // Why: Capture-all with system apps allowed used to suppress DNS blocks even with every display filter off.
     @Test public void nativeBlockedDnsIsVisible() throws Exception {
@@ -378,7 +404,17 @@ public class AppPauseNetworkDeviceTest {
         } finally { data.delete(); if (command != null) command.delete(); }
     }
 
+    // Test: Native TCP/UDP remain blocked during a longer app delay, run only in the remaining global pause, and stop at its shared expiry.
+    // Why: Policy-level assertions alone cannot verify existing native connections or delayed cleanup.
+    @Test public void nativeStagedGlobalPauseUsesSharedExpiry() throws Exception {
+        verifyExpiry(false, true, true);
+    }
+
     private void verifyExpiry(boolean temporaryAllow, boolean global) throws Exception {
+        verifyExpiry(temporaryAllow, global, false);
+    }
+
+    private void verifyExpiry(boolean temporaryAllow, boolean global, boolean stagedPause) throws Exception {
         String port = InstrumentationRegistry.getArguments().getString("pauseNetworkPort", "");
         assertTrue("Host-local fixture required", port.matches("[0-9]{1,5}"));
         assertTrue("Disposable emulator only", Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish"));
@@ -402,11 +438,11 @@ public class AppPauseNetworkDeviceTest {
             awaitVpnReady(context);
             assertBlocked(context, port, false, false, "TCP blocked before pause");
             assertBlocked(context, port, true, false, "UDP blocked before pause");
-            boolean staged = temporaryAllow && global;
+            boolean staged = (temporaryAllow && global) || stagedPause;
             if (staged) add(context, rules, owned, "delay package:com.android.shell 15");
             int duration = staged ? 30 : 15;
             String timed = temporaryAllow ? TemporaryRuleText.text(staged ? "allow ip:10.0.2.2" : "allow package:com.android.shell ip:10.0.2.2", duration)
-                    : AppPauseRule.text(global ? null : "com.android.shell", 15);
+                    : AppPauseRule.text(global ? null : "com.android.shell", duration);
             add(context, rules, owned, timed);
             long deadline;
             try (Cursor cursor = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(timed)) {
@@ -414,13 +450,15 @@ public class AppPauseNetworkDeviceTest {
                 deadline = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) + duration * 1000L;
             }
             if (staged) {
-                assertNull(WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000));
+                if (stagedPause) assertEquals(0, WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000).allowed);
+                else assertNull(WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000));
                 assertBlocked(context, port, false, false, "TCP blocked during longer app delay");
                 assertBlocked(context, port, true, false, "UDP blocked during longer app delay");
                 long end = SystemClock.elapsedRealtime() + 18000;
-                while (WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000) == null
+                while ((stagedPause ? !rules.isUidPaused(2000) : WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000) == null)
                         && SystemClock.elapsedRealtime() < end) SystemClock.sleep(50);
-                assertNotNull(WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000));
+                if (stagedPause) assertTrue(rules.isUidPaused(2000));
+                else assertNotNull(WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000));
             }
             SystemClock.sleep(1500);
             // Hold background cleanup past expiry: only packet/cache/native deadline checks can stop these flows.

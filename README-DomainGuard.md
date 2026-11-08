@@ -1,5 +1,15 @@
 # DomainGuard
 
+Version **2.97** applies independent app waits to global shutdown, pause and
+block removal as well as global allows. The default delay is the earliest a
+global change can affect any app. Longer-delay apps stay protected until their
+own wait ends; a separate app-only action can use a shorter override.
+Temporary global changes have one shared end time, with no late activation
+after expiry. Tap the gently fading main switch to see remaining app protection
+and dated deadlines. [Timing examples and the complete rule-family audit](docs/global-rule-timing.md)
+explain the policy. Old queued changes without captured app deadlines keep
+their saved times; cancel and resubmit them to use the new policy.
+
 Version **2.96** lets new global allow rules start after the default delay while
 apps with longer delays wait independently. Each app's deadline is saved when
 the rule is confirmed. Changing a delay later does not rewrite that deadline.
@@ -28,16 +38,11 @@ Android backup now restores the Automatic backup choice and clears the old
 installation's request timestamp. Fresh-install restore tests include missing
 apps, per-app delays, rules and timer deadlines; Google cloud delivery is not verified.
 
-An app delay longer than the default also increases the wait before turning off
-or pausing all of DomainGuard. The app-delay editor warns before saving it;
-Settings shows the effective turn-off/pause wait, and those confirmations show a
-red warning with the extended wait and default delay when an app delay is responsible.
-Pending delay reductions keep the current
-longer wait until they take effect.
+Pending delay reductions keep the current longer wait until they take effect.
 
 A modified GPLv3 build of [HeartGuard](https://github.com/hoodedpaladin/HeartGuard),
 which derives from [NetGuard](https://github.com/M66B/NetGuard).
-Latest changes: November 6, 2026.
+Latest changes: November 8, 2026.
 
 Version `2.93` adds **Reset** to Recent traffic, including matching global rules
 for Unknown app entries. Both traffic views now include global blacklist and

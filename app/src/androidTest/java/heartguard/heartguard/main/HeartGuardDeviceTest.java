@@ -119,10 +119,10 @@ public class HeartGuardDeviceTest {
     // Test: Removing an app block and adding a global allow honor the configured delay.
     // Why: Delay policy now reads active rules rather than trusting the legacy method argument.
     @Test public void blockParserRequiresAppAndPreservesDelayPolicy() throws Exception {
-        assertEquals("Fixture must start without a delay", 0, rules.getGlobalProtectionDelay());
+        assertEquals("Fixture must start without a delay", 0, rules.getLongestConfiguredDelay());
         ownedRules.add("delay 60");
         rules.queueRuleText(context, "delay 60");
-        waitFor(() -> rules.getGlobalProtectionDelay() == 60);
+        waitFor(() -> rules.getLongestConfiguredDelay() == 60);
         assertNull(MyRule.getRuleFromText(context, "block host:" + HOST));
         assertNull(MyRule.getRuleFromText(context, "block package:" + context.getPackageName() + " directip"));
         RuleAndPackage block = (RuleAndPackage) MyRule.getRuleFromText(context,

@@ -1,0 +1,14 @@
+<resources>
+    <string name="global_status_cancel_title">Cancel pending change?</string>
+    <string name="global_status_title">DomainGuard protection</string>
+    <string name="global_status_switch">DomainGuard protection is changing. Tap for app timings.</string>
+    <string name="global_status_pending">This global change takes effect at %1$s. Protection continues until then.</string>
+    <string name="global_status_started">DomainGuard is off for apps whose wait has ended.</string>
+    <string name="global_status_resume_at">This global pause ends at %1$s. Your existing rules resume.</string>
+    <string name="global_status_apps">These apps remain protected:</string>
+    <string name="global_status_off_at">Protection turns off at %1$s</string>
+    <string name="global_status_whole_pause">Protected throughout this pause</string>
+    <string name="global_status_unknown">Unidentified traffic stays protected for the longest wait. Apps sharing an Android identity share its longest wait.</string>
+    <string name="global_status_cancel_body">Restore your existing rules and cancel any remaining effect of this global change?</string>
+    <string name="global_removal_applied">Global removal applied; %1$d app waits remain</string>
+</resources>
