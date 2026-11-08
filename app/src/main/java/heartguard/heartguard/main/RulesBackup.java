@@ -18,14 +18,20 @@ final class RulesBackup {
         final String text;
         final long created, enactAt;
         final int enacted, major, minor;
+        final String globalWaits;
 
         Row(String text, long created, long enactAt, int enacted, int major, int minor) {
+            this(text, created, enactAt, enacted, major, minor, null);
+        }
+
+        Row(String text, long created, long enactAt, int enacted, int major, int minor, String globalWaits) {
             this.text = text;
             this.created = created;
             this.enactAt = enactAt;
             this.enacted = enacted;
             this.major = major;
             this.minor = minor;
+            this.globalWaits = globalWaits;
         }
     }
 
@@ -35,8 +41,9 @@ final class RulesBackup {
             for (Row row : rows)
                 values.put(new JSONObject().put("text", row.text).put("created", row.created)
                         .put("enactAt", row.enactAt).put("enacted", row.enacted)
-                        .put("major", row.major).put("minor", row.minor));
-            byte[] bytes = new JSONObject().put("version", 1).put("rules", values)
+                        .put("major", row.major).put("minor", row.minor)
+                        .put("globalWaits", row.globalWaits == null ? JSONObject.NULL : row.globalWaits));
+            byte[] bytes = new JSONObject().put("version", 2).put("rules", values)
                     .toString().getBytes(StandardCharsets.UTF_8);
             if (bytes.length > MAX_BYTES) throw new IOException("Rules exceed the backup size limit");
             return bytes;
@@ -49,21 +56,24 @@ final class RulesBackup {
         if (bytes.length > MAX_BYTES) throw new IOException("Rule backup is too large");
         try {
             JSONObject data = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-            if (data.getInt("version") != 1) throw new IOException("Unsupported rule backup version");
+            if (data.getInt("version") != 1 && data.getInt("version") != 2)
+                throw new IOException("Unsupported rule backup version");
             JSONArray values = data.getJSONArray("rules");
             List<Row> rows = new ArrayList<>();
             Set<String> texts = new HashSet<>();
             for (int i = 0; i < values.length(); i++) {
                 JSONObject value = values.getJSONObject(i);
                 Row row = new Row(value.getString("text"), value.getLong("created"), value.getLong("enactAt"),
-                        value.getInt("enacted"), value.getInt("major"), value.getInt("minor"));
+                        value.getInt("enacted"), value.getInt("major"), value.getInt("minor"),
+                        value.isNull("globalWaits") ? null : value.getString("globalWaits"));
+                GlobalAllowSchedule.parse(row.globalWaits);
                 if (row.text.trim().isEmpty() || row.created < 0 || row.enactAt < 0 ||
                         (row.enacted != 0 && row.enacted != 1) || !texts.add(row.text))
                     throw new IOException("Invalid rule backup");
                 rows.add(row);
             }
             return rows;
-        } catch (JSONException invalid) {
+        } catch (JSONException | IllegalArgumentException invalid) {
             throw new IOException("Invalid rule backup", invalid);
         }
     }

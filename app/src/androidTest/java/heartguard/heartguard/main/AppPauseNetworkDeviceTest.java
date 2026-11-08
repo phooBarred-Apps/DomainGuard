@@ -234,6 +234,12 @@ public class AppPauseNetworkDeviceTest {
         verifyExpiry(true, false);
     }
 
+    // Test: A global temporary allow blocks the longer-delay app until ready, then stops TCP/UDP at the shared expiry.
+    // Why: The real VPN and cached IP/native sessions must enforce both ends of the shorter remaining window.
+    @Test public void nativeStagedGlobalAllowUsesSharedExpiry() throws Exception {
+        verifyExpiry(true, true);
+    }
+
     // Test: Global pause expiry stops real TCP/UDP sessions even while background cleanup is held.
     // Why: A global bypass must restore protection for existing connections, not only new requests.
     @Test public void nativeConnectionsStopAtGlobalPauseExpiry() throws Exception {
@@ -396,13 +402,25 @@ public class AppPauseNetworkDeviceTest {
             awaitVpnReady(context);
             assertBlocked(context, port, false, false, "TCP blocked before pause");
             assertBlocked(context, port, true, false, "UDP blocked before pause");
-            String timed = temporaryAllow ? TemporaryRuleText.text("allow package:com.android.shell ip:10.0.2.2", 15)
+            boolean staged = temporaryAllow && global;
+            if (staged) add(context, rules, owned, "delay package:com.android.shell 15");
+            int duration = staged ? 30 : 15;
+            String timed = temporaryAllow ? TemporaryRuleText.text(staged ? "allow ip:10.0.2.2" : "allow package:com.android.shell ip:10.0.2.2", duration)
                     : AppPauseRule.text(global ? null : "com.android.shell", 15);
             add(context, rules, owned, timed);
             long deadline;
             try (Cursor cursor = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(timed)) {
                 assertTrue(cursor.moveToFirst());
-                deadline = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) + 15000;
+                deadline = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) + duration * 1000L;
+            }
+            if (staged) {
+                assertNull(WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000));
+                assertBlocked(context, port, false, false, "TCP blocked during longer app delay");
+                assertBlocked(context, port, true, false, "UDP blocked during longer app delay");
+                long end = SystemClock.elapsedRealtime() + 18000;
+                while (WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000) == null
+                        && SystemClock.elapsedRealtime() < end) SystemClock.sleep(50);
+                assertNotNull(WhitelistManager.getInstance(context).isAllowed(context, "10.0.2.2", 2000));
             }
             SystemClock.sleep(1500);
             // Hold background cleanup past expiry: only packet/cache/native deadline checks can stop these flows.

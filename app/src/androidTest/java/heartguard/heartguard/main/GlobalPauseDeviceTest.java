@@ -83,7 +83,7 @@ public class GlobalPauseDeviceTest {
         assertEquals(25200, rules.previewDelay(context, AppPauseRule.text(PKG, 60)));
         assertEquals(25200, rules.previewDelay(context, AppPauseRule.text(null, 60)));
         assertEquals(25200, rules.previewDelay(context, "- feature enabled"));
-        assertEquals(25200, rules.previewDelay(context, "allow host:" + HOST));
+        assertEquals(21600, rules.previewDelay(context, "allow host:" + HOST));
         assertEquals(10800, rules.previewDelay(context, "delay package:" + PKG + " 14400"));
         assertEquals(3600, rules.previewDelay(context, "- delay package:" + PKG + " 25200"));
         add("delay package:" + PKG + " 14400");
@@ -335,6 +335,29 @@ public class GlobalPauseDeviceTest {
         add("delay package:" + PKG + " 14400");
         assertTrue("A pending reduction must not lower the displayed global wait early",
                 RuleDelay.read(context).summary(context).contains("Turn off or pause: 6 hours"));
+    }
+
+    // Test: Switching an allow dialog to global shows the default delay and explains app waits/shared expiry in both themes.
+    // Why: The faster global start must not promise immediate access or a full temporary duration to the longer-delay app.
+    @Test public void globalAllowDialogExplainsIndependentWaits() throws Exception {
+        add("delay 1"); add("delay package:" + PKG + " 21600");
+        for (boolean dark : new boolean[]{false, true}) {
+            PreferenceManager.getDefaultSharedPreferences(context).edit().putBoolean("dark_theme", dark).commit();
+            launch();
+            onMain(() -> DomainRuleDialog.show(activity, PKG, HOST, false));
+            assertTrue(find("domain_action_delay").getText().contains("6 hours"));
+            assertFalse(device.hasObject(By.res(context.getPackageName(), "global_allow_timing")));
+            find("allow_new_access_global").click();
+            assertTrue(find("domain_action_delay").getText().contains("1 second"));
+            if (!device.hasObject(By.res(context.getPackageName(), "global_allow_timing")))
+                new androidx.test.uiautomator.UiScrollable(new androidx.test.uiautomator.UiSelector().scrollable(true))
+                        .scrollIntoView(new androidx.test.uiautomator.UiSelector().resourceId(context.getPackageName() + ":id/global_allow_timing"));
+            assertTrue(find("global_allow_timing").getText().contains("less time or none"));
+            shot("staged-global-allow-" + dark);
+            negative().click();
+            assertFalse(exists("allow host:" + HOST));
+            onMain(() -> activity.finish()); activity = null;
+        }
     }
 
     private void launch() {

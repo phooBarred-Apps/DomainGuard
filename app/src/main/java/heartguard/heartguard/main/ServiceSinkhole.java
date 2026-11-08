@@ -3394,6 +3394,7 @@ public class ServiceSinkhole extends VpnService implements SharedPreferences.OnS
 
         public boolean isExpired() {
             return System.currentTimeMillis() > (this.time + this.ttl * 2)
+                    || !RulesManager.getInstance(ServiceSinkhole.this).isGlobalAllowReady(ServiceSinkhole.this, sourceRule, key.uid)
                     || (TemporaryRuleText.isTemporary(sourceRule)
                     && !RulesManager.getInstance(ServiceSinkhole.this).isTemporaryRuleActive(sourceRule));
         }

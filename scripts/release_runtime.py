@@ -13,9 +13,12 @@ PREFIX = "heartguard.heartguard.main."
 POLICY = 1
 NETWORK_TESTS = tuple(PREFIX + "AppPauseNetworkDeviceTest#" + name for name in (
     "nativeBlockedDnsIsVisible", "nativeConnectionsStopAtPauseExpiry",
-    "nativeConnectionsStopAtTemporaryAllowExpiry", "nativeConnectionsStopAtGlobalPauseExpiry",
+    "nativeConnectionsStopAtTemporaryAllowExpiry", "nativeConnectionsStopAtGlobalPauseExpiry", "nativeStagedGlobalAllowUsesSharedExpiry",
     "nativeHostnameEvidence", "nativeStartupWaitsForVpn", "nativeRoutingTransitionEnforcesBlock"))
 JAVA_TESTS = tuple(PREFIX + cls + "#" + name for cls, names in (
+    ("GlobalPauseDeviceTest", ("globalAllowDialogExplainsIndependentWaits",)),
+    ("StagedGlobalAllowDeviceTest", ("globalActivationKeepsLongerAppWaiting", "sharedExpiryAndAppSpecificFullDuration",
+        "restoreAndLegacyRulesKeepTheirTiming")),
     ("DomainAttributionDeviceTest", ("enrichWithoutChangingPolicyAndSearchObservedName",
         "clearedHistoryStaysDeleted", "newerFlowWins", "dnsOwnershipAndActualTtl", "migrationPreservesHistory")),
     ("DomainActionsDeviceTest", ("globalBlockPreservesAllHistoryAndStillBlocksDomains",

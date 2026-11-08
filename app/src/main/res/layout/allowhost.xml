@@ -14,5 +14,6 @@
         <TextView android:id="@+id/domain_scope_notice" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/domain_scope_unknown" android:textAppearance="@style/TextSmall" android:visibility="gone" />
         <TextView android:id="@+id/domain_action_delay" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:drawableStart="@drawable/ic_history_compact" android:drawablePadding="8dp" android:gravity="center_vertical" android:textAppearance="@style/TextSmall" android:visibility="gone" />
         <include layout="@layout/temporary_rule" />
+        <TextView android:id="@+id/global_allow_timing" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/global_allow_timing" android:textAppearance="@style/TextSmall" android:visibility="gone" />
     </LinearLayout>
 </ScrollView>

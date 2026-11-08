@@ -1,6 +1,20 @@
 # DomainGuard
 
-Version **2.95** explains when an app delay extends the wait to turn off or
+Version **2.96** lets new global allow rules start after the default delay while
+apps with longer delays wait independently. Each app's deadline is saved when
+the rule is confirmed. Changing a delay later does not rewrite that deadline.
+A temporary global allow has one shared expiry: a four-hour allowance never
+reaches an app with a six-hour wait; an eight-hour allowance gives it roughly
+two hours. An app-specific temporary allow still gets its full duration after
+its own wait. Saved deadlines survive restarts and settings backup/restore;
+existing rules retain their previous timing. Unknown owners wait for the longest
+captured app deadline, and shared Android UIDs honor their longest app wait.
+Global blocking, removing global blocks, and turning off or pausing DomainGuard
+retain their existing protection and delay policy. The native VPN test verifies
+both the initial wait and the shared expiry; Android local-transport restore is
+tested separately from Google's cloud delivery.
+
+Version `2.95` explains when an app delay extends the wait to turn off or
 pause DomainGuard, including a red warning with the extended and default delays.
 Recent traffic offers clearly labeled global Allow/Block actions for unknown or
 removed apps, while preserving the parent picker, temporary rules and rule delays.

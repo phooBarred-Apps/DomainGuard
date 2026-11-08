@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="global_allow_timing">Apps with longer delays wait longer. Temporary global access ends at the same time for everyone; an app may receive less time or none.</string>
+    <plurals name="global_allow_waiting"><item quantity="one">Active · waiting for %d app delay</item><item quantity="other">Active · waiting for %d app delays</item></plurals>
+    <plurals name="global_allow_excluded"><item quantity="one">Expires before %d app delay ends</item><item quantity="other">Expires before %d app delays end</item></plurals>
     <string name="title_block_globally">Block globally</string>
     <string name="domain_scope_unknown">The app is unknown or no longer installed. This rule applies to all apps.</string>
     <string name="domain_scope_app">Applies only to %1$s. Existing rule delays still apply.</string>

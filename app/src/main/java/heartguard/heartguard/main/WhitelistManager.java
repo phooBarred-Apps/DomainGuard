@@ -43,6 +43,32 @@ class RuleAndPackage extends MyRule {
     private String m_packagename;
     private int m_uid;
     private final boolean m_blocked;
+    GlobalAllowSchedule globalWaits = GlobalAllowSchedule.NONE;
+
+    boolean isGlobalAllow() { return !m_blocked && m_packagename == null; }
+
+    void readGlobalTiming(Cursor cursor) {
+        if (temporarySeconds > 0)
+            temporaryExpiresAt = cursor.getLong(cursor.getColumnIndexOrThrow("enact_time")) + temporarySeconds * 1000L;
+        if (!isGlobalAllow()) return;
+        try { globalWaits = GlobalAllowSchedule.parse(cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))); }
+        catch (IllegalArgumentException invalid) { globalWaits = GlobalAllowSchedule.INVALID; }
+    }
+
+    long readyAt(Context context, int uid) {
+        return globalWaits.hasWaits() ? globalWaits.readyAt(uid < 0 ? null : context.getPackageManager().getPackagesForUid(uid)) : 0;
+    }
+
+    long expiresAt() { return temporarySeconds > 0 ? temporaryExpiresAt : Long.MAX_VALUE; }
+
+    boolean appliesNow(Context context, int uid, long now) {
+        return now < expiresAt() && readyAt(context, uid) <= now;
+    }
+
+    boolean waitingFor(Context context, int uid, long now) {
+        long ready = readyAt(context, uid);
+        return ready > now && ready < expiresAt();
+    }
 
     RuleAndPackage(String ruletext, Context context, RuleForApp rule, boolean sticky, String packagename) {
         this(ruletext, context, rule, sticky, packagename, false);
@@ -61,7 +87,7 @@ class RuleAndPackage extends MyRule {
         if (m_blocked)
             return 0;
         RulesManager rm = RulesManager.getInstance(context);
-        return m_packagename == null ? rm.getGlobalProtectionDelay() : rm.getSharedUidDelay(context, m_packagename, true);
+        return m_packagename == null ? main_delay : rm.getSharedUidDelay(context, m_packagename, true);
     }
     public int getDelayToRemove(Context context, int main_delay) {
         if (m_blocked) {
@@ -467,6 +493,7 @@ public class WhitelistManager {
 
     private Map<Integer, List<RuleForApp>> app_specific_rules;
     private List<RuleForApp> global_rules;
+    private Map<String, RuleAndPackage> globalTiming;
     private Map<Integer, List<RuleForApp>> app_blocks;
 
     private ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
@@ -493,6 +520,7 @@ public class WhitelistManager {
         try {
             this.app_specific_rules = new HashMap<>();
             this.global_rules = new LinkedList<>();
+            this.globalTiming = new HashMap<>();
             this.app_blocks = new HashMap<>();
 
             RulesManager rm = RulesManager.getInstance(context);
@@ -502,6 +530,7 @@ public class WhitelistManager {
                 int uid = ruleandpackage.getUid();
                 if (uid == RuleAndPackage.UID_GLOBAL) {
                     addGlobalRule(ruleandpackage.rule);
+                    globalTiming.put(ruleandpackage.getRuleText(), ruleandpackage);
                 } else if (uid == RuleAndPackage.UID_NOT_FOUND) {
                     // No package found, so no whitelisting right now
                 }else {
@@ -523,8 +552,12 @@ public class WhitelistManager {
     public RuleAllowData isAllowed(Context context, String daddr, int uid) {
         lock.readLock().lock();
         try {
+            long now = System.currentTimeMillis();
             return RuleDecision.resolve(app_specific_rules.get(uid), global_rules,
-                    daddr, getNames(context, daddr));
+                    daddr, getNames(context, daddr), rule -> {
+                        RuleAndPackage timing = globalTiming.get(rule.getRuletext());
+                        return timing == null || timing.appliesNow(context, uid, now);
+                    });
         } finally {
             lock.readLock().unlock();
         }
@@ -567,6 +600,9 @@ public class WhitelistManager {
             // TODO: common code for both loops
             RulesManager rm = RulesManager.getInstance(context);
             List<RuleAndPackage> rules = rm.getPendingRules();
+            long now = System.currentTimeMillis();
+            for (RuleAndPackage rule : globalTiming.values())
+                if (rule.waitingFor(context, uid, now)) rules.add(rule);
             for (RuleAndPackage rule : rules)
             {
                 if ((rule.getUid() != RuleAndPackage.UID_GLOBAL) &&
@@ -575,6 +611,7 @@ public class WhitelistManager {
                     // does not apply
                     continue;
                 }
+                if (rule.isGlobalAllow() && rule.readyAt(context, uid) >= rule.expiresAt()) continue;
                 RuleAllowData result = rule.rule.isAllowed(daddr, alldnames);
                 if (result != null && result.allowed == 1) {
                     return result;
