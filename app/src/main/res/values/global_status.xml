@@ -9,6 +9,7 @@
     <string name="global_status_off_at">Protection turns off at %1$s</string>
     <string name="global_status_whole_pause">Protected throughout this pause</string>
     <string name="global_status_unknown">Unidentified traffic stays protected for the longest wait. Apps sharing an Android identity share its longest wait.</string>
+    <string name="global_status_unknown_default">Unknown apps follow the default delay. Apps sharing an Android identity share its longest wait.</string>
     <string name="global_status_cancel_body">Restore your existing rules and cancel any remaining effect of this global change?</string>
     <string name="global_removal_applied">Global removal applied; %1$d app waits remain</string>
 </resources>

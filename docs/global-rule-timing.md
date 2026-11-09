@@ -47,8 +47,15 @@ The parser supports global domain blocks as `blockdomain`; `block host:` and
 
 Schedules store the global deadline and longer app deadlines by package identity,
 not device-specific UID. Backups preserve these absolute times and the shared expiry.
-Unknown ownership conservatively uses the longest wait; shared UIDs use their strongest
-member. DNS lookups may belong to Android's resolver rather than the requesting app.
+Unknown ownership follows the default global wait unless Settings > Options >
+Use longest delay for unknown apps is enabled. This opt-in rule takes effect
+immediately after confirmation; its removal waits the longest currently configured
+delay and keeps that captured deadline across restarts and restore. The confirmation
+names the apps setting that wait. Canceling a pending removal keeps the setting on.
+The choice applies to both existing and new staged global changes, including pauses,
+shutdown, allows and block removal; it does not allow otherwise blocked traffic.
+The underlying rule is `feature strict_unknown_delay`. Shared UIDs use their strongest
+member regardless of this choice. DNS lookups may belong to Android's resolver rather than the requesting app.
 This change does not remove the existing limitations of DNS and shared-IP attribution.
 
 Old pending rules without saved timing metadata retain their original deadlines.

@@ -1,0 +1,15 @@
+<resources>
+    <string name="unknown_delay_title">Use longest delay for unknown apps</string>
+    <string name="unknown_delay_off_summary">Unknown apps follow the default rule delay.</string>
+    <string name="unknown_delay_on_summary">Unknown apps follow the longest rule delay.</string>
+    <string name="unknown_delay_pending_summary">On · Turns off at %1$s. Tap to cancel.</string>
+    <string name="unknown_delay_enable_title">Use the longest delay?</string>
+    <string name="unknown_delay_enable_body">Unknown apps will use the longest rule delay for global changes, including pauses and block removal. This takes effect immediately.\n\nTurning this off later requires the longest delay configured at that time. Currently: %1$s, set by %2$s.\n\nThe wait starts when you request to turn it off.</string>
+    <string name="unknown_delay_disable_title">Use the default delay?</string>
+    <string name="unknown_delay_disable_body">Unknown apps will follow the default rule delay after %1$s. This wait is set by %2$s.\n\nUntil then, this setting stays on.</string>
+    <string name="unknown_delay_no_wait">no waiting time</string>
+    <string name="unknown_delay_default_source">Default rule delay</string>
+    <string name="unknown_delay_pending_title">Cancel pending turn-off?</string>
+    <string name="unknown_delay_pending_body">This setting stays on until %1$s. Canceling keeps the longest delay for unknown apps.</string>
+    <string name="unknown_delay_changed">The delay changed. Review the updated confirmation.</string>
+</resources>

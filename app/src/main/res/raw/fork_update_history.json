@@ -1,5 +1,13 @@
 [
   {
+    "tag_name": "v2.98",
+    "name": "DomainGuard 2.98",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-11-08",
+    "body": "DomainGuard 2.98\n\n- Added Settings > Options > Use longest delay for unknown apps. It is off by default, including after upgrading from 2.97. Unknown apps follow the default delay for global changes; normal allow/block rules still apply.\n- Turning it on applies immediately after a Yes/Cancel confirmation explaining the effect and naming the app or apps setting the longest delay. Turning it off later requires the longest delay configured when that change is requested.\n- A pending turn-off keeps the switch on, shows its scheduled time, and can be canceled. Settings and raw-rule editing use the same delay protection.\n- The choice applies to existing and new global pauses, shutdowns, allows and block removals. Temporary global changes retain their original shared end time; known apps retain their own delays.\n- Backup and restore preserve both the setting and a pending turn-off deadline. The protection-status dialog explains the selected policy for unknown traffic.\n\nInstall DomainGuard.apk below. Corresponding GPLv3 source and SHA-256 checksums accompany this release."
+  },
+  {
     "tag_name": "v2.97",
     "name": "DomainGuard 2.97",
     "draft": false,

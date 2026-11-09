@@ -103,6 +103,7 @@ public class StagedGlobalAllowDeviceTest {
     // Why: Restarts/restores and legacy upgrades must neither grant early access nor silently lengthen existing timers.
     @Test public void restoreAndLegacyRulesKeepTheirTiming() throws Exception {
         add("delay 1"); add("delay package:" + APP + " 21600");
+        add(UnknownAppDelay.RULE);
         add("delay package:missing.staged.app 25200");
         String text = TemporaryRuleText.text("allow host:" + HOST, 28800);
         add(text); awaitActive(text);
@@ -147,6 +148,9 @@ public class StagedGlobalAllowDeviceTest {
         assertTrue(rules.isUidPaused(context.getApplicationInfo().uid));
         assertFalse(rules.isUidPaused(2000));
         assertTrue(rules.getPreferenceCaptureAllTraffic(context));
+        assertTrue("Unknown apps use the default global shutdown wait", rules.isUidPaused(-1));
+        add(UnknownAppDelay.RULE);
+        assertFalse("Opting in immediately keeps unknown apps protected", rules.isUidPaused(-1));
         GlobalProtectionStatus.Snapshot status = GlobalProtectionStatus.read(context);
         assertNotNull(status); assertTrue(status.starts <= System.currentTimeMillis());
         add("abandon - feature enabled");
@@ -206,7 +210,11 @@ public class StagedGlobalAllowDeviceTest {
         int normal = context.getApplicationInfo().uid;
         assertFalse(rules.isGlobalDomainBlocked(HOST, normal));
         assertTrue(rules.isGlobalDomainBlocked(HOST, 2000));
+        assertFalse(rules.isGlobalDomainBlocked(HOST, -1));
+        assertDns(false, -1);
+        add(UnknownAppDelay.RULE);
         assertTrue(rules.isGlobalDomainBlocked(HOST, -1));
+        assertDns(true, -1);
         GlobalRuleIndicators indicators = db.getGlobalRuleIndicators();
         assertEquals(GlobalRuleIndicators.LOCAL, indicators.scope(1, "", HOST, normal));
         assertEquals(GlobalRuleIndicators.BLOCKED, indicators.scope(1, "", HOST, 2000));
@@ -245,6 +253,66 @@ public class StagedGlobalAllowDeviceTest {
                 "feature manage_system", "feature lockdown", "- allow host:" + HOST, "- " + AppPauseRule.text(null, 60)})
             assertEquals(text, 0, rules.previewDelay(context, text));
         assertEquals(7200, rules.previewDelay(context, "delay package:" + APP + " 14400"));
+    }
+
+    // Test: Unknown traffic follows the global wait by default; opting in immediately tightens all active staged operations.
+    // Why: A five-hour pause and a one-second global reset must not inherit another app's six hours without consent.
+    @Test public void unknownDelayPolicyAppliesToExistingGlobalChanges() throws Exception {
+        add("delay 1"); add("delay package:" + APP + " 21600");
+        assertFalse(rules.useStrictUnknownDelay());
+        String allow = "allow host:" + HOST;
+        add(allow); awaitActive(allow);
+        assertTrue(rules.isGlobalAllowReady(context, allow, -1));
+        assertTrue(rules.isGlobalAllowReady(context, allow, 98765));
+        assertTrue(rules.isGlobalAllowReady(context, allow, 987654));
+        assertNotNull(whitelist.isAllowed(context, HOST, -1));
+        assertFalse(rules.isGlobalAllowReady(context, allow, 2000));
+        String pause = AppPauseRule.text(null, 18000);
+        add(pause); awaitActive(pause);
+        long end = AppPause.read(context, null).get(0).time;
+        assertTrue(rules.isUidPaused(-1));
+        assertTrue(rules.isUidPaused(context.getApplicationInfo().uid));
+        assertFalse(rules.isUidPaused(2000));
+        assertEquals(0, rules.previewDelay(context, UnknownAppDelay.RULE));
+        add(UnknownAppDelay.RULE);
+        assertTrue(rules.useStrictUnknownDelay());
+        assertFalse(rules.isUidPaused(-1));
+        assertTrue(rules.isUidPaused(context.getApplicationInfo().uid));
+        assertFalse(rules.isGlobalAllowReady(context, allow, -1));
+        assertFalse(rules.isGlobalAllowReady(context, allow, 98765));
+        assertFalse(rules.isGlobalAllowReady(context, allow, 987654));
+        assertNull(whitelist.isAllowed(context, HOST, -1));
+        assertEquals(end, AppPause.read(context, null).get(0).time);
+        int records = countAccess();
+        age(pause, 21601000); reload();
+        assertFalse("No late pause after its shared end", rules.isUidPaused(-1));
+        assertEquals(records, countAccess());
+    }
+
+    // Test: Turning strict unknown delay off waits the longest configured delay, survives restore, and can be canceled.
+    // Why: A Settings or raw-rule removal must not silently bypass the user-enabled restriction or restart its timer.
+    @Test public void strictUnknownTurnOffWaitsAndSurvivesRestore() throws Exception {
+        add("delay 1"); add("delay package:" + APP + " 21600"); add(UnknownAppDelay.RULE);
+        assertEquals(21600, rules.previewDelay(context, UnknownAppDelay.REMOVE));
+        add(UnknownAppDelay.REMOVE);
+        assertEquals(21600000, row(UnknownAppDelay.REMOVE).enactAt - row(UnknownAppDelay.REMOVE).created);
+        assertNull("This is one protected setting change, not a staged global removal", row(UnknownAppDelay.REMOVE).globalWaits);
+        assertTrue(rules.useStrictUnknownDelay());
+        add("abandon " + UnknownAppDelay.REMOVE);
+        assertEquals(0, UnknownAppDelay.pending(context));
+        assertTrue(rules.useStrictUnknownDelay());
+        add(UnknownAppDelay.REMOVE);
+        long deadline = row(UnknownAppDelay.REMOVE).enactAt;
+        byte[] backup = RulesBackup.encode(snapshot());
+        db.restoreRules(Collections.emptyList()); reload();
+        assertFalse(rules.useStrictUnknownDelay());
+        db.restoreRules(RulesBackup.decode(backup)); reload();
+        assertTrue(rules.useStrictUnknownDelay());
+        assertEquals(deadline, UnknownAppDelay.pending(context));
+        ContentValues due = new ContentValues(); due.put("enact_time", System.currentTimeMillis() - 1);
+        update(UnknownAppDelay.REMOVE, due); reload();
+        assertFalse(rules.useStrictUnknownDelay());
+        assertEquals(0, UnknownAppDelay.pending(context));
     }
 
     private void age(String text, long milliseconds) {
@@ -302,5 +370,15 @@ public class StagedGlobalAllowDeviceTest {
         try (Cursor c = db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM access", null)) {
             assertTrue(c.moveToFirst()); return c.getInt(0);
         }
+    }
+
+    private void assertDns(boolean blocked, int uid) throws Exception {
+        HeartGuardDeviceTest.TestService[] service = new HeartGuardDeviceTest.TestService[1];
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+            service[0] = new HeartGuardDeviceTest.TestService(); service[0].attach(context);
+        });
+        java.lang.reflect.Method check = ServiceSinkhole.class.getDeclaredMethod("isDnsBlocked", String.class, int.class, boolean.class);
+        check.setAccessible(true);
+        assertEquals(blocked, check.invoke(service[0], HOST, uid, false));
     }
 }

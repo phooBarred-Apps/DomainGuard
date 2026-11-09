@@ -85,7 +85,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
     private AlertDialog dialogFilter = null;
 
     private final DatabaseHelper.RuleChangedListener delayChangedListener = () -> runOnUiThread(() -> {
-        if (running && !isFinishing()) updateRuleDelay();
+        if (running && !isFinishing()) { updateRuleDelay(); updateUnknownDelay(); }
     });
 
     private static final Intent INTENT_VPN_SETTINGS = new Intent("android.net.vpn.SETTINGS");
@@ -125,6 +125,10 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
             if (getSupportFragmentManager().findFragmentByTag("rule_delay") == null)
                 new RuleDelayDialog().show(getSupportFragmentManager(), "rule_delay");
             return true;
+        });
+        screen.findPreference(UnknownAppDelay.KEY).setOnPreferenceChangeListener((preference, value) -> {
+            UnknownAppDelay.show(this);
+            return false; // Only an enacted rule may change the switch.
         });
 
         PreferenceGroup cat_options = (PreferenceGroup) ((PreferenceGroup) screen.findPreference("screen_options")).findPreference("category_options");
@@ -598,6 +602,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
         DatabaseHelper.getInstance(this).addRuleChangedListener(delayChangedListener);
         RulesManager.getInstance(this).startTrueTimeRequest(this);
         updateRuleDelay();
+        updateUnknownDelay();
     }
 
     @Override
@@ -1060,6 +1065,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
     // HeartGuard change - update UI to keep in sync with rules changes
     private void updateMainUi() {
         updateRuleDelay();
+        updateUnknownDelay();
         // Update the preferences that are actually controlled by RulesManager
         RulesManager rm = RulesManager.getInstance(ActivitySettings.this);
 
@@ -1076,6 +1082,10 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
     private void updateRuleDelay() {
         getPreferenceScreen().findPreference("rule_delay").setSummary(RuleDelay.read(this).summary(this));
+    }
+
+    private void updateUnknownDelay() {
+        UnknownAppDelay.update(this, (SwitchPreference) getPreferenceScreen().findPreference(UnknownAppDelay.KEY));
     }
 
     private void setupListControls(PreferenceScreen screen) {

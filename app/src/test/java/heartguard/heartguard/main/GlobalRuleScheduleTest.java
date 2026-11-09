@@ -17,8 +17,11 @@ public class GlobalRuleScheduleTest {
         assertEquals(2000, schedule.readyAt(new String[]{"shorter"}));
         assertEquals(21601000, schedule.readyAt(new String[]{"chrome"}));
         assertEquals(25201000, schedule.readyAt(new String[]{"chrome", "peer"}));
-        assertEquals(25201000, schedule.readyAt(null));
-        assertEquals(25201000, schedule.readyAt(new String[0]));
+        assertEquals(2000, schedule.readyAt(null));
+        assertEquals(2000, schedule.readyAt(new String[0]));
+        assertEquals(25201000, schedule.readyAt(null, true));
+        assertEquals(25201000, schedule.readyAt(new String[0], true));
+        assertEquals(2000, schedule.readyAt(new String[]{"normal"}, true));
     }
 
     // Test: Four-hour global access never reaches a six-hour app; eight-hour access leaves only two hours.
@@ -41,6 +44,7 @@ public class GlobalRuleScheduleTest {
         assertEquals(schedule.readyAt(new String[]{"missing.app"}), GlobalRuleSchedule.parse(schedule.encode()).readyAt(new String[]{"missing.app"}));
         assertFalse(GlobalRuleSchedule.parse(null).hasWaits());
         assertEquals(Long.MAX_VALUE, GlobalRuleSchedule.INVALID.readyAt(new String[]{"anything"}));
+        assertEquals(Long.MAX_VALUE, GlobalRuleSchedule.INVALID.readyAt(null, false));
         for (String corrupt : new String[]{"no", "{\"app\":-1}", "{\"app\":1.5}", "{\"app\":1e99}"}) {
             try { GlobalRuleSchedule.parse(corrupt); fail("Accepted " + corrupt); }
             catch (IllegalArgumentException expected) { }

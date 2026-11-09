@@ -350,6 +350,48 @@ public class GlobalPauseDeviceTest {
         }
     }
 
+    // Test: Settings confirms immediate opt-in with the longest app name/wait; opt-out stays on until due and can be canceled.
+    // Why: Users must understand the six-hour consequence before enabling it, in either theme, without a visual false-off state.
+    @Test public void unknownDelaySettingExplainsAndProtectsChanges() throws Exception {
+        add("delay 1"); add("delay package:" + PKG + " 21600");
+        owned.add(UnknownAppDelay.RULE); owned.add(UnknownAppDelay.REMOVE);
+        for (boolean dark : new boolean[]{false, true}) {
+            PreferenceManager.getDefaultSharedPreferences(context).edit().putBoolean("dark_theme", dark).commit();
+            activity = InstrumentationRegistry.getInstrumentation().startActivitySync(new Intent(context, ActivitySettings.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            device.wait(Until.findObject(By.text("Options")), 5000).click();
+            assertFalse(rules.useStrictUnknownDelay());
+            device.wait(Until.findObject(By.text(context.getString(R.string.unknown_delay_title))), 5000).click();
+            UiObject2 message = device.wait(Until.findObject(By.res("android", "message")), 5000);
+            assertTrue(message.getText().contains("6 hours"));
+            assertTrue(message.getText().contains("Chrome"));
+            assertTrue(message.getText().contains("takes effect immediately"));
+            assertTrue(message.getText().contains("when you request to turn it off"));
+            shot("unknown-delay-enable-" + dark);
+            negative().click(); assertFalse(rules.useStrictUnknownDelay());
+            device.wait(Until.findObject(By.text(context.getString(R.string.unknown_delay_title))), 5000).click();
+            positive().click(); await(rules::useStrictUnknownDelay, 5000);
+            device.wait(Until.findObject(By.text(context.getString(R.string.unknown_delay_title))), 5000).click();
+            assertTrue(device.wait(Until.hasObject(By.text(context.getString(R.string.unknown_delay_disable_title))), 5000));
+            assertTrue(device.findObject(By.res("android", "message")).getText().contains("6 hours"));
+            positive().click(); await(() -> UnknownAppDelay.pending(context) > 0, 5000);
+            assertTrue(rules.useStrictUnknownDelay());
+            assertTrue(device.wait(Until.hasObject(By.textStartsWith("On · Turns off at")), 5000));
+            device.wait(Until.findObject(By.text(context.getString(R.string.unknown_delay_title))), 5000).click();
+            assertTrue(device.wait(Until.hasObject(By.text(context.getString(R.string.unknown_delay_pending_title))), 5000));
+            negative().click(); assertTrue(UnknownAppDelay.pending(context) > 0);
+            device.wait(Until.findObject(By.text(context.getString(R.string.unknown_delay_title))), 5000).click();
+            positive().click(); await(() -> UnknownAppDelay.pending(context) == 0, 5000);
+            assertTrue(rules.useStrictUnknownDelay());
+            onMain(() -> activity.finish()); activity = null;
+            try (Cursor row = db.getRuleMatchingRuletext(UnknownAppDelay.RULE)) {
+                assertTrue(row.moveToFirst());
+                db.removeRulesById(new Long[]{row.getLong(row.getColumnIndexOrThrow("_id"))});
+            }
+            reload();
+        }
+    }
+
     private void launch() {
         activity = InstrumentationRegistry.getInstrumentation().startActivitySync(new Intent(context, ActivityMain.class)
                 .putExtra(ActivityMain.EXTRA_SEARCH, "Chrome").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));

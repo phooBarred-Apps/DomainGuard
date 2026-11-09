@@ -16,10 +16,11 @@ NETWORK_TESTS = tuple(PREFIX + "AppPauseNetworkDeviceTest#" + name for name in (
     "nativeConnectionsStopAtTemporaryAllowExpiry", "nativeConnectionsStopAtGlobalPauseExpiry", "nativeStagedGlobalAllowUsesSharedExpiry", "nativeStagedGlobalPauseUsesSharedExpiry",
     "nativeHostnameEvidence", "nativeStartupWaitsForVpn", "nativeQueuedStopsKeepNewerStartsAlive", "nativeRoutingTransitionEnforcesBlock"))
 JAVA_TESTS = tuple(PREFIX + cls + "#" + name for cls, names in (
-    ("GlobalPauseDeviceTest", ("globalAllowDialogExplainsIndependentWaits", "longerAppDelayExplainsGlobalWait", "longerAppDelayWarnsBeforeSaving", "overridesAndGlobalActionsRespectEffectiveDelays")),
+    ("GlobalPauseDeviceTest", ("globalAllowDialogExplainsIndependentWaits", "longerAppDelayExplainsGlobalWait", "longerAppDelayWarnsBeforeSaving", "overridesAndGlobalActionsRespectEffectiveDelays", "unknownDelaySettingExplainsAndProtectsChanges")),
     ("StagedGlobalAllowDeviceTest", ("globalActivationKeepsLongerAppWaiting", "sharedExpiryAndAppSpecificFullDuration",
         "restoreAndLegacyRulesKeepTheirTiming", "globalOffStagesAndCancellationRestoresProtection",
-        "globalPauseUsesOneWindowAndNoLateActivation", "globalBlockRemovalUsesDefaultThenAppWaits", "ruleFamilyTimingAudit")),
+        "globalPauseUsesOneWindowAndNoLateActivation", "globalBlockRemovalUsesDefaultThenAppWaits", "ruleFamilyTimingAudit",
+        "unknownDelayPolicyAppliesToExistingGlobalChanges", "strictUnknownTurnOffWaitsAndSurvivesRestore")),
     ("DomainAttributionDeviceTest", ("enrichWithoutChangingPolicyAndSearchObservedName",
         "clearedHistoryStaysDeleted", "newerFlowWins", "dnsOwnershipAndActualTtl", "migrationPreservesHistory")),
     ("DomainActionsDeviceTest", ("globalBlockPreservesAllHistoryAndStillBlocksDomains",

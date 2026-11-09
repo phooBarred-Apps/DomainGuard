@@ -1,5 +1,12 @@
 # DomainGuard
 
+Version **2.98** adds **Settings > Options > Use longest delay for unknown apps**.
+It is off by default, including on upgrade: unidentified traffic follows the
+default delay for global changes. Turning it on applies immediately after a
+confirmation naming the app and longest delay. Turning it off waits that longest
+delay; the switch stays on until then and offers cancellation. The choice applies
+to existing pauses, shutdowns and staged global rules, and survives backup/restore.
+
 Version **2.97** applies independent app waits to global shutdown, pause and
 block removal as well as global allows. The default delay is the earliest a
 global change can affect any app. Longer-delay apps stay protected until their

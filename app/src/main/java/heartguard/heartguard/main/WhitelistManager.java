@@ -56,7 +56,7 @@ class RuleAndPackage extends MyRule {
     }
 
     long readyAt(Context context, int uid) {
-        return globalWaits.hasWaits() ? globalWaits.readyAt(uid < 0 ? null : context.getPackageManager().getPackagesForUid(uid)) : 0;
+        return RulesManager.getInstance(context).readyAt(globalWaits, uid);
     }
 
     long expiresAt() { return temporarySeconds > 0 ? temporaryExpiresAt : Long.MAX_VALUE; }
