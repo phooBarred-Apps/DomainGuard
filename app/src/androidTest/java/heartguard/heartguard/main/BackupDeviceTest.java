@@ -39,7 +39,7 @@ public class BackupDeviceTest {
                 "block package:" + MISSING + " host:missing-block.invalid",
                 "allow package:" + INSTALLED + " host:installed-allow.invalid",
                 "block package:" + INSTALLED + " host:installed-block.invalid",
-                "allow host:global-allow.invalid", "blockdomain global-block.invalid",
+                "allow host:global-allow.invalid", "blockdomain global-block.invalid", UnknownAppDelay.RULE,
                 TemporaryRuleText.text("allow host:staged-backup.invalid", 86400),
                 TemporaryRuleText.text("allow package:" + MISSING + " host:temporary-backup.invalid", 86400),
                 AppPauseRule.text(MISSING, 86400));
@@ -81,6 +81,8 @@ public class BackupDeviceTest {
             DatabaseHelper.getInstance(context).updateRuleWithCV(row.getString(row.getColumnIndexOrThrow("_id")), timing);
         }
         addRule(RULE, now, now + 86400000, 0);
+        DatabaseHelper.getInstance(context).addNewRule(UnknownAppDelay.REMOVE, now, now + 25200000,
+                0, 0, 0);
         java.util.Map<String, Integer> stages = new java.util.HashMap<>();
         stages.put(INSTALLED, 25200); stages.put(MISSING, 28800);
         String savedStages = GlobalRuleSchedule.capture(now, 21600, stages).encode();
@@ -103,6 +105,7 @@ public class BackupDeviceTest {
             context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().remove(MISSING).commit();
         List<Long> ids = new ArrayList<>();
         List<String> owned = new ArrayList<>(activeRules()); owned.add(RULE);
+        owned.add(UnknownAppDelay.REMOVE);
         owned.add("- blockdomain global-block.invalid"); owned.add(AppPauseRule.text(null, 86400));
         try (Cursor cursor = DatabaseHelper.getInstance(context).getAllRules()) {
             while (cursor.moveToNext())
@@ -158,6 +161,8 @@ public class BackupDeviceTest {
         assertTrue(ready.await(10, TimeUnit.SECONDS));
         WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
         assertEquals(21600, RuleDelay.read(context).seconds);
+        assertTrue("Opt-in strict unknown policy restored", rules.useStrictUnknownDelay());
+        assertEquals("Pending turn-off deadline must not restart", created + 25200000, UnknownAppDelay.pending(context));
         assertEquals(25200, RuleDelay.read(context, INSTALLED).seconds);
         assertEquals(14400, RuleDelay.read(context, MISSING).seconds);
         assertTrue(rules.isGlobalDomainBlocked("global-block.invalid"));

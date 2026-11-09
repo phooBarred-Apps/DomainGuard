@@ -21,6 +21,7 @@
     <PreferenceScreen android:key="screen_options" android:title="@string/setting_options">
         <PreferenceCategory android:key="category_options" android:title="@string/setting_options">
             <Preference android:key="rule_delay" android:persistent="false" android:title="@string/rule_delay_title" />
+            <heartguard.heartguard.main.SwitchPreference android:key="strict_unknown_delay" android:persistent="false" android:defaultValue="false" android:title="@string/unknown_delay_title" android:summary="@string/unknown_delay_off_summary" />
             <heartguard.heartguard.main.SwitchPreference android:defaultValue="false" android:key="manage_system" android:summary="@string/summary_system" android:title="@string/setting_system" />
             <heartguard.heartguard.main.SwitchPreference android:defaultValue="false" android:key="capture_all_traffic" android:summary="@string/summary_capture_all_traffic" android:title="@string/setting_capture_all_traffic" />
             <heartguard.heartguard.main.SwitchPreference android:defaultValue="false" android:key="notify_access" android:summary="@string/summary_access" android:title="@string/setting_access" />

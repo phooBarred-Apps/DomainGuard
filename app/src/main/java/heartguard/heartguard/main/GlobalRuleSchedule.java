@@ -70,8 +70,12 @@ final class GlobalRuleSchedule {
     }
 
     long readyAt(String[] packages) {
+        return readyAt(packages, false);
+    }
+
+    long readyAt(String[] packages, boolean strictUnknown) {
         if (invalid) return Long.MAX_VALUE; // Corrupt timing must never grant early access.
-        if (packages == null || packages.length == 0) return latest();
+        if (packages == null || packages.length == 0) return strictUnknown ? latest() : defaultAt();
         long ready = 0;
         for (String name : packages) {
             Long deadline = deadlines.get(name);

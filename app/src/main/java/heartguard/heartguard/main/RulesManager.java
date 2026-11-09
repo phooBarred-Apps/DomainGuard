@@ -77,6 +77,7 @@ public class RulesManager {
     private volatile List<AppPauseRule> m_globalPauses = Collections.emptyList();
     private volatile Map<String, List<BlockedDomainRule>> m_domainBlocks = Collections.emptyMap();
     private Map<String, Integer> lastGlobalPhase = Collections.emptyMap();
+    private volatile boolean m_strictUnknownDelay;
     private final Context appContext;
     private Runnable temporaryExpiryTask;
     private List<String> m_dnses;
@@ -1085,6 +1086,12 @@ public class RulesManager {
         m_blockedDomains = newBlockedDomains;
         m_dnses = newDNSes;
         m_featureRules = newFeatureRules;
+        boolean strictUnknown = newFeatureRules.containsKey(FeatureRule.FEATURE_NAME_STRICT_UNKNOWN_DELAY);
+        if (m_strictUnknownDelay != strictUnknown) {
+            m_strictUnknownDelay = strictUnknown;
+            // Re-evaluate saved allow decisions as well as live packet decisions.
+            lastGlobalPhase = Collections.emptyMap();
+        }
         m_hasAppSpecificBlocks = hasAppSpecificBlocks;
         m_pausedUids = java.util.Collections.unmodifiableMap(pausedUids);
         m_globalPauseUntil = globalPauseUntil;
@@ -1227,6 +1234,14 @@ public class RulesManager {
         return delay;
     }
 
+    Map<String, Integer> getAppDelayOverrides() {
+        lock.readLock().lock();
+        try { return new HashMap<>(m_packageDelays); }
+        finally { lock.readLock().unlock(); }
+    }
+
+    boolean useStrictUnknownDelay() { return m_strictUnknownDelay; }
+
     int getSharedUidDelay(Context context, String packageName, boolean allowRule) {
         int delay = allowRule ? getSpecificDelayForPackage(packageName) : getPauseDelay(packageName);
         try {
@@ -1257,7 +1272,13 @@ public class RulesManager {
     }
 
     long readyAt(GlobalRuleSchedule schedule, int uid) {
-        return schedule.hasWaits() ? schedule.readyAt(uid < 0 ? null : appContext.getPackageManager().getPackagesForUid(uid)) : 0;
+        if (!schedule.hasWaits()) return 0;
+        String[] packages = null;
+        if (uid >= 0) {
+            try { packages = appContext.getPackageManager().getPackagesForUid(uid); }
+            catch (SecurityException inaccessibleProfile) { /* An inaccessible owner is unidentified. */ }
+        }
+        return schedule.readyAt(packages, useStrictUnknownDelay());
     }
 
     private boolean isSystemUid(int uid) {
@@ -1985,6 +2006,7 @@ class FeatureRule extends MyRule {
     public static final String FEATURE_NAME_NO_STATIC_IP = "no_static_ip";
     public static final String FEATURE_NAME_ALLOW_LOGGING = "allow_logging";
     public static final String FEATURE_NAME_NO_TRY = "no_try";
+    public static final String FEATURE_NAME_STRICT_UNKNOWN_DELAY = "strict_unknown_delay";
     public static final String[] FEATURE_NAMES = {
             FEATURE_NAME_ENABLED,
             FEATURE_NAME_MANAGE_SYSTEM,
@@ -1993,6 +2015,7 @@ class FeatureRule extends MyRule {
             FEATURE_NAME_NO_STATIC_IP,
             FEATURE_NAME_ALLOW_LOGGING,
             FEATURE_NAME_NO_TRY,
+            FEATURE_NAME_STRICT_UNKNOWN_DELAY,
     };
     private String m_featurename;
     private enum FeatureType {feature_restrictive, feature_permissive, feature_both};
@@ -2001,7 +2024,8 @@ class FeatureRule extends MyRule {
                                                           FEATURE_NAME_MANAGE_SYSTEM,
                                                           FEATURE_NAME_LOCKDOWN,
                                                           FEATURE_NAME_CAPTURE_ALL_TRAFFIC,
-                                                          FEATURE_NAME_NO_TRY};
+                                                          FEATURE_NAME_NO_TRY,
+                                                          FEATURE_NAME_STRICT_UNKNOWN_DELAY};
     private static final String[] permissive_features = {FEATURE_NAME_ALLOW_LOGGING};
     private static final String[] both_features = {FEATURE_NAME_NO_STATIC_IP};
 
@@ -2048,6 +2072,8 @@ class FeatureRule extends MyRule {
     }
 
     public int getDelayToRemove(Context context, int main_delay) {
+        if (FEATURE_NAME_STRICT_UNKNOWN_DELAY.equals(m_featurename))
+            return RulesManager.getInstance(context).getLongestConfiguredDelay();
         if ((m_featuretype == FeatureType.feature_restrictive) || (m_featuretype == FeatureType.feature_both)) {
             return main_delay;
         } else if (m_featuretype == FeatureType.feature_permissive) {

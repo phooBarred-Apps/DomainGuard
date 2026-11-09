@@ -31,6 +31,7 @@
     <PreferenceScreen android:key="screen_options" android:title="@string/setting_options">
         <PreferenceCategory android:key="category_options" android:title="@string/setting_options">
             <Preference android:key="rule_delay" android:persistent="false" android:title="@string/rule_delay_title" />
+            <heartguard.heartguard.main.SwitchPreference android:key="strict_unknown_delay" android:persistent="false" android:defaultValue="false" android:title="@string/unknown_delay_title" android:summary="@string/unknown_delay_off_summary" />
             <CheckBoxPreference android:defaultValue="true" android:key="install" android:summary="@string/summary_install" android:title="@string/setting_install" />
             <EditTextPreference android:defaultValue="0" android:inputType="number" android:key="auto_enable" android:summary="@string/summary_auto" />
             <EditTextPreference android:defaultValue="0" android:inputType="number" android:key="screen_delay" android:summary="@string/summary_delay" />

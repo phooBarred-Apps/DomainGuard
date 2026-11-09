@@ -103,6 +103,8 @@ Staged global allows and pauses are checked through native TCP/UDP and shared
 expiry while cleanup is held. Android checks also cover staged shutdown and
 global block removal, cancellation, database/restore logic, legacy rules and
 both dialog themes. Queued service stops must preserve newer start requests.
+Unknown-app delay checks cover the default global timing, immediate opt-in,
+protected opt-out, named app confirmation, cancellation and restored deadlines.
 When changing the backup payload, also run `scripts/test-backup.ps1`
 for a fresh-install Android local-transport round trip; this does not verify
 Google's cloud service.

@@ -128,7 +128,8 @@ final class GlobalProtectionStatus {
             } catch (android.content.pm.PackageManager.NameNotFoundException missing) { /* Backup may contain absent apps. */ }
         }
         if (shown.waits.latest() > Math.max(now, shown.starts))
-            addText(activity, body, activity.getString(R.string.global_status_unknown));
+            addText(activity, body, activity.getString(rules.useStrictUnknownDelay()
+                    ? R.string.global_status_unknown : R.string.global_status_unknown_default));
         ScrollView scroll = new ScrollView(activity); scroll.setFillViewport(false); scroll.addView(body);
         AlertDialog dialog = new AlertDialog.Builder(activity).setTitle(R.string.global_status_title).setView(scroll)
                 .setNegativeButton(R.string.list_done, null)
