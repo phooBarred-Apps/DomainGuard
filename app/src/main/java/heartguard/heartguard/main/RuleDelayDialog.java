@@ -22,6 +22,7 @@ public class RuleDelayDialog extends DialogFragment {
     private RuleDelay.State state;
     private DurationInput duration;
     private String packageName;
+    private boolean newApps;
     private final DatabaseHelper.RuleChangedListener listener = () -> {
         if (getActivity() != null)
             getActivity().runOnUiThread(() -> { if (isResumed()) refresh(); });
@@ -36,8 +37,21 @@ public class RuleDelayDialog extends DialogFragment {
         return dialog;
     }
 
+    static RuleDelayDialog forNewApps() {
+        RuleDelayDialog dialog = new RuleDelayDialog();
+        Bundle args = new Bundle();
+        args.putBoolean("new_apps", true);
+        dialog.setArguments(args);
+        return dialog;
+    }
+
+    private RuleDelay.State readState() {
+        return newApps ? NewAppDelay.read(requireContext()) : RuleDelay.read(requireContext(), packageName);
+    }
+
     @Override public Dialog onCreateDialog(Bundle savedState) {
         packageName = getArguments() == null ? null : getArguments().getString("package");
+        newApps = getArguments() != null && getArguments().getBoolean("new_apps");
         View content = requireActivity().getLayoutInflater().inflate(R.layout.rule_delay, null);
         input = content.findViewById(R.id.rule_delay_input);
         unit = content.findViewById(R.id.rule_delay_unit);
@@ -49,24 +63,29 @@ public class RuleDelayDialog extends DialogFragment {
         durationFields = content.findViewById(R.id.rule_delay_fields);
         inherit = content.findViewById(R.id.rule_delay_inherit);
         CompactUi.destructiveButton((android.widget.Button) cancelPending);
-        state = RuleDelay.read(requireContext(), packageName);
-        inherit.setVisibility(packageName == null ? View.GONE : View.VISIBLE);
-        inherit.setChecked(savedState == null ? !state.overridden : savedState.getBoolean("inherit"));
-        duration = new DurationInput(input, unit, state.seconds, this::updatePreview);
+        state = readState();
+        inherit.setVisibility(newApps || packageName != null ? View.VISIBLE : View.GONE);
+        inherit.setChecked(savedState == null ? (newApps ? state.overridden : !state.overridden) : savedState.getBoolean("inherit"));
+        duration = new DurationInput(input, unit, newApps && !state.overridden ? NewAppDelay.INITIAL_SECONDS : state.seconds, this::updatePreview);
         if (savedState != null) {
             input.setText(savedState.getString("amount"));
             unit.setSelection(savedState.getInt("unit"));
         }
         inherit.setOnCheckedChangeListener((button, checked) -> updatePreview());
         cancelPending.setOnClickListener(view -> {
-            for (RuleDelay.Pending pending : RuleDelay.read(requireContext(), packageName).pending)
+            for (RuleDelay.Pending pending : readState().pending)
                 RulesManager.getInstance(requireContext()).queueRuleText(requireContext(), "abandon " + pending.rule);
             cancelPending.setEnabled(false);
         });
-        int titleText = packageName == null ? R.string.rule_delay_title : R.string.app_delay_title;
-        View title = CompactUi.header(requireContext(), titleText, R.drawable.ic_info_compact,
+        int titleText = newApps ? R.string.new_app_delay_title : packageName == null ? R.string.rule_delay_title : R.string.app_delay_title;
+        View title = newApps ? SortDialog.title(requireContext(), titleText) : CompactUi.header(requireContext(), titleText, R.drawable.ic_info_compact,
                 R.string.help_title, view -> CompactUi.help(requireContext(), titleText,
                         getString(packageName == null ? R.string.rule_delay_explanation : R.string.app_delay_help)));
+        if (newApps) {
+            TextView explanation = content.findViewById(R.id.rule_delay_app);
+            explanation.setText(R.string.new_app_delay_body);
+            explanation.setVisibility(View.VISIBLE);
+        }
         if (packageName != null) {
             TextView appName = content.findViewById(R.id.rule_delay_app);
             appName.setText(getArguments().getString("name"));
@@ -107,10 +126,12 @@ public class RuleDelayDialog extends DialogFragment {
     }
 
     private void refresh() {
-        state = RuleDelay.read(requireContext(), packageName);
-        current.setText(state.summary(requireContext()));
-        current.setVisibility(current.length() == 0 ? View.GONE : View.VISIBLE);
-        inherit.setText(getString(R.string.app_delay_default, RuleDelay.duration(requireContext(), state.generalSeconds)));
+        state = readState();
+        current.setText(newApps ? NewAppDelay.summary(requireContext(), state) : state.summary(requireContext()));
+        current.setVisibility(current.length() == 0 || (newApps && state.pending.isEmpty()) ? View.GONE : View.VISIBLE);
+        if (newApps) requireDialog().findViewById(R.id.rule_delay_app)
+                .setVisibility(state.pending.isEmpty() ? View.VISIBLE : View.GONE);
+        inherit.setText(newApps ? getString(R.string.new_app_delay_enable) : getString(R.string.app_delay_default, RuleDelay.duration(requireContext(), state.generalSeconds)));
         inherit.setEnabled(state.pending.isEmpty());
         input.setEnabled(state.pending.isEmpty());
         unit.setEnabled(state.pending.isEmpty());
@@ -120,25 +141,42 @@ public class RuleDelayDialog extends DialogFragment {
         updatePreview();
     }
 
-    private boolean useGeneral() { return packageName != null && inherit.isChecked(); }
+    private boolean useGeneral() { return newApps ? !inherit.isChecked() : packageName != null && inherit.isChecked(); }
 
     private void updatePreview() {
         if (duration == null) return;
-        durationFields.setVisibility(useGeneral() ? View.GONE : View.VISIBLE);
+        durationFields.setVisibility(useGeneral() || (newApps && !state.pending.isEmpty()) ? View.GONE : View.VISIBLE);
         // Keep the warning while a longer active delay awaits a reduction or removal.
         boolean longerAppDelay = packageName != null && state.overridden && state.seconds > state.generalSeconds;
         try {
-            int seconds = useGeneral() ? state.generalSeconds : duration.seconds();
+            int seconds = useGeneral() ? (newApps ? 0 : state.generalSeconds) : duration.seconds();
             longerAppDelay |= packageName != null && !useGeneral() && seconds > state.generalSeconds;
             String text = RuleDelay.duration(requireContext(), seconds);
             if (seconds < state.seconds)
                 text += "\n" + getString(R.string.rule_delay_reduction,
                         RuleDelay.duration(requireContext(), state.seconds - seconds));
+            if (newApps && useGeneral())
+                text = state.overridden ? getString(R.string.new_app_delay_disable, RuleDelay.duration(requireContext(), state.seconds)) : "";
+            if (newApps && !state.pending.isEmpty()) text = "";
             preview.setText(text);
         } catch (IllegalArgumentException invalid) {
             preview.setText(R.string.rule_delay_invalid);
         }
         globalWarning.setVisibility(longerAppDelay ? View.VISIBLE : View.GONE);
+        fitNewAppsDialog();
+    }
+
+    private void fitNewAppsDialog() {
+        if (!newApps || getDialog() == null) return;
+        requireDialog().getWindow().getDecorView().post(() -> {
+            if (getActivity() == null || getDialog() == null) return;
+            android.graphics.Rect bounds = new android.graphics.Rect();
+            requireActivity().getWindow().getDecorView().getWindowVisibleDisplayFrame(bounds);
+            android.view.Window window = requireDialog().getWindow();
+            int maxHeight = bounds.height() - CompactUi.dp(requireContext(), 32);
+            if (maxHeight > 0 && window.getDecorView().getHeight() > maxHeight)
+                window.setLayout(window.getAttributes().width, maxHeight);
+        });
     }
 
     private void save() {
@@ -153,8 +191,8 @@ public class RuleDelayDialog extends DialogFragment {
             catch (IllegalArgumentException invalid) {
                 input.setError(getString(R.string.rule_delay_invalid)); return;
             }
-            if (seconds != state.seconds || (packageName != null && !state.overridden))
-                rules.queueRuleText(requireContext(), "delay " + (packageName == null ? "" : "package:" + packageName + " ") + seconds);
+            if (seconds != state.seconds || ((packageName != null || newApps) && !state.overridden))
+                rules.queueRuleText(requireContext(), (newApps ? NewAppDelay.PREFIX : "delay " + (packageName == null ? "" : "package:" + packageName + " ")) + seconds);
         }
         dismiss();
     }

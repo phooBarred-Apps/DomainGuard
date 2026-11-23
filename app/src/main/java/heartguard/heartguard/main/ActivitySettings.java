@@ -130,6 +130,11 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
             UnknownAppDelay.show(this);
             return false; // Only an enacted rule may change the switch.
         });
+        screen.findPreference(NewAppDelay.KEY).setOnPreferenceClickListener(preference -> {
+            if (getSupportFragmentManager().findFragmentByTag(NewAppDelay.KEY) == null)
+                RuleDelayDialog.forNewApps().show(getSupportFragmentManager(), NewAppDelay.KEY);
+            return true;
+        });
 
         PreferenceGroup cat_options = (PreferenceGroup) ((PreferenceGroup) screen.findPreference("screen_options")).findPreference("category_options");
         //PreferenceGroup cat_network = (PreferenceGroup) ((PreferenceGroup) screen.findPreference("screen_network_options")).findPreference("category_network_options");
@@ -1082,6 +1087,7 @@ public class ActivitySettings extends AppCompatActivity implements SharedPrefere
 
     private void updateRuleDelay() {
         getPreferenceScreen().findPreference("rule_delay").setSummary(RuleDelay.read(this).summary(this));
+        getPreferenceScreen().findPreference(NewAppDelay.KEY).setSummary(NewAppDelay.summary(this, NewAppDelay.read(this)));
     }
 
     private void updateUnknownDelay() {

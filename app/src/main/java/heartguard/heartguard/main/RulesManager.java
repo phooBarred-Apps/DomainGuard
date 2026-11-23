@@ -62,6 +62,7 @@ public class RulesManager {
     private List<MyRule> m_allCurrentRules = new ArrayList<>();
     private List<MyRule> m_allPendingRules = new ArrayList<>();
     private int m_delay = 0;
+    private volatile int m_newAppDelay = -1;
     private Map<String, Boolean> m_allowedPackages;
     private Map<String, Integer> m_packageDelays;
     private Map<Integer, Boolean> m_allowedUids;
@@ -777,6 +778,7 @@ public class RulesManager {
 
     // Commits a rule to the database, but uses realTime to be sure
     public void commitRuleText(Context context, String ruletext, long realTime) {
+        reconcileNewApps(context, realTime, ruletext.contains(NewAppDelay.PREFIX));
         DatabaseHelper dh = DatabaseHelper.getInstance(context);
         int delay = m_delay;
 
@@ -974,6 +976,7 @@ public class RulesManager {
     private void updateFieldsFromCurrentRules(Context context) {
         // If there are no delay rules, delay will be 0
         int newDelay = 0;
+        int newAppDelay = -1;
         Map<String, Boolean> newAllowedPackages = new HashMap<>();
         Map<String, Integer> newPackageDelays = new HashMap<>();
         Map<Integer, Boolean> newAllowedUids = new HashMap<>();
@@ -1007,6 +1010,8 @@ public class RulesManager {
                     Long previous = pausedUids.get(uid);
                     pausedUids.put(uid, previous == null ? pause.expiresAt : Math.max(previous, pause.expiresAt));
                 } catch (android.content.pm.PackageManager.NameNotFoundException ignored) { }
+            } else if (rule instanceof NewAppDelayRule) {
+                newAppDelay = Math.max(newAppDelay, ((NewAppDelayRule) rule).seconds);
             } else if (rule instanceof DelayRule) {
                 DelayRule delayRule = (DelayRule)rule;
                 String packageName = delayRule.getPackageName();
@@ -1079,6 +1084,7 @@ public class RulesManager {
         }
 
         m_allowedPackages = newAllowedPackages;
+        m_newAppDelay = newAppDelay;
         m_packageDelays = newPackageDelays;
         m_allowedUids = newAllowedUids;
         m_ignoredApps = newIgnoredApps;
@@ -1221,7 +1227,12 @@ public class RulesManager {
     int getPauseDelay(String packageName) {
         // Even an otherwise allowed app may have domain blocks: bypassing those still waits.
         Integer specific = m_packageDelays.get(packageName);
-        return specific == null ? m_delay : specific;
+        if (specific != null) return specific;
+        // Raw rules can name an app before it is installed. Do not let that bypass its future delay.
+        if (packageName != null && m_newAppDelay >= 0 && !PreferenceManager.getDefaultSharedPreferences(appContext)
+                .getStringSet(NewAppDelay.KNOWN_PACKAGES, Collections.emptySet()).contains(packageName))
+            return m_newAppDelay;
+        return m_delay;
     }
 
     int getDefaultDelay() {
@@ -1457,7 +1468,7 @@ public class RulesManager {
         if (m_allowedPackages.containsKey(packageName)) {
             return 0;
         }
-        return m_delay;
+        return getPauseDelay(packageName);
     }
 
     // The user has clicked to reset an access rule
@@ -1513,6 +1524,7 @@ public class RulesManager {
     // The runnable will post itself 2 minutes later if it fails
     void reloadAfterRestore(Context context) {
         handler.post(() -> {
+            reconcileNewApps(context, System.currentTimeMillis(), true);
             getAllEnactedRulesFromDb(context);
             WhitelistManager whitelist = WhitelistManager.getInstance(context);
             whitelist.updateRulesFromRulesManager(context);
@@ -1546,6 +1558,7 @@ public class RulesManager {
                     boolean expedite = m_pleaseExpedite;
                     lock.readLock().unlock();
 
+                    reconcileNewApps(context, realTime, false);
                     expireTemporaryRules(context, systemTime);
                     commitQueuedRules(context, realTime);
                     if (expedite) {
@@ -1572,6 +1585,11 @@ public class RulesManager {
                 handler.postDelayed(this, 120000);
             }
         });
+    }
+
+    private void reconcileNewApps(Context context, long now, boolean force) {
+        if (NewAppDelay.reconcileIfNeeded(context, now, force))
+            getAllEnactedRulesFromDb(context);
     }
 
     // Clean up the ruletext to be displayed
@@ -1755,6 +1773,8 @@ class MyRule {
                 }
             } else if (category.equals("delay")) {
                 therule = new DelayRule(ruletext);
+            } else if (category.equals("newappdelay")) {
+                therule = new NewAppDelayRule(ruletext);
             } else if (category.equals("pause")) {
                 therule = new AppPauseRule(ruletext);
             } else if (category.equals("allow")) {

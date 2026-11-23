@@ -44,6 +44,16 @@ public class ApplicationEx extends Application {
             createNotificationChannels();
         NotificationGroup.refresh(this);
 
+        // A remote install is the same package event as a local install. Listen even when the VPN is paused.
+        android.content.IntentFilter installs = new android.content.IntentFilter(android.content.Intent.ACTION_PACKAGE_ADDED);
+        installs.addDataScheme("package");
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override public void onReceive(Context context, android.content.Intent intent) {
+                NewAppDelay.packagesChanged(context);
+            }
+        }, installs);
+        NewAppDelay.packagesChanged(this); // Reconcile installs missed while this process was stopped.
+
         mPrevHandler = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             @Override

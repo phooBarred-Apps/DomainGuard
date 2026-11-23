@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="new_app_delay_title">Rule delay for new apps</string>
+    <string name="new_app_delay_enable">Enable for new apps</string>
+    <string name="new_app_delay_on">New apps: %1$s</string>
+    <string name="new_app_delay_off">Off — new apps use the default rule delay</string>
+    <string name="new_app_delay_body">The delay starts when you request a change that allows access.</string>
+    <string name="new_app_delay_disable">Turning this off takes effect after %1$s. Delays already assigned to apps stay in place.</string>
+    <string name="new_app_delay_pending_off">Turning off at %1$s</string>
+</resources>

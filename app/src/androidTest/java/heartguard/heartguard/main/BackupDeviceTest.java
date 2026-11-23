@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.io.File;
@@ -40,6 +41,7 @@ public class BackupDeviceTest {
                 "allow package:" + INSTALLED + " host:installed-allow.invalid",
                 "block package:" + INSTALLED + " host:installed-block.invalid",
                 "allow host:global-allow.invalid", "blockdomain global-block.invalid", UnknownAppDelay.RULE,
+                NewAppDelay.PREFIX + "21600",
                 TemporaryRuleText.text("allow host:staged-backup.invalid", 86400),
                 TemporaryRuleText.text("allow package:" + MISSING + " host:temporary-backup.invalid", 86400),
                 AppPauseRule.text(MISSING, 86400));
@@ -71,6 +73,11 @@ public class BackupDeviceTest {
         for (String name : new String[]{"apply", "roaming", "lockdown"})
             context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().putBoolean(MISSING, true).commit();
         for (String text : activeRules()) addRule(text, now, now, 1);
+        Set<String> known = new HashSet<>(PreferenceManager.getDefaultSharedPreferences(context)
+                .getStringSet(NewAppDelay.KNOWN_PACKAGES, new HashSet<>()));
+        known.add(MISSING);
+        PreferenceManager.getDefaultSharedPreferences(context).edit().putStringSet(NewAppDelay.KNOWN_PACKAGES, known).commit();
+        addRule(NewAppDelay.PREFIX + "14400", now, now + 7200000, 0);
         try (Cursor row = DatabaseHelper.getInstance(context).getRuleMatchingRuletext(
                 TemporaryRuleText.text("allow host:staged-backup.invalid", 86400))) {
             assertTrue(row.moveToFirst());
@@ -106,6 +113,7 @@ public class BackupDeviceTest {
         List<Long> ids = new ArrayList<>();
         List<String> owned = new ArrayList<>(activeRules()); owned.add(RULE);
         owned.add(UnknownAppDelay.REMOVE);
+        owned.add(NewAppDelay.PREFIX + "14400");
         owned.add("- blockdomain global-block.invalid"); owned.add(AppPauseRule.text(null, 86400));
         try (Cursor cursor = DatabaseHelper.getInstance(context).getAllRules()) {
             while (cursor.moveToNext())
@@ -161,6 +169,9 @@ public class BackupDeviceTest {
         assertTrue(ready.await(10, TimeUnit.SECONDS));
         WhitelistManager.getInstance(context).updateRulesFromRulesManager(context);
         assertEquals(21600, RuleDelay.read(context).seconds);
+        assertTrue(prefs.getStringSet(NewAppDelay.KNOWN_PACKAGES, new HashSet<>()).contains(MISSING));
+        assertEquals(21600, NewAppDelay.read(context).seconds);
+        assertEquals(created + 7200000, NewAppDelay.read(context).pending.get(0).time);
         assertTrue("Opt-in strict unknown policy restored", rules.useStrictUnknownDelay());
         assertEquals("Pending turn-off deadline must not restart", created + 25200000, UnknownAppDelay.pending(context));
         assertEquals(25200, RuleDelay.read(context, INSTALLED).seconds);
