@@ -36,12 +36,41 @@ Confirm at noon, default delay 10 minutes, Chase override 1 minute, Chrome overr
 | Remove a normal allow | Immediate; sticky allows retain their delayed-removal contract |
 | Global trial-block removal | Existing `try` / `no_try` policy sets the global wait; longer app waits still apply |
 | Default/app delay reduction | Existing difference-based wait; 6 hours to 4 hours waits 2 hours |
+| New-app delay default | Assigns an ordinary app override on installation; shortening the default waits the difference, turning it off waits its current duration |
 | Lockdown parameter / static-IP policy changes | Existing policy-setting/reduction timing; global network settings are not per-app network configurations |
 | DNS, logging, capture mode, partner configuration and trial policy | Global configuration uses the default or the existing immediate restrictive operation; an unrelated app delay does not lengthen it |
 | Ignore / comment | Existing immediate behavior; not a traffic permission |
 
 The parser supports global domain blocks as `blockdomain`; `block host:` and
-`block ip:` require a package. This change does not introduce new rule syntax.
+`block ip:` require a package.
+
+## Delay for newly installed apps
+
+Settings > Options > Rule delay for new apps is off until enabled. The dialog
+starts with six hours and supports the same duration controls and seven-day maximum
+as other rule delays. Enabling it preserves existing apps and their configured delays.
+New installs, including remote installs, receive ordinary per-app overrides stored
+by package name. This is a wait before a later permissive rule change, not a
+quarantine timer that starts at installation. Existing allow/block rules still apply.
+
+The protected template is `newappdelay SECONDS`. Reducing six hours to four waits
+two hours; removing the template waits six hours. Pending template changes can be
+canceled from the dialog. Turning it off leaves already assigned overrides intact.
+Each app's Rule delay control can change its assigned override using the usual
+protected delay rules. Updates and reinstalls preserve configured overrides.
+
+The rule worker reconciles installs on process startup and package-added events,
+before committing user changes. An inventory in backed-up preferences distinguishes
+existing apps from new installs. Missed installs use their installation time against
+pending template deadlines; a crash retry never replaces an existing override.
+Backup retains the template, its pending deadline, the inventory and assigned rules,
+including rules for apps absent from the destination phone.
+
+`NewAppDelayDeviceTest` covers rule timing, raw-edit bypasses and the dialog.
+On the disposable emulator, `scripts/test-new-app-delay.ps1` builds a minimal APK
+and checks actual installs, stopped-process catch-up, updates and reinstalls.
+`scripts/test-backup.ps1` checks a fresh-install restore through Android's local
+backup transport. Neither test uses the user's phone or a cloud backup service.
 
 ## Persistence and interpretation
 

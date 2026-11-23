@@ -105,6 +105,11 @@ global block removal, cancellation, database/restore logic, legacy rules and
 both dialog themes. Queued service stops must preserve newer start requests.
 Unknown-app delay checks cover the default global timing, immediate opt-in,
 protected opt-out, named app confirmation, cancellation and restored deadlines.
+New-app delay checks cover existing-app preservation, automatic enrollment,
+protected template changes, raw-rule bypass prevention and the settings dialog.
+When changing install enrollment, run `scripts/test-new-app-delay.ps1` on the
+disposable emulator to exercise real installs, stopped-process discovery, updates
+and reinstalls with a generated test APK.
 When changing the backup payload, also run `scripts/test-backup.ps1`
 for a fresh-install Android local-transport round trip; this does not verify
 Google's cloud service.
