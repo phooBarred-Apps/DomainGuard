@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_recover">Recover saved rules</string>
+    <string name="backup_recover_note">Check the local copy kept by Android backup. Empty rule lists are not uploaded, to protect an existing backup.</string>
+    <string name="backup_recover_missing">No usable local rules backup was found. This does not check your Google backup. Nothing has been changed.</string>
+    <string name="backup_recover_read_error">Could not read the local backup. Nothing has been restored or deleted.</string>
+    <string name="backup_recover_summary">%1$d saved rules\nFile date: %2$s</string>
+    <string name="backup_recover_confirm">Restore these rules into your empty rule list? Saved delays and pending changes are retained. This recovers rules only; display settings and traffic history are not in this file. The saved copy will be kept.</string>
+    <string name="backup_recover_restore">Restore</string>
+    <string name="backup_recover_export">Export copy</string>
+    <string name="backup_recover_success">Rules restored. Open All rules to review them.</string>
+    <string name="backup_recover_failed">Recovery could not finish. Existing or queued rules cannot be replaced by local recovery. The saved copy is still available to export.</string>
+    <string name="backup_recover_export_error">The copy could not be exported. The original saved copy is still available; try Export copy again.</string>
+    <string name="backup_recover_exported">Saved the rules backup to your chosen location.</string>
+</resources>

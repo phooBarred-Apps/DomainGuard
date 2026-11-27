@@ -16,6 +16,7 @@ NETWORK_TESTS = tuple(PREFIX + "AppPauseNetworkDeviceTest#" + name for name in (
     "nativeConnectionsStopAtTemporaryAllowExpiry", "nativeConnectionsStopAtGlobalPauseExpiry", "nativeStagedGlobalAllowUsesSharedExpiry", "nativeStagedGlobalPauseUsesSharedExpiry",
     "nativeHostnameEvidence", "nativeStartupWaitsForVpn", "nativeQueuedStopsKeepNewerStartsAlive", "nativeRoutingTransitionEnforcesBlock"))
 JAVA_TESTS = tuple(PREFIX + cls + "#" + name for cls, names in (
+    ("RulesRecoveryDeviceTest", ("recoverFromScreenPreservesRulesAndDeadlines", "existingRulesBlockReplacementAtomically", "enabledOnlyListCanRecover", "emptyBackupCallbackIsHeld")),
     ("NewAppDelayDeviceTest", ("assignsOnlyNewAppsAndPreservesOverrides", "protectsTemplateChangesAndCancellation",
         "missedInstallsRespectPendingOffDeadline", "pendingOverrideCannotBypassEnrollment", "dialogEnablesAndExplainsPendingOff")),
     ("GlobalPauseDeviceTest", ("globalAllowDialogExplainsIndependentWaits", "longerAppDelayExplainsGlobalWait", "longerAppDelayWarnsBeforeSaving", "overridesAndGlobalActionsRespectEffectiveDelays", "unknownDelaySettingExplainsAndProtectsChanges")),

@@ -1522,6 +1522,28 @@ public class RulesManager {
     // The TrueTime runnable gets the true time and then performs all actions associated with true time:
     // queue rules, activate rules, set the alarm
     // The runnable will post itself 2 minutes later if it fails
+    interface RecoveryCallback { void complete(Exception error); }
+
+    void recoverSavedRules(Context context, byte[] bytes, RecoveryCallback callback) {
+        handler.post(() -> {
+            Exception failure = null;
+            lock.writeLock().lock();
+            try {
+                if (!m_rulesToCommit.isEmpty()) throw new IllegalStateException("Rule changes are still pending");
+                List<RulesBackup.Row> rows = RulesBackup.decode(bytes);
+                if (!RulesRecovery.hasRules(rows)) throw new IllegalArgumentException("No saved rules");
+                DatabaseHelper.getInstance(context).restoreRules(rows, true);
+                reloadAfterRestore(context);
+            } catch (Exception error) {
+                failure = error;
+            } finally {
+                lock.writeLock().unlock();
+            }
+            final Exception result = failure;
+            new Handler(android.os.Looper.getMainLooper()).post(() -> callback.complete(result));
+        });
+    }
+
     void reloadAfterRestore(Context context) {
         handler.post(() -> {
             reconcileNewApps(context, System.currentTimeMillis(), true);
