@@ -1752,13 +1752,23 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
-    // Called only by Android's restore agent, not by the rule-editing UI.
     void restoreRules(List<RulesBackup.Row> rows) {
+        restoreRules(rows, false);
+    }
+
+    // Local recovery cannot replace existing restrictions or bypass their delays.
+    void restoreRules(List<RulesBackup.Row> rows, boolean requireEmpty) {
         lock.writeLock().lock();
         try {
             SQLiteDatabase db = getWritableDatabase();
             db.beginTransaction();
             try {
+                if (requireEmpty) {
+                    try (Cursor current = db.rawQuery("SELECT 1 FROM rules WHERE ruletext <> ? LIMIT 1",
+                            new String[]{"feature enabled"})) {
+                        if (current.moveToFirst()) throw new IllegalStateException("Existing rules must not be replaced");
+                    }
+                }
                 db.delete("rules", null, null);
                 for (RulesBackup.Row row : rows) {
                     ContentValues values = new ContentValues();

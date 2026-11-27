@@ -33,6 +33,7 @@ public class SettingsBackupAgent extends BackupAgentHelper {
 
     @Override public void onBackup(ParcelFileDescriptor oldState, BackupDataOutput output,
                                    ParcelFileDescriptor newState) throws IOException {
+        RulesRecovery.of(this).preserve();
         List<RulesBackup.Row> rows = new ArrayList<>();
         try (Cursor cursor = DatabaseHelper.getInstance(this).getAllRules()) {
             while (cursor.moveToNext())
@@ -45,6 +46,8 @@ public class SettingsBackupAgent extends BackupAgentHelper {
                         cursor.getInt(cursor.getColumnIndexOrThrow("minor_category")),
                         cursor.getString(cursor.getColumnIndexOrThrow("global_waits"))));
         }
+        // Do not replace a potentially recoverable cloud copy with an empty rule list.
+        if (!RulesRecovery.hasRules(rows)) throw new IOException("No saved rules; backup held for recovery");
         byte[] bytes = RulesBackup.encode(rows);
         File file = new File(getFilesDir(), RULES_FILE);
         if (!file.getParentFile().isDirectory() && !file.getParentFile().mkdirs())
@@ -62,6 +65,7 @@ public class SettingsBackupAgent extends BackupAgentHelper {
     }
 
     @Override public void onRestore(BackupDataInput input, int version, ParcelFileDescriptor newState) throws IOException {
+        RulesRecovery.of(this).preserve();
         File file = new File(getFilesDir(), RULES_FILE);
         // Avoid applying a stale local snapshot if the incoming backup contains no rules.
         new AtomicFile(file).delete();
