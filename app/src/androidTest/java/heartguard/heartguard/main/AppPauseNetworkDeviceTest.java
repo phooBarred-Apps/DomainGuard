@@ -294,10 +294,15 @@ public class AppPauseNetworkDeviceTest {
             add(context, rules, owned, "block package:com.android.shell ip:10.0.2.2");
             assertTrue("App block automatically enables capture", rules.getPreferenceCaptureAllTraffic(context));
             long deadline = SystemClock.elapsedRealtime() + 15000;
-            while ((vpnNetwork(context) == null || previous.equals(vpnNetwork(context)))
-                    && SystemClock.elapsedRealtime() < deadline) Thread.sleep(50);
-            assertNotNull("Replacement VPN established", vpnNetwork(context));
-            assertNotEquals("Routing exclusions updated", previous, vpnNetwork(context));
+            Network replacement;
+            // Observe once per poll: the replacement can disappear between separate reads.
+            do {
+                replacement = vpnNetwork(context);
+                if (replacement != null && !previous.equals(replacement)) break;
+                Thread.sleep(50);
+            } while (SystemClock.elapsedRealtime() < deadline);
+            assertNotNull("Replacement VPN established", replacement);
+            assertNotEquals("Routing exclusions updated", previous, replacement);
             awaitVpnReady(context);
             assertBlocked(context, port, false, true, "Replacement VPN blocks TCP");
             assertBlocked(context, port, true, false, "Replacement VPN blocks UDP");
